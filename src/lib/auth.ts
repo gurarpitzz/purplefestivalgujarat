@@ -68,10 +68,11 @@ export async function createSession(
     .returning();
 
   const cookieStore = await cookies();
+  const isHttpsApp = (process.env.NEXT_PUBLIC_APP_URL || "").startsWith("https://");
   cookieStore.set(SESSION_COOKIE_NAME, rawToken, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttpsApp,
     path: "/",
     expires: expiresAt,
   });
