@@ -1,0 +1,24 @@
+node_modules/
+.next/
+out/
+data/
+uploads/
+.env
+.env.local
+.env.*.local
+*.log
+*.tsbuildinfo
+next-env.d.ts
+playwright-report/
+test-results/
+coverage/
+hello.txt
+
+# Raw root reference docs & duplicate media (all normalized assets live in public/assets/ and docs/)
+/*.pdf
+/*.docx
+/*.pptx
+/*.xlsx
+/*.jpeg
+/GOA_BH_LOGO-removebg-preview.png
+/PurpleFest Gujarat 2027 Hero Homepage.png

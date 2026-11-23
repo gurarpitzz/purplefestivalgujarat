@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+:root {
+  /* Authentic PurpleFest Reference Palette (purplefestivalvadodara-main.ajeetgraphics.com) */
+  --pf-lavender: #ddddf9;
+  --pf-lavender-soft: #ededfc;
+  --pf-lavender-deep: #c7c7f4;
+  --pf-navy: #202d59;
+  --pf-navy-dark: #151e3d;
+  --pf-navy-muted: #46537c;
+  --pf-purple: #a459ff;
+  --pf-purple-hover: #8d3bf2;
+  --pf-teal: #099f9f;
+  --pf-cream: #efefef;
+  --pf-white: #ffffff;
+  --pf-a11y-dark: #1c0d30;
+
+  /* Compatibility aliases mapped to the authentic palette (no charcoal/dusty-gray) */
+  --purple-primary: #a459ff;
+  --purple-dusty: #c7c7f4;
+  --purple-muted: #ddddf9;
+  --purple-deep: #202d59;
+  --purple-ink: #151e3d;
+  --charcoal: #202d59;
+  --charcoal-soft: #2a396c;
+  --charcoal-border: #3a4a82;
+  --lavender-light: #ddddf9;
+  --background-light: #ffffff;
+  --surface-white: #ffffff;
+  --text-light: #ffffff;
+  --text-dark: #202d59;
+  --text-muted-dark: #46537c;
+  --text-muted-light: #ddddf9;
+  --accent-gold: #099f9f;
+  --success: #0d7a5f;
+  --error: #c81e32;
+
+  /* Semantic Surface & Text Tokens */
+  --bg-page: #ffffff;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #ddddf9;
+  --bg-dark: #202d59;
+  --bg-dark-elevated: #2a396c;
+  --fg-primary: #202d59;
+  --fg-secondary: #46537c;
+  --fg-on-dark: #ffffff;
+  --fg-on-dark-muted: #ddddf9;
+  --border-subtle: rgba(32, 45, 89, 0.14);
+  --border-strong: rgba(32, 45, 89, 0.32);
+  --focus-ring: #a459ff;
+  --focus-ring-on-dark: #ddddf9;
+}
+
+@theme inline {
+  --color-purple-primary: var(--pf-purple);
+  --color-purple-dusty: var(--pf-lavender-deep);
+  --color-purple-muted: var(--pf-lavender);
+  --color-purple-deep: var(--pf-navy);
+  --color-charcoal: var(--pf-navy);
+  --color-charcoal-soft: var(--charcoal-soft);
+  --color-lavender-light: var(--pf-lavender);
+  --color-background-light: var(--pf-white);
+  --color-text-light: var(--pf-white);
+  --color-text-dark: var(--pf-navy);
+  --color-accent-gold: var(--pf-teal);
+  --color-success: var(--success);
+  --color-error: var(--error);
+
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, Arial, sans-serif;
+  --font-display: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, Arial, sans-serif;
+}
+
+html {
+  font-size: 100%;
+  scroll-behavior: smooth;
+  overflow-x: clip;
+  background-color: var(--pf-lavender);
+  color: var(--pf-navy);
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--pf-white);
+  color: var(--pf-navy);
+  line-height: 1.65;
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-display {
+  font-family: var(--font-sans);
+}
+
+/* WCAG 2.2 AA Focus Indicators */
+*:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+[data-surface="dark"] *:focus-visible {
+  outline-color: var(--focus-ring-on-dark);
+}
+
+/* Skip to Main Content Link */
+.skip-link {
+  position: fixed;
+  top: -120px;
+  left: 16px;
+  z-index: 2000;
+  padding: 12px 20px;
+  min-height: 44px;
+  background-color: var(--pf-navy);
+  color: #ffffff;
+  border: 2px solid var(--pf-purple);
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  box-shadow: 0 10px 30px rgba(32, 45, 89, 0.3);
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 16px;
+  outline: 3px solid var(--pf-purple);
+  outline-offset: 3px;
+}
+
+/* Text Size Scaling (90% to 200% — WCAG 1.4.4) */
+html[data-text-scale="90"] { font-size: 90%; }
+html[data-text-scale="100"] { font-size: 100%; }
+html[data-text-scale="115"] { font-size: 115%; }
+html[data-text-scale="130"] { font-size: 130%; }
+html[data-text-scale="150"] { font-size: 150%; }
+html[data-text-scale="175"] { font-size: 175%; }
+html[data-text-scale="200"] { font-size: 200%; }
+
+/* Increased Text & Line Spacing (WCAG 1.4.12) */
+html[data-spacing="wide"] body,
+html[data-spacing="wide"] p,
+html[data-spacing="wide"] li,
+html[data-spacing="wide"] td,
+html[data-spacing="wide"] label,
+html[data-spacing="wide"] span {
+  line-height: 1.85 !important;
+  letter-spacing: 0.06em !important;
+  word-spacing: 0.14em !important;
+}
+
+html[data-spacing="wide"] p {
+  margin-bottom: 1.25em;
+}
+
+/* Link & Interactive Control Highlighting */
+html[data-highlight-links="true"] a:not(.skip-link) {
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  text-underline-offset: 4px !important;
+  background-color: rgba(164, 89, 255, 0.16) !important;
+  outline: 1.5px dashed currentColor;
+  outline-offset: 2px;
+}
+
+html[data-highlight-links="true"] button {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* High Contrast Mode */
+html[data-contrast="high"] body,
+html[data-contrast="high"] main,
+html[data-contrast="high"] section,
+html[data-contrast="high"] header,
+html[data-contrast="high"] footer,
+html[data-contrast="high"] article,
+html[data-contrast="high"] aside {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+
+html[data-contrast="high"] a,
+html[data-contrast="high"] button {
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+
+html[data-contrast="high"] .btn-primary-pfg {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Yellow on Black Mode */
+html[data-contrast="yellow-black"] body,
+html[data-contrast="yellow-black"] main,
+html[data-contrast="yellow-black"] section,
+html[data-contrast="yellow-black"] header,
+html[data-contrast="yellow-black"] footer,
+html[data-contrast="yellow-black"] article,
+html[data-contrast="yellow-black"] aside,
+html[data-contrast="yellow-black"] div[class*="bg-"] {
+  background-color: #000000 !important;
+  background-image: none !important;
+  color: #ffe600 !important;
+  border-color: #ffe600 !important;
+}
+
+html[data-contrast="yellow-black"] h1,
+html[data-contrast="yellow-black"] h2,
+html[data-contrast="yellow-black"] h3,
+html[data-contrast="yellow-black"] h4,
+html[data-contrast="yellow-black"] p,
+html[data-contrast="yellow-black"] span,
+html[data-contrast="yellow-black"] li,
+html[data-contrast="yellow-black"] a,
+html[data-contrast="yellow-black"] button,
+html[data-contrast="yellow-black"] label {
+  color: #ffe600 !important;
+}
+
+html[data-contrast="yellow-black"] .btn-primary-pfg {
+  background-color: #ffe600 !important;
+  color: #000000 !important;
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Touch Target Minimum (WCAG 2.2 Target Size) */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Reading Guide Bar */
+.reading-guide-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 40px;
+  pointer-events: none;
+  z-index: 9990;
+  background: rgba(164, 89, 255, 0.14);
+  border-top: 2px solid #a459ff;
+  border-bottom: 2px solid #a459ff;
+  transform: translateY(-50%);
+}
