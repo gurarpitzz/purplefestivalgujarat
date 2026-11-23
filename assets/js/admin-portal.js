@@ -1754,11 +1754,11 @@
     let html = '<div class="space-y-6">';
     html +=
       '<form id="staff-create-form" class="bg-white border border-[#E5DFEF] rounded-xl p-5 space-y-4">' +
-      '<h3 class="text-sm font-bold text-[#17151C]">Create Staff Account (Admin or RGST Reception Operator)</h3>' +
+      '<h3 class="text-sm font-bold text-[#17151C]">Create Staff Account (Admin, RGST Check-In, or Superadmin)</h3>' +
       '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">' +
       '<input id="st-name" required type="text" placeholder="Full Name" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
-      '<input id="st-email" required type="email" placeholder="Email Address" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
-      '<input id="st-phone" type="text" placeholder="Phone (optional)" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
+      '<input id="st-username" required type="text" placeholder="Username (e.g. admin1, rgst1)" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
+      '<input id="st-email" type="email" placeholder="Email (optional)" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
       '<input id="st-pw" required type="password" minlength="8" placeholder="Initial Password (min 8)" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
       '<select id="st-role" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg bg-white">' +
       '<option value="ADMIN">ADMIN (Operations)</option>' +
@@ -1793,7 +1793,7 @@
 
           return (
             "<tr>" +
-            '<td class="px-4 py-3"><p class="font-semibold text-[#17151C]">' + esc(u.fullName) + '</p><p class="text-xs text-[#645C75]">' + esc(u.email) + "</p></td>" +
+            '<td class="px-4 py-3"><p class="font-semibold text-[#17151C]">' + esc(u.fullName) + '</p><p class="text-xs text-[#645C75]">@' + esc(u.username || u.email) + (u.username && u.email && !u.email.endsWith("@staff.purplefestivalgujarat.com") ? " · " + esc(u.email) : "") + "</p></td>" +
             '<td class="px-4 py-3"><div class="flex flex-wrap gap-1">' + roleBadges + "</div></td>" +
             '<td class="px-4 py-3 text-xs text-[#5C536E]">' + esc(cPerms) + "</td>" +
             '<td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full text-xs font-semibold border ' + statusBadgeClass(u.isActive ? "ACTIVE" : "REVOKED") + '">' + (u.isActive ? "Active" : "Disabled") + "</span></td>" +
@@ -2531,8 +2531,8 @@
       staffForm.addEventListener("submit", async function (e) {
         e.preventDefault();
         const fullName = ((document.getElementById("st-name") || {}).value || "").trim();
+        const username = ((document.getElementById("st-username") || {}).value || "").trim();
         const email = ((document.getElementById("st-email") || {}).value || "").trim();
-        const phone = ((document.getElementById("st-phone") || {}).value || "").trim();
         const password = (document.getElementById("st-pw") || {}).value || "";
         const roleCode = (document.getElementById("st-role") || {}).value || "ADMIN";
         const grantCms = Boolean((document.getElementById("st-grant-cms") || {}).checked);
@@ -2542,8 +2542,8 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fullName: fullName,
+            username: username,
             email: email,
-            phone: phone,
             password: password,
             roleCode: roleCode,
             customPermissions: roleCode === "ADMIN" && grantCms ? ["cms.manage"] : [],
@@ -2554,7 +2554,7 @@
           notify("error", data.error || "Failed to create staff account.");
           return;
         }
-        notify("success", roleCode + " account created for " + email + ".");
+        notify("success", roleCode + " account created for @" + (data.user && data.user.username ? data.user.username : username) + ".");
         fetchUsers();
       });
     }

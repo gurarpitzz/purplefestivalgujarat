@@ -98,6 +98,12 @@ if (!defined('SESSION_COOKIE_NAME')) {
 if (!defined('SESSION_DURATION_SECONDS')) {
     define('SESSION_DURATION_SECONDS', 60 * 60 * 24 * 7); // 7 days
 }
+if (!defined('RESEND_API_KEY')) {
+    define('RESEND_API_KEY', pfgEnv('RESEND_API_KEY', ''));
+}
+if (!defined('EMAIL_FROM')) {
+    define('EMAIL_FROM', pfgEnv('EMAIL_FROM', 'Purple Festival Gujarat 2027 <noreply@purplefestivalgujarat.com>'));
+}
 
 // ============================================================================
 // 2. CORE HELPER FUNCTIONS

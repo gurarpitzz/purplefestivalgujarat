@@ -3,3 +3,4 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home1/tstpllmy/public_html/purplefestivalgujarat/
     - /bin/cp -R index.php login.php programme.php accessibility.php .htaccess admin api apply assets auth dashboard database includes legal rgst $DEPLOYPATH
+

@@ -75,7 +75,7 @@ if (!function_exists('getDb')) {
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::ATTR_EMULATE_PREPARES   => true,
         ];
 
         $useMysql = (DB_NAME !== '' && DB_USER !== '');
@@ -180,6 +180,25 @@ if (!function_exists('convertMysqlDdlToSqlite')) {
     }
 }
 
+if (!function_exists('ensureUsersUsernameColumn')) {
+    /**
+     * Ensures the optional `username` column and unique index exist on `users` for existing databases.
+     */
+    function ensureUsersUsernameColumn(PDO $pdo): void
+    {
+        try {
+            $pdo->exec("ALTER TABLE users ADD COLUMN username VARCHAR(100) DEFAULT NULL");
+        } catch (Throwable $e) {
+            // Column already exists
+        }
+        try {
+            $pdo->exec("CREATE UNIQUE INDEX users_username_unique ON users (username)");
+        } catch (Throwable $e) {
+            // Index already exists
+        }
+    }
+}
+
 if (!function_exists('ensureDatabaseInitialized')) {
     /**
      * Automatically creates tables and seeds reference data on first run if `roles` table is missing or empty.
@@ -196,6 +215,7 @@ if (!function_exists('ensureDatabaseInitialized')) {
             $stmt = $pdo->query("SELECT COUNT(*) AS cnt FROM roles");
             $row = $stmt ? $stmt->fetch() : false;
             if ($row && (int)($row['cnt'] ?? 0) >= 4) {
+                ensureUsersUsernameColumn($pdo);
                 $initializing = false;
                 return;
             }
@@ -232,6 +252,7 @@ if (!function_exists('ensureDatabaseInitialized')) {
             }
         }
 
+        ensureUsersUsernameColumn($pdo);
         seedDatabase($pdo);
         $initializing = false;
     }

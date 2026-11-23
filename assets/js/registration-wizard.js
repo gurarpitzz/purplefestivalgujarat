@@ -379,9 +379,6 @@
         if (d.country.trim().length < 2) {
           nextErrors.country = "Please enter your country.";
         }
-        if (!currentUser && state.password.length > 0 && state.password.length < 8) {
-          nextErrors.password = "Password must be at least 8 characters long.";
-        }
       }
 
       if (stepNum === 2) {
@@ -655,21 +652,7 @@
       var reg = r.registration || {};
       var cat = r.category || {};
       var qrPass = r.qrPass || null;
-
-      var qrImgSrc = "";
-      if (qrPass) {
-        if (qrPass.qrDataUrl && String(qrPass.qrDataUrl).startsWith("data:")) {
-          qrImgSrc = qrPass.qrDataUrl;
-        } else if (
-          window.PFGQrCode &&
-          typeof window.PFGQrCode.toDataUrl === "function"
-        ) {
-          qrImgSrc = window.PFGQrCode.toDataUrl(
-            qrPass.rawToken || qrPass.credentialCode || reg.registrationCode,
-            { width: 320 }
-          );
-        }
-      }
+      var targetEmail = r.emailSentTo || reg.email || "";
 
       var statusBadgeText = qrPass
         ? "Registration Confirmed"
@@ -680,10 +663,6 @@
       var headingText = qrPass
         ? "Welcome to " + FESTIVAL_NAME + "!"
         : "Thank you for applying as " + (cat.name || reg.categoryCode);
-
-      var passPrintHref =
-        "/dashboard/pass-print.php?registrationId=" +
-        encodeURIComponent(reg.id || "");
 
       var html =
         '<div class="min-h-screen editorial-mesh-light py-10 px-4 sm:px-6 lg:px-8">' +
@@ -726,70 +705,45 @@
         "</p>" +
         "</div>" +
         "<div>" +
-        '<p class="text-xs uppercase tracking-wider text-[#4B4257] font-semibold">Email</p>' +
+        '<p class="text-xs uppercase tracking-wider text-[#4B4257] font-semibold">QR Delivery Email</p>' +
         '<p class="text-sm font-medium">' +
-        esc(reg.email) +
+        esc(targetEmail) +
         "</p>" +
         "</div>" +
         "</div>";
 
-      if (qrPass) {
+      if (qrPass || !cat.requiresApproval) {
         html +=
-          '<div class="rounded-2xl border-2 border-[#9273B5] bg-[#F9F7FC] p-6 flex flex-col sm:flex-row items-center gap-6">' +
-          '<div class="shrink-0 bg-white p-3 rounded-xl border border-[#59436D]/20 shadow-sm">' +
-          '<img src="' +
-          esc(qrImgSrc) +
-          '" alt="' +
-          esc(
-            "Digital QR entry pass for " +
-              reg.fullName +
-              ", registration code " +
-              qrPass.credentialCode
-          ) +
-          '" class="w-48 h-48 object-contain" />' +
+          '<div class="rounded-2xl border-2 border-[#A459FF] bg-[#F5F0FF] p-6 space-y-2.5">' +
+          '<div class="flex items-center gap-2.5 text-[#202D59]">' +
+          '<svg class="w-5 h-5 text-[#A459FF] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>' +
+          '<h2 class="font-display text-xl font-semibold">Your Digital QR Entry Pass Has Been Sent to Your Email</h2>' +
           "</div>" +
-          '<div class="space-y-3 text-center sm:text-left">' +
-          '<h2 class="font-display text-xl font-semibold text-[#17151C]">Your Digital QR Entry Pass</h2>' +
-          '<p class="text-sm text-[#4B4257]">Present this QR code or your Registration ID <strong class="font-mono text-[#211B29]">' +
-          esc(qrPass.credentialCode) +
-          "</strong> at any festival reception desk. Your QR code contains zero personal or medical information.</p>" +
-          '<div class="flex flex-wrap gap-3 justify-center sm:justify-start pt-1">' +
-          '<a href="' +
-          esc(passPrintHref) +
-          '" target="_blank" rel="noopener" class="btn-primary-pfg inline-flex items-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl bg-[#59436D] hover:bg-[#432F56] text-[#F9F7FC] font-semibold text-sm transition-colors">' +
-          '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-          "Download Accessible PDF" +
-          "</a>" +
-          '<a href="/dashboard" class="inline-flex items-center gap-2 min-h-[44px] px-5 py-2.5 rounded-xl border-2 border-[#59436D] text-[#432F56] font-semibold text-sm hover:bg-[#E8DFF0]">' +
-          "Open Participant Dashboard" +
-          "</a>" +
-          "</div>" +
-          "</div>" +
+          '<p class="text-sm leading-relaxed text-[#211B29]">We have emailed your official QR Entry Pass and registration details to <strong>' +
+          esc(targetEmail) +
+          '</strong>. Please present the QR code from your email or your Registration ID <strong class="font-mono text-[#202D59]">' +
+          esc((qrPass && qrPass.credentialCode) || reg.registrationCode) +
+          "</strong> at the festival reception desk in Vadodara.</p>" +
           "</div>";
-      } else if (cat.requiresApproval) {
+      } else {
         html +=
-          '<div class="rounded-xl bg-[#E8DFF0]/60 border border-[#9273B5] p-5 space-y-2">' +
-          '<h2 class="font-semibold text-[#432F56] flex items-center gap-2">' +
-          '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' +
-          "Coordinator Review Required" +
-          "</h2>" +
-          '<p class="text-sm text-[#211B29]">Volunteer and Indian Sign Language Interpreter applications are reviewed by our festival coordinators before duty assignment. Once approved, your official Digital QR Credential and duty schedule will appear automatically in your Participant Dashboard.</p>' +
+          '<div class="rounded-2xl border-2 border-[#A459FF] bg-[#F5F0FF] p-6 space-y-2.5">' +
+          '<div class="flex items-center gap-2.5 text-[#202D59]">' +
+          '<svg class="w-5 h-5 text-[#A459FF] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>' +
+          '<h2 class="font-display text-xl font-semibold">Application Submitted for Coordinator Review</h2>' +
+          "</div>" +
+          '<p class="text-sm leading-relaxed text-[#211B29]">We have sent an acknowledgment to <strong>' +
+          esc(targetEmail) +
+          "</strong>. Once our coordinators review and approve your application, your official Digital QR Entry Pass and duty schedule will be emailed directly to <strong>" +
+          esc(targetEmail) +
+          "</strong>.</p>" +
           "</div>";
       }
-
-      var dashHref = r.sessionCreated || currentUser ? "/dashboard" : "/login";
-      var dashText =
-        r.sessionCreated || currentUser
-          ? "Go to Participant Dashboard"
-          : "Sign In to Manage Registration";
 
       html +=
         '<div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#59436D]/15">' +
         '<button type="button" id="btn-register-another" class="min-h-[44px] px-4 py-2 rounded-xl border border-[#59436D]/30 text-sm font-semibold text-[#432F56] hover:bg-[#F6F1F8]">Register for Another Role</button>' +
-        '<a href="' +
-        esc(dashHref) +
-        '" class="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#17151C] text-[#F9F7FC] text-sm font-semibold hover:bg-[#25212B] inline-flex items-center gap-2">' +
-        esc(dashText) +
+        '<a href="/" class="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#202D59] text-white text-sm font-semibold hover:bg-[#151E3D] inline-flex items-center gap-2">Return to Festival Home' +
         '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>' +
         "</a>" +
         "</div>" +
@@ -926,22 +880,6 @@
             "</p>"
           : "") +
         "</div>";
-
-      if (!currentUser) {
-        html +=
-          "<div>" +
-          '<label for="reg-password" class="block text-sm font-semibold text-[#211B29] mb-1.5">Create Portal Password (Optional)</label>' +
-          '<input id="reg-password" type="password" autocomplete="new-password" value="' +
-          esc(state.password) +
-          '" placeholder="Min. 8 characters" class="w-full min-h-[44px] px-4 py-2.5 rounded-xl border border-[#59436D]/30 bg-white text-[#211B29]" />' +
-          '<p class="mt-1 text-xs text-[#4B4257]">Set a password to immediately sign in to your Participant Dashboard and download your QR pass.</p>' +
-          (e.password
-            ? '<p class="mt-1 text-xs font-medium text-[#B42332]">' +
-              esc(e.password) +
-              "</p>"
-            : "") +
-          "</div>";
-      }
 
       html += "</div></div>";
       return html;
@@ -1945,17 +1883,6 @@
         input.addEventListener("input", handler);
         input.addEventListener("change", handler);
       });
-
-      // Password field (never saved to localStorage)
-      var pwInput = document.getElementById("reg-password");
-      if (pwInput) {
-        pwInput.addEventListener("input", function () {
-          state.password = pwInput.value;
-          if (state.errors.password) {
-            delete state.errors.password;
-          }
-        });
-      }
 
       // Boolean checkboxes
       root.querySelectorAll("[data-draft-bool]").forEach(function (cb) {

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS `role_permissions` (
 
 CREATE TABLE IF NOT EXISTS `users` (
   `id` CHAR(36) NOT NULL,
+  `username` VARCHAR(100) DEFAULT NULL,
   `email` VARCHAR(255) NOT NULL,
   `email_verified_at` DATETIME DEFAULT NULL,
   `password_hash` TEXT DEFAULT NULL,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` DATETIME DEFAULT NULL,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `users_username_unique` (`username`),
   UNIQUE KEY `users_email_unique` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

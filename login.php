@@ -8,20 +8,9 @@ if (file_exists(__DIR__ . '/includes/auth.php')) {
     require_once __DIR__ . '/includes/auth.php';
 }
 
-$resetTokenParam = isset($_GET['resetToken']) ? trim((string)$_GET['resetToken']) : '';
 $nextParam = isset($_GET['next'])
     ? trim((string)$_GET['next'])
     : (isset($_GET['redirect']) ? trim((string)$_GET['redirect']) : '');
-$modeParam = isset($_GET['mode']) ? trim((string)$_GET['mode']) : '';
-
-$initialMode = 'login';
-if ($resetTokenParam !== '') {
-    $initialMode = 'reset';
-} elseif ($modeParam === 'signup') {
-    $initialMode = 'signup';
-} elseif ($modeParam === 'forgot') {
-    $initialMode = 'forgot';
-}
 
 $sponsors = [
     [
@@ -54,8 +43,8 @@ function h_login(string $val): string {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#F2E9FE" />
-  <title>Sign In | Purple Festival Gujarat 2027</title>
-  <meta name="description" content="Sign in or create your participant account for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara, Gujarat)." />
+  <title>Staff Sign In | Purple Festival Gujarat 2027</title>
+  <meta name="description" content="Authorized staff sign-in portal for Purple Festival Gujarat 2027 (Superadmin, Admin, and Registration Desk)." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&display=swap" />
@@ -93,7 +82,7 @@ function h_login(string $val): string {
         </div>
       </section>
 
-      <!-- Right: Clean Floating White Sign-In Card -->
+      <!-- Right: Clean Floating White Staff Sign-In Card -->
       <section
         aria-labelledby="login-heading"
         class="order-1 flex justify-center lg:order-2 lg:col-span-6 lg:justify-end"
@@ -104,16 +93,10 @@ function h_login(string $val): string {
               id="login-heading"
               class="text-2xl font-bold tracking-[-0.02em] text-[#111827] sm:text-[26px]"
             >
-              <?php if ($initialMode === 'signup'): ?>Create Account
-              <?php elseif ($initialMode === 'forgot'): ?>Reset Password
-              <?php elseif ($initialMode === 'reset'): ?>Set New Password
-              <?php else: ?>Sign In<?php endif; ?>
+              Sign In
             </h1>
             <p id="login-subheading" class="mt-1 text-xs font-medium text-[#64748B]">
-              <?php if ($initialMode === 'signup'): ?>Purple Festival Gujarat 2027 Portal
-              <?php elseif ($initialMode === 'forgot'): ?>Enter your registered email address
-              <?php elseif ($initialMode === 'reset'): ?>Choose a new password (min. 8 characters)
-              <?php else: ?>With Your Credentials<?php endif; ?>
+              With Your Credentials
             </p>
           </div>
 
@@ -145,21 +128,19 @@ function h_login(string $val): string {
             <span id="auth-success-text"></span>
           </div>
 
-          <!-- MODE 1: SIGN IN -->
-          <form
-            id="form-login"
-            class="space-y-4 <?= $initialMode === 'login' ? '' : 'hidden' ?>"
-            novalidate
-          >
+          <!-- STAFF SIGN IN FORM -->
+          <form id="form-login" class="space-y-4" novalidate>
             <div>
-              <label for="login-email" class="sr-only">Email Address</label>
+              <label for="login-username" class="sr-only">Username</label>
               <input
-                id="login-email"
-                name="email"
-                type="email"
+                id="login-username"
+                name="username"
+                type="text"
                 required
-                autocomplete="email"
-                placeholder="Email address"
+                autocomplete="username"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="Username"
                 class="<?= $inputClass ?>"
               />
             </div>
@@ -226,203 +207,6 @@ function h_login(string $val): string {
             >
               Login
             </button>
-
-            <div class="flex items-center justify-between pt-1 text-xs font-medium text-[#64748B]">
-              <button
-                type="button"
-                data-switch-mode="signup"
-                class="hover:text-[#202D59] hover:underline"
-              >
-                Create Account
-              </button>
-              <button
-                type="button"
-                data-switch-mode="forgot"
-                class="hover:text-[#202D59] hover:underline"
-              >
-                Forgot password?
-              </button>
-            </div>
-          </form>
-
-          <!-- MODE 2: CREATE ACCOUNT -->
-          <form
-            id="form-signup"
-            class="space-y-3.5 <?= $initialMode === 'signup' ? '' : 'hidden' ?>"
-            novalidate
-          >
-            <div>
-              <label for="signup-name" class="sr-only">Full Name</label>
-              <input
-                id="signup-name"
-                type="text"
-                required
-                autocomplete="name"
-                placeholder="Full Name"
-                class="<?= $inputClass ?>"
-              />
-            </div>
-            <div>
-              <label for="signup-email" class="sr-only">Email Address</label>
-              <input
-                id="signup-email"
-                type="email"
-                required
-                autocomplete="email"
-                placeholder="Email address"
-                class="<?= $inputClass ?>"
-              />
-            </div>
-            <div class="grid grid-cols-2 gap-2.5">
-              <div>
-                <label for="signup-phone" class="sr-only">Phone</label>
-                <input
-                  id="signup-phone"
-                  type="tel"
-                  autocomplete="tel"
-                  placeholder="Phone"
-                  class="<?= $inputClass ?>"
-                />
-              </div>
-              <div>
-                <label for="signup-country" class="sr-only">Country</label>
-                <input
-                  id="signup-country"
-                  type="text"
-                  autocomplete="country-name"
-                  value="India"
-                  placeholder="Country"
-                  class="<?= $inputClass ?>"
-                />
-              </div>
-            </div>
-            <div class="relative">
-              <label for="signup-password" class="sr-only">Password</label>
-              <input
-                id="signup-password"
-                type="password"
-                required
-                minlength="8"
-                autocomplete="new-password"
-                placeholder="Password (min. 8 chars)"
-                class="<?= $inputClass ?> pr-11"
-              />
-              <button
-                type="button"
-                data-toggle-password="signup-password"
-                aria-label="Show password"
-                aria-pressed="false"
-                class="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-[#64748B] hover:text-[#202D59]"
-              >
-                <svg data-eye-open class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                  <circle cx="12" cy="12" r="3"></circle>
-                </svg>
-                <svg data-eye-off class="hidden h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                  <line x1="1" y1="1" x2="23" y2="23"></line>
-                </svg>
-              </button>
-            </div>
-
-            <button
-              id="btn-signup-submit"
-              type="submit"
-              class="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
-            >
-              Create Account
-            </button>
-
-            <div class="text-center text-xs font-medium text-[#64748B]">
-              <button
-                type="button"
-                data-switch-mode="login"
-                class="hover:text-[#202D59] hover:underline"
-              >
-                Already have an account? Sign In
-              </button>
-            </div>
-          </form>
-
-          <!-- MODE 3: FORGOT PASSWORD -->
-          <form
-            id="form-forgot"
-            class="space-y-4 <?= $initialMode === 'forgot' ? '' : 'hidden' ?>"
-            novalidate
-          >
-            <div>
-              <label for="forgot-email" class="sr-only">Registered Email Address</label>
-              <input
-                id="forgot-email"
-                type="email"
-                required
-                placeholder="Registered email address"
-                class="<?= $inputClass ?>"
-              />
-            </div>
-            <button
-              id="btn-forgot-submit"
-              type="submit"
-              class="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
-            >
-              Request Reset
-            </button>
-            <div class="text-center text-xs font-medium text-[#64748B]">
-              <button
-                type="button"
-                data-switch-mode="login"
-                class="hover:text-[#202D59] hover:underline"
-              >
-                Back to Sign In
-              </button>
-            </div>
-          </form>
-
-          <!-- MODE 4: RESET PASSWORD -->
-          <form
-            id="form-reset"
-            class="space-y-4 <?= $initialMode === 'reset' ? '' : 'hidden' ?>"
-            novalidate
-          >
-            <div>
-              <label for="reset-token" class="sr-only">Reset Token</label>
-              <input
-                id="reset-token"
-                type="text"
-                required
-                value="<?= h_login($resetTokenParam) ?>"
-                placeholder="Reset token"
-                class="<?= $inputClass ?> font-mono text-sm"
-              />
-            </div>
-            <div>
-              <label for="reset-new-password" class="sr-only">New Password</label>
-              <input
-                id="reset-new-password"
-                type="password"
-                required
-                minlength="8"
-                autocomplete="new-password"
-                placeholder="New password (min. 8 chars)"
-                class="<?= $inputClass ?>"
-              />
-            </div>
-            <button
-              id="btn-reset-submit"
-              type="submit"
-              class="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
-            >
-              Update Password
-            </button>
-            <div class="text-center text-xs font-medium text-[#64748B]">
-              <button
-                type="button"
-                data-switch-mode="login"
-                class="hover:text-[#202D59] hover:underline"
-              >
-                Back to Sign In
-              </button>
-            </div>
           </form>
 
           <div class="mt-6 text-center">
@@ -442,48 +226,17 @@ function h_login(string $val): string {
   <script>
     (function () {
       const nextParam = <?= json_encode($nextParam, JSON_UNESCAPED_SLASHES) ?>;
-      let currentMode = <?= json_encode($initialMode) ?>;
       let mfaRequired = false;
 
-      const headingEl = document.getElementById("login-heading");
-      const subheadingEl = document.getElementById("login-subheading");
       const errorAlert = document.getElementById("auth-error-alert");
       const errorText = document.getElementById("auth-error-text");
       const successStatus = document.getElementById("auth-success-status");
       const successText = document.getElementById("auth-success-text");
 
-      const forms = {
-        login: document.getElementById("form-login"),
-        signup: document.getElementById("form-signup"),
-        forgot: document.getElementById("form-forgot"),
-        reset: document.getElementById("form-reset"),
-      };
-
+      const loginForm = document.getElementById("form-login");
       const mfaBox = document.getElementById("login-mfa-box");
       const mfaInput = document.getElementById("login-mfa");
       const btnLoginSubmit = document.getElementById("btn-login-submit");
-      const btnSignupSubmit = document.getElementById("btn-signup-submit");
-      const btnForgotSubmit = document.getElementById("btn-forgot-submit");
-      const btnResetSubmit = document.getElementById("btn-reset-submit");
-
-      const MODE_COPY = {
-        login: {
-          title: "Sign In",
-          subtitle: "With Your Credentials",
-        },
-        signup: {
-          title: "Create Account",
-          subtitle: "Purple Festival Gujarat 2027 Portal",
-        },
-        forgot: {
-          title: "Reset Password",
-          subtitle: "Enter your registered email address",
-        },
-        reset: {
-          title: "Set New Password",
-          subtitle: "Choose a new password (min. 8 characters)",
-        },
-      };
 
       function showError(msg) {
         if (!msg) {
@@ -523,44 +276,6 @@ function h_login(string $val): string {
         }
       }
 
-      function switchMode(nextMode, keepBanner) {
-        if (!MODE_COPY[nextMode]) return;
-        currentMode = nextMode;
-        headingEl.textContent = MODE_COPY[nextMode].title;
-        subheadingEl.textContent = MODE_COPY[nextMode].subtitle;
-
-        if (!keepBanner) {
-          showError(null);
-          showSuccess(null);
-        }
-        setMfaState(false);
-
-        Object.keys(forms).forEach(function (key) {
-          if (key === nextMode) {
-            forms[key].classList.remove("hidden");
-          } else {
-            forms[key].classList.add("hidden");
-          }
-        });
-      }
-
-      document.querySelectorAll("[data-switch-mode]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          const targetMode = btn.getAttribute("data-switch-mode");
-          // Sync email across forms for user convenience
-          const loginEmail = document.getElementById("login-email").value.trim();
-          const signupEmail = document.getElementById("signup-email").value.trim();
-          const forgotEmail = document.getElementById("forgot-email").value.trim();
-          const activeEmail = loginEmail || signupEmail || forgotEmail;
-          if (activeEmail) {
-            document.getElementById("login-email").value = activeEmail;
-            document.getElementById("signup-email").value = activeEmail;
-            document.getElementById("forgot-email").value = activeEmail;
-          }
-          switchMode(targetMode, false);
-        });
-      });
-
       document.querySelectorAll("[data-toggle-password]").forEach(function (btn) {
         btn.addEventListener("click", function () {
           const inputId = btn.getAttribute("data-toggle-password");
@@ -593,13 +308,12 @@ function h_login(string $val): string {
         return res;
       }
 
-      // Sign In submission
-      forms.login.addEventListener("submit", async function (e) {
+      loginForm.addEventListener("submit", async function (e) {
         e.preventDefault();
         showError(null);
         showSuccess(null);
 
-        const email = document.getElementById("login-email").value.trim();
+        const username = document.getElementById("login-username").value.trim();
         const password = document.getElementById("login-password").value;
         const mfaCode = mfaInput.value.trim();
 
@@ -607,7 +321,7 @@ function h_login(string $val): string {
         btnLoginSubmit.textContent = "Signing in...";
 
         try {
-          const payload = { email: email, password: password };
+          const payload = { username: username, password: password };
           if (mfaRequired && mfaCode) {
             payload.mfaCode = mfaCode;
           }
@@ -640,132 +354,13 @@ function h_login(string $val): string {
           const target =
             nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
               ? nextParam
-              : data.redirectTo || "/dashboard";
+              : data.redirectTo || "/admin";
           window.location.href = target;
         } catch (err) {
           showError("Network error while signing in. Please try again.");
         } finally {
           btnLoginSubmit.disabled = false;
           btnLoginSubmit.textContent = mfaRequired ? "Verify & Login" : "Login";
-        }
-      });
-
-      // Create Account submission
-      forms.signup.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        showError(null);
-        showSuccess(null);
-
-        const fullName = document.getElementById("signup-name").value.trim();
-        const email = document.getElementById("signup-email").value.trim();
-        const phone = document.getElementById("signup-phone").value.trim();
-        const country = document.getElementById("signup-country").value.trim() || "India";
-        const password = document.getElementById("signup-password").value;
-
-        btnSignupSubmit.disabled = true;
-        btnSignupSubmit.textContent = "Creating Account...";
-
-        try {
-          const res = await apiFetch("/api/auth/signup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fullName: fullName,
-              email: email,
-              phone: phone,
-              country: country,
-              password: password,
-            }),
-          });
-          const data = await res.json().catch(function () { return {}; });
-
-          if (!res.ok) {
-            showError(data.error || "Unable to create account.");
-            return;
-          }
-
-          window.location.href = data.redirectTo || "/dashboard";
-        } catch (err) {
-          showError("Network error while creating your account.");
-        } finally {
-          btnSignupSubmit.disabled = false;
-          btnSignupSubmit.textContent = "Create Account";
-        }
-      });
-
-      // Forgot Password submission
-      forms.forgot.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        showError(null);
-        showSuccess(null);
-
-        const email = document.getElementById("forgot-email").value.trim();
-        btnForgotSubmit.disabled = true;
-        btnForgotSubmit.textContent = "Sending...";
-
-        try {
-          const res = await apiFetch("/api/auth/password-reset", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email }),
-          });
-          const data = await res.json().catch(function () { return {}; });
-
-          if (!res.ok) {
-            showError(data.error || "Unable to request password reset.");
-            return;
-          }
-
-          showSuccess(
-            data.message ||
-              "If an account exists for that email, password reset instructions have been queued."
-          );
-        } catch (err) {
-          showError("Network error while requesting password reset.");
-        } finally {
-          btnForgotSubmit.disabled = false;
-          btnForgotSubmit.textContent = "Request Reset";
-        }
-      });
-
-      // Reset Password Complete submission
-      forms.reset.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        showError(null);
-        showSuccess(null);
-
-        const token = document.getElementById("reset-token").value.trim();
-        const newPassword = document.getElementById("reset-new-password").value;
-
-        btnResetSubmit.disabled = true;
-        btnResetSubmit.textContent = "Updating...";
-
-        try {
-          const res = await apiFetch("/api/auth/password-reset", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              token: token,
-              newPassword: newPassword,
-            }),
-          });
-          const data = await res.json().catch(function () { return {}; });
-
-          if (!res.ok) {
-            showError(data.error || "Unable to reset password.");
-            return;
-          }
-
-          document.getElementById("reset-new-password").value = "";
-          switchMode("login", true);
-          showSuccess(
-            data.message || "Password updated. You may now sign in with your new password."
-          );
-        } catch (err) {
-          showError("Network error while updating password.");
-        } finally {
-          btnResetSubmit.disabled = false;
-          btnResetSubmit.textContent = "Update Password";
         }
       });
     })();

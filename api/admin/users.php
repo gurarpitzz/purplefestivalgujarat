@@ -31,7 +31,7 @@ try {
         $search = strtolower(trim((string)($_GET['search'] ?? $_GET['q'] ?? '')));
 
         $stUsers = $pdo->query('
-            SELECT id, email, full_name, phone, country, is_active, mfa_enabled, last_login_at, created_at
+            SELECT id, username, email, full_name, phone, country, is_active, mfa_enabled, last_login_at, created_at
             FROM users
             WHERE deleted_at IS NULL
             ORDER BY created_at DESC
@@ -80,6 +80,7 @@ try {
             if ($search !== '') {
                 $haystack = strtolower(
                     ($u['full_name'] ?? '') . ' ' .
+                    ($u['username'] ?? '') . ' ' .
                     ($u['email'] ?? '') . ' ' .
                     ($u['phone'] ?? '')
                 );
@@ -88,8 +89,13 @@ try {
                 }
             }
 
+            $uname = !empty($u['username'])
+                ? (string)$u['username']
+                : explode('@', (string)$u['email'])[0];
+
             $items[] = [
                 'id'                => $uid,
+                'username'          => $uname,
                 'email'             => (string)$u['email'],
                 'fullName'          => (string)$u['full_name'],
                 'phone'             => $u['phone'] !== null ? (string)$u['phone'] : null,
@@ -115,6 +121,7 @@ try {
     if ($method === 'POST') {
         $input = readRequestInput();
         $fullName = trim((string)($input['fullName'] ?? ''));
+        $rawUsername = strtolower(trim((string)($input['username'] ?? '')));
         $email = strtolower(trim((string)($input['email'] ?? '')));
         $phone = trim((string)($input['phone'] ?? ''));
         $password = (string)($input['password'] ?? '');
@@ -126,8 +133,15 @@ try {
         if (strlen($fullName) < 2) {
             jsonResponse(['error' => 'Full name is required (min 2 characters).'], 400);
         }
+        $username = preg_replace('/[^a-z0-9._-]/', '', $rawUsername) ?: '';
+        if ($username === '' && $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $username = preg_replace('/[^a-z0-9._-]/', '', strtolower((string)explode('@', $email)[0])) ?: '';
+        }
+        if (strlen($username) < 3) {
+            jsonResponse(['error' => 'Username is required (min 3 alphanumeric characters: a-z, 0-9, ., _, -).'], 400);
+        }
         if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            jsonResponse(['error' => 'A valid email address is required.'], 400);
+            $email = $username . '@staff.purplefestivalgujarat.com';
         }
         if (strlen($password) < 8) {
             jsonResponse(['error' => 'Password must be at least 8 characters.'], 400);
@@ -136,10 +150,13 @@ try {
             jsonResponse(['error' => 'Invalid roleCode. Allowed: ADMIN, RGST, SUPERADMIN, PARTICIPANT.'], 400);
         }
 
-        $stCheck = $pdo->prepare('SELECT id FROM users WHERE LOWER(email) = :email LIMIT 1');
-        $stCheck->execute([':email' => $email]);
+        $stCheck = $pdo->prepare('SELECT id FROM users WHERE LOWER(username) = :username OR LOWER(email) = :email LIMIT 1');
+        $stCheck->execute([
+            ':username' => $username,
+            ':email'    => $email,
+        ]);
         if ($stCheck->fetch(PDO::FETCH_ASSOC)) {
-            jsonResponse(['error' => 'An account with this email already exists.'], 409);
+            jsonResponse(['error' => 'An account with this username or email already exists.'], 409);
         }
 
         $stRole = $pdo->prepare('SELECT id, code FROM roles WHERE code = :code LIMIT 1');
@@ -164,17 +181,18 @@ try {
         $now = nowSql();
 
         $insUser = $pdo->prepare('
-            INSERT INTO users (id, email, email_verified_at, password_hash, full_name, phone, country, is_active, created_at, updated_at)
-            VALUES (:id, :email, :now, :pw, :name, :phone, :country, 1, :now, :now)
+            INSERT INTO users (id, username, email, email_verified_at, password_hash, full_name, phone, country, is_active, created_at, updated_at)
+            VALUES (:id, :username, :email, :now, :pw, :name, :phone, :country, 1, :now, :now)
         ');
         $insUser->execute([
-            ':id'      => $userId,
-            ':email'   => $email,
-            ':now'     => $now,
-            ':pw'      => $passwordHash,
-            ':name'    => $fullName,
-            ':phone'   => $phone !== '' ? $phone : null,
-            ':country' => 'India',
+            ':id'       => $userId,
+            ':username' => $username,
+            ':email'    => $email,
+            ':now'      => $now,
+            ':pw'       => $passwordHash,
+            ':name'     => $fullName,
+            ':phone'    => $phone !== '' ? $phone : null,
+            ':country'  => 'India',
         ]);
 
         $insRole = $pdo->prepare('
@@ -201,6 +219,7 @@ try {
                 ':target_id'   => $userId,
                 ':action_type' => "STAFF_ACCOUNT_CREATED_{$roleCode}",
                 ':after_state' => jsonEncode([
+                    'username'          => $username,
                     'email'             => $email,
                     'roleCode'          => $roleCode,
                     'customPermissions' => $filteredCustomPerms,
@@ -216,6 +235,7 @@ try {
             'resourceType' => 'user',
             'resourceId'   => $userId,
             'metadata'     => [
+                'username'          => $username,
                 'email'             => $email,
                 'roleCode'          => $roleCode,
                 'customPermissions' => $filteredCustomPerms,
@@ -225,6 +245,7 @@ try {
         jsonResponse([
             'user' => [
                 'id'                => $userId,
+                'username'          => $username,
                 'email'             => $email,
                 'fullName'          => $fullName,
                 'phone'             => $phone !== '' ? $phone : null,

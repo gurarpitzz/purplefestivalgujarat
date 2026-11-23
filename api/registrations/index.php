@@ -12,6 +12,7 @@ if (file_exists(__DIR__ . '/../../includes/auth.php')) {
     require_once __DIR__ . '/../../includes/auth.php';
 }
 require_once __DIR__ . '/../../includes/qr-service.php';
+require_once __DIR__ . '/../../includes/mailer.php';
 
 if (!function_exists('pfgRegJson')) {
     function pfgRegJson(array $payload, int $status = 200): void
@@ -539,15 +540,6 @@ try {
                 ], 403);
             }
             $userId = (string)$existingUser['id'];
-
-            if ($password !== '' && !empty($existingUser['password_hash'])) {
-                $matches = function_exists('verifyPassword')
-                    ? verifyPassword($password, (string)$existingUser['password_hash'])
-                    : password_verify($password, (string)$existingUser['password_hash']);
-                if ($matches && empty($existingUser['mfa_enabled'])) {
-                    $sessionCreated = pfgCreateUserSessionCompat($pdo, $userId, $ipAddress, $userAgent);
-                }
-            }
         } else {
             $passwordHash = null;
             if ($password !== '') {
@@ -605,10 +597,6 @@ try {
                 ]);
             } catch (Throwable $e) {
                 // Ignore duplicate user_roles constraint
-            }
-
-            if ($password !== '') {
-                $sessionCreated = pfgCreateUserSessionCompat($pdo, $userId, $ipAddress, $userAgent);
             }
         }
     }
@@ -1093,41 +1081,21 @@ try {
             }
         }
 
-        // QR Pass Issuance & Notifications
+        // QR Pass Issuance (delivered via email rather than public portal login)
         $qrPass = null;
+        $qrEmailed = false;
+        $emailResult = null;
+        $issuedCredentialCode = null;
+        $issuedRawToken = '';
+
         if ($shouldIssueQr) {
             $issued = issueCredentialForRegistration($pdo, $registrationId, $userId);
+            $issuedCredentialCode = (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? $registrationCode);
+            $issuedRawToken = (string)($issued['rawToken'] ?? '');
             $qrPass = [
-                'credentialCode' => (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? $registrationCode),
-                'rawToken'       => (string)$issued['rawToken'],
-                'qrDataUrl'      => (string)$issued['qrDataUrl'],
+                'credentialCode' => $issuedCredentialCode,
+                'emailed'        => true,
             ];
-
-            pfgQueueNotificationCompat(
-                $pdo,
-                'REGISTRATION_CONFIRMED',
-                $userId,
-                $normalizedEmail,
-                "Confirmed: Purple Festival Gujarat 2027 ({$registrationCode})",
-                [
-                    'fullName'         => $fullName,
-                    'registrationCode' => $registrationCode,
-                    'category'         => (string)$category['name'],
-                ]
-            );
-        } elseif (!empty($category['requires_approval'])) {
-            pfgQueueNotificationCompat(
-                $pdo,
-                'APPLICATION_SUBMITTED',
-                $userId,
-                $normalizedEmail,
-                "Application Received: Purple Festival Gujarat 2027 ({$registrationCode})",
-                [
-                    'fullName'         => $fullName,
-                    'registrationCode' => $registrationCode,
-                    'category'         => (string)$category['name'],
-                ]
-            );
         }
 
         $pdo->commit();
@@ -1136,6 +1104,28 @@ try {
             $pdo->rollBack();
         }
         throw $txErr;
+    }
+
+    if ($shouldIssueQr && $issuedCredentialCode !== null) {
+        $emailResult = sendRegistrationQrPassEmail($pdo, [
+            'to'               => $normalizedEmail,
+            'fullName'         => $fullName,
+            'registrationCode' => $registrationCode,
+            'credentialCode'   => $issuedCredentialCode,
+            'categoryName'     => (string)$category['name'],
+            'status'           => $status,
+            'rawToken'         => $issuedRawToken,
+            'recipientUserId'  => $userId,
+        ]);
+        $qrEmailed = true;
+    } elseif (!empty($category['requires_approval'])) {
+        $emailResult = sendApplicationReceivedEmail($pdo, [
+            'to'               => $normalizedEmail,
+            'fullName'         => $fullName,
+            'registrationCode' => $registrationCode,
+            'categoryName'     => (string)$category['name'],
+            'recipientUserId'  => $userId,
+        ]);
     }
 
     pfgRecordAuditCompat(
@@ -1193,7 +1183,10 @@ try {
             'couponCode'   => $appliedCoupon ? (string)$appliedCoupon['code'] : null,
         ],
         'qrPass'         => $qrPass,
-        'sessionCreated' => $sessionCreated,
+        'qrEmailed'      => $qrEmailed,
+        'emailSentTo'    => $normalizedEmail,
+        'emailDelivery'  => $emailResult,
+        'sessionCreated' => false,
     ], 201);
 } catch (Throwable $e) {
     error_log('POST /api/registrations error: ' . $e->getMessage());

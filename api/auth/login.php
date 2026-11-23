@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * POST /api/auth/login
- * Authenticates a user with email, password, and optional 6-digit TOTP MFA code.
+ * Staff-only authentication with username (SUPERADMIN, ADMIN, RGST), password, and optional TOTP MFA code.
  */
 
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
@@ -24,12 +24,12 @@ try {
     $pdo = getDb();
     $input = readRequestInput();
 
-    $email = strtolower(trim((string)($input['email'] ?? '')));
+    $identifier = strtolower(trim((string)($input['username'] ?? $input['identifier'] ?? $input['email'] ?? '')));
     $password = (string)($input['password'] ?? '');
     $mfaCode = isset($input['mfaCode']) ? (string)$input['mfaCode'] : (isset($input['mfa_code']) ? (string)$input['mfa_code'] : '');
 
-    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        jsonResponse(['error' => 'Please enter a valid email address.'], 400);
+    if ($identifier === '') {
+        jsonResponse(['error' => 'Please enter your username.'], 400);
     }
     if ($password === '') {
         jsonResponse(['error' => 'Password is required.'], 400);
@@ -38,15 +38,18 @@ try {
     $stmt = $pdo->prepare("
         SELECT *
         FROM users
-        WHERE LOWER(email) = :email
+        WHERE (LOWER(username) = :ident_user OR LOWER(email) = :ident_email)
           AND deleted_at IS NULL
         LIMIT 1
     ");
-    $stmt->execute([':email' => $email]);
+    $stmt->execute([
+        ':ident_user'  => $identifier,
+        ':ident_email' => $identifier,
+    ]);
     $user = $stmt->fetch();
 
     if (!$user || empty($user['is_active']) || empty($user['password_hash'])) {
-        jsonResponse(['error' => 'Invalid email address or password.'], 401);
+        jsonResponse(['error' => 'Invalid username or password.'], 401);
     }
 
     $nowTs = time();
@@ -72,13 +75,13 @@ try {
             UPDATE users
             SET failed_login_attempts = :attempts,
                 locked_until = :locked_until,
-                updated_at = :now
+                updated_at = :updated_at
             WHERE id = :id
         ");
         $upd->execute([
             ':attempts'     => $nextAttempts,
             ':locked_until' => $lockedUntil,
-            ':now'          => nowSql($nowTs),
+            ':updated_at'   => nowSql($nowTs),
             ':id'           => $user['id'],
         ]);
 
@@ -87,7 +90,7 @@ try {
             'action'       => $shouldLock ? 'LOGIN_ACCOUNT_LOCKED' : 'LOGIN_FAILED',
             'resourceType' => 'user',
             'resourceId'   => $user['id'],
-            'metadata'     => ['failedAttempts' => $nextAttempts],
+            'metadata'     => ['failedAttempts' => $nextAttempts, 'identifier' => $identifier],
         ]);
 
         if ($shouldLock) {
@@ -96,7 +99,21 @@ try {
             ], 423);
         }
 
-        jsonResponse(['error' => 'Invalid email address or password.'], 401);
+        jsonResponse(['error' => 'Invalid username or password.'], 401);
+    }
+
+    $rp = getUserRolesAndPermissions((string)$user['id'], $pdo);
+    $roles = $rp['roles'];
+    $permissions = $rp['permissions'];
+
+    $isStaff = in_array('SUPERADMIN', $roles, true)
+        || in_array('ADMIN', $roles, true)
+        || in_array('RGST', $roles, true);
+
+    if (!$isStaff) {
+        jsonResponse([
+            'error' => 'This portal is restricted to authorized festival staff (Superadmin, Admin, and Registration Desk).',
+        ], 403);
     }
 
     // MFA TOTP check when enabled
@@ -131,23 +148,23 @@ try {
         UPDATE users
         SET failed_login_attempts = 0,
             locked_until = NULL,
-            last_login_at = :now,
-            updated_at = :now
+            last_login_at = :last_login_at,
+            updated_at = :updated_at
         WHERE id = :id
     ");
+    $nowSqlStr = nowSql($nowTs);
     $upd->execute([
-        ':now' => nowSql($nowTs),
-        ':id'  => $user['id'],
+        ':last_login_at' => $nowSqlStr,
+        ':updated_at'    => $nowSqlStr,
+        ':id'            => $user['id'],
     ]);
 
     createSession((string)$user['id'], [
         'mfaVerified' => !empty($user['mfa_enabled']),
     ], $pdo);
 
-    $rp = getUserRolesAndPermissions((string)$user['id'], $pdo);
-    $roles = $rp['roles'];
-    $permissions = $rp['permissions'];
     $redirectTo = getPortalPathForRoles($roles);
+    $displayUsername = !empty($user['username']) ? (string)$user['username'] : (string)$user['email'];
 
     logAudit([
         'actorUserId'  => $user['id'],
@@ -155,6 +172,7 @@ try {
         'resourceType' => 'session',
         'resourceId'   => $user['id'],
         'metadata'     => [
+            'username'    => $displayUsername,
             'roles'       => $roles,
             'mfaVerified' => !empty($user['mfa_enabled']),
         ],
@@ -163,6 +181,7 @@ try {
     jsonResponse([
         'user' => [
             'id'          => (string)$user['id'],
+            'username'    => $displayUsername,
             'email'       => (string)$user['email'],
             'fullName'    => (string)$user['full_name'],
             'phone'       => $user['phone'] !== null ? (string)$user['phone'] : null,

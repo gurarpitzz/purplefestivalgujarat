@@ -13,6 +13,7 @@ require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/database.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/qr-service.php';
+require_once __DIR__ . '/../../includes/mailer.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
@@ -850,6 +851,10 @@ try {
         $transitionedToApproved = in_array($nextStatus, ['APPROVED', 'CONFIRMED'], true)
             && !in_array((string)$existing['status'], ['APPROVED', 'CONFIRMED'], true);
 
+        $emailDeliveryResult = null;
+        $issuedEmailToken = '';
+        $issuedEmailCredCode = '';
+
         if ($credentialAction === 'REVOKE') {
             if (!hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE'])) {
                 jsonResponse(['error' => 'Permission required to revoke credentials.'], 403);
@@ -866,11 +871,13 @@ try {
             }
             try {
                 $issued = issueCredentialForRegistration($pdo, $id, (string)$user['id']);
+                $issuedEmailCredCode = (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? '');
+                $issuedEmailToken = (string)($issued['rawToken'] ?? '');
                 $credentialResult = [
                     'action'         => $credentialAction,
-                    'credentialCode' => $issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? null,
+                    'credentialCode' => $issuedEmailCredCode !== '' ? $issuedEmailCredCode : null,
                     'credentialId'   => $issued['credential']['id'] ?? null,
-                    'qrPayload'      => $issued['rawToken'] ?? null,
+                    'qrPayload'      => $issuedEmailToken !== '' ? $issuedEmailToken : null,
                 ];
             } catch (Throwable $e) {
                 $credentialResult = [
@@ -886,11 +893,13 @@ try {
             if (!$existingActive) {
                 try {
                     $issued = issueCredentialForRegistration($pdo, $id, (string)$user['id']);
+                    $issuedEmailCredCode = (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? '');
+                    $issuedEmailToken = (string)($issued['rawToken'] ?? '');
                     $credentialResult = [
                         'action'         => 'AUTO_ISSUED',
-                        'credentialCode' => $issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? null,
+                        'credentialCode' => $issuedEmailCredCode !== '' ? $issuedEmailCredCode : null,
                         'credentialId'   => $issued['credential']['id'] ?? null,
-                        'qrPayload'      => $issued['rawToken'] ?? null,
+                        'qrPayload'      => $issuedEmailToken !== '' ? $issuedEmailToken : null,
                     ];
                 } catch (Throwable $e) {
                     $credentialResult = [
@@ -898,30 +907,43 @@ try {
                         'warning' => $e->getMessage(),
                     ];
                 }
+            } else {
+                $issuedEmailCredCode = (string)$existingActive['credential_code'];
             }
+        }
 
-            // Queue approval notification
+        // Send QR Pass email whenever credential is issued/reissued or registration transitions to approved/confirmed
+        if ($issuedEmailToken !== '' || $transitionedToApproved) {
             try {
-                $notifStmt = $pdo->prepare("
-                    INSERT INTO notification_queue (
-                        id, template_code, recipient_user_id, recipient_email, subject, payload, status, created_at, updated_at
-                    ) VALUES (
-                        :id, 'APPLICATION_APPROVED', :uid, :email, :subject, :payload, 'QUEUED', :now, :now
-                    )
-                ");
-                $notifStmt->execute([
-                    ':id'      => uuid4(),
-                    ':uid'     => $updatedReg['user_id'] ?? null,
-                    ':email'   => $updatedReg['email'],
-                    ':subject' => "Approved: Purple Festival Gujarat 2027 ({$updatedReg['registration_code']})",
-                    ':payload' => jsonEncode([
-                        'fullName'         => $updatedReg['full_name'],
-                        'registrationCode' => $updatedReg['registration_code'],
-                        'category'         => $updatedReg['category_code'],
-                    ]),
-                    ':now'     => $now,
+                $dutyDetails = null;
+                if ($updatedVolunteer) {
+                    $dutyDetails = [
+                        'Department' => $updatedVolunteer['assignedDepartment'] ?? null,
+                        'Venue'      => $updatedVolunteer['assignedVenue'] ?? null,
+                        'Shift'      => $updatedVolunteer['assignedShift'] ?? null,
+                        'Reporting'  => $updatedVolunteer['reportingTime'] ?? null,
+                    ];
+                } elseif ($updatedSli) {
+                    $dutyDetails = [
+                        'Assigned Venue'    => $updatedSli['assignedVenue'] ?? null,
+                        'Duty Times'        => $updatedSli['dutyTimes'] ?? null,
+                        'Assigned Sessions' => $updatedSli['assignedSessions'] ?? null,
+                    ];
+                }
+
+                $emailDeliveryResult = sendRegistrationQrPassEmail($pdo, [
+                    'to'               => (string)$updatedReg['email'],
+                    'fullName'         => (string)$updatedReg['full_name'],
+                    'registrationCode' => (string)$updatedReg['registration_code'],
+                    'credentialCode'   => $issuedEmailCredCode !== '' ? $issuedEmailCredCode : (string)$updatedReg['registration_code'],
+                    'categoryName'     => (string)$updatedReg['category_code'],
+                    'status'           => (string)$updatedReg['status'],
+                    'rawToken'         => $issuedEmailToken,
+                    'recipientUserId'  => $updatedReg['user_id'] ?? null,
+                    'dutyDetails'      => $dutyDetails,
                 ]);
             } catch (Throwable $e) {
+                error_log('/api/admin/registrations.php email send error: ' . $e->getMessage());
             }
         }
 
@@ -971,6 +993,7 @@ try {
             'volunteerDetails' => $updatedVolunteer,
             'sliDetails'       => $updatedSli,
             'credentialResult' => $credentialResult,
+            'emailDelivery'    => $emailDeliveryResult,
         ]);
     }
 
