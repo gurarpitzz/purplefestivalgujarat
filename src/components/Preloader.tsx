@@ -110,7 +110,7 @@ export function Preloader() {
 
     const failsafeTimer = window.setTimeout(() => {
       finishIntro(false);
-    }, 2600);
+    }, 3800);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -203,11 +203,11 @@ export function Preloader() {
 
       const tl = gsap.timeline({
         onComplete: () => {
-          gsap.delayedCall(0.03, () => finishIntro(false));
+          gsap.delayedCall(0.06, () => finishIntro(false));
         },
       });
-      // Accelerate playback so the full choreography + page load finishes well under 3 seconds
-      tl.timeScale(1.62);
+      // Smooth, unhurried playback (~2.95s total) while keeping load + intro right around 3s
+      tl.timeScale(1.18);
 
       timelineRef.current = tl;
       window.__preloaderTimeline = tl;
