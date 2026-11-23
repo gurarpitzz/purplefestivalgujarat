@@ -215,9 +215,17 @@ if (!function_exists('ensureDatabaseInitialized')) {
                     $pdo->exec($sql);
                 }
             } else {
-                $statements = array_filter(array_map('trim', explode(';', $schemaSql)));
+                $cleanLines = [];
+                foreach (explode("\n", $schemaSql) as $line) {
+                    $trimLine = trim($line);
+                    if ($trimLine === '' || strpos($trimLine, '--') === 0) {
+                        continue;
+                    }
+                    $cleanLines[] = $line;
+                }
+                $statements = array_filter(array_map('trim', explode(';', implode("\n", $cleanLines))));
                 foreach ($statements as $sql) {
-                    if ($sql !== '' && strpos($sql, '--') !== 0) {
+                    if ($sql !== '') {
                         $pdo->exec($sql);
                     }
                 }
