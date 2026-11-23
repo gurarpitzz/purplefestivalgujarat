@@ -685,7 +685,7 @@ $structuredData = [
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=1" />';
+    . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1178,56 +1178,37 @@ function renderHighlightIconSvg(string $iconName): string
   </section>
 
   <!-- ============================================================
-       7. PARTNERS & ORGANISERS (Dark Purple #5B2A86 Partner Showcase)
+       7. PARTNERS & ORGANISERS (Compact Dark Purple #5B2A86 Showcase)
        ============================================================ -->
   <?php
-  $partnerBuckets = [
-      'ORGANISERS' => ['title' => 'Organisers', 'items' => []],
-      'VENUE' => ['title' => 'Venue Partners', 'items' => []],
-      'KNOWLEDGE' => ['title' => 'Knowledge Partners', 'items' => []],
-      'ACADEMIC_LEGAL_EDU' => ['title' => 'Academic, Legal & Education Partners', 'items' => []],
-      'STRATEGIC' => ['title' => 'Strategic Partners', 'items' => []],
-  ];
+  $organisersList = [];
+  $ourPartnersList = [];
 
   foreach ($publishedPartners as $partnerItem) {
       $catRaw = strtolower(trim((string)($partnerItem['category'] ?? '')));
       $orgRaw = strtolower(trim((string)($partnerItem['orgName'] ?? '')));
-      $roleLabel = '';
 
       if (str_contains($catRaw, 'organis') || str_contains($catRaw, 'organiz')) {
-          $bucketKey = 'ORGANISERS';
-      } elseif (str_contains($catRaw, 'venue')) {
-          $bucketKey = 'VENUE';
-      } elseif (
-          str_contains($catRaw, 'academic') ||
-          str_contains($catRaw, 'legal') ||
-          str_contains($catRaw, 'education') ||
-          str_contains($orgRaw, 'tiss') ||
-          str_contains($orgRaw, 'gnlu') ||
-          str_contains($orgRaw, 'ayjnihh')
-      ) {
-          $bucketKey = 'ACADEMIC_LEGAL_EDU';
-          if (str_contains($catRaw, 'academic') || str_contains($orgRaw, 'tiss')) {
-              $roleLabel = 'Academic Partner';
-          } elseif (str_contains($catRaw, 'legal') || str_contains($orgRaw, 'gnlu')) {
-              $roleLabel = 'Legal Partner';
-          } elseif (str_contains($catRaw, 'education') || str_contains($orgRaw, 'ayjnihh')) {
-              $roleLabel = 'Education Partner';
-          }
+          $organisersList[] = $partnerItem;
+          continue;
+      }
+
+      $roleLabel = (string)($partnerItem['category'] ?? 'Partner');
+      if (str_contains($catRaw, 'venue')) {
+          $roleLabel = 'Venue Partner';
       } elseif (str_contains($catRaw, 'knowledge')) {
-          $bucketKey = 'KNOWLEDGE';
-      } else {
-          $bucketKey = 'STRATEGIC';
+          $roleLabel = 'Knowledge Partner';
+      } elseif (str_contains($catRaw, 'academic') || str_contains($orgRaw, 'tiss')) {
+          $roleLabel = 'Academic Partner';
+      } elseif (str_contains($catRaw, 'legal') || str_contains($orgRaw, 'gnlu')) {
+          $roleLabel = 'Legal Partner';
+      } elseif (str_contains($catRaw, 'education') || str_contains($orgRaw, 'ayjnihh')) {
+          $roleLabel = 'Education Partner';
       }
 
       $partnerItem['roleLabel'] = $roleLabel;
-      $partnerBuckets[$bucketKey]['items'][] = $partnerItem;
+      $ourPartnersList[] = $partnerItem;
   }
-
-  $nonEmptyPartnerGroups = array_values(array_filter(
-      $partnerBuckets,
-      static fn(array $grp): bool => !empty($grp['items'])
-  ));
   ?>
   <section
     id="partners"
@@ -1238,20 +1219,49 @@ function renderHighlightIconSvg(string $iconName): string
       Organisers and Partners
     </h2>
     <div class="pfg-partners-inner">
-      <?php foreach ($nonEmptyPartnerGroups as $gIdx => $group): ?>
-        <?php if ($gIdx > 0): ?>
-          <hr class="pfg-partners-divider" aria-hidden="true" />
-        <?php endif; ?>
+      <?php if (!empty($organisersList)): ?>
         <div class="pfg-partners-group">
-          <h3 class="pfg-partners-group-title">
-            <?= htmlspecialchars($group['title'], ENT_QUOTES, 'UTF-8') ?>
-          </h3>
-          <div class="pfg-partners-row">
-            <?php foreach ($group['items'] as $partner):
+          <h3 class="pfg-partners-group-title">Organisers</h3>
+          <div class="pfg-partners-row--organisers">
+            <?php foreach ($organisersList as $partner):
                 $logoUrl = (string)($partner['logoUrl'] ?? '');
-                $isWideTile = $logoUrl !== '' && (str_contains($logoUrl, 'scpd-goa') || str_contains($logoUrl, 'depwd-goa'));
             ?>
-              <article class="pfg-partner-item<?= $isWideTile ? ' pfg-partner-item--wide' : '' ?>">
+              <article class="pfg-partner-item">
+                <div class="pfg-partner-tile">
+                  <?php if ($logoUrl !== ''): ?>
+                    <img
+                      src="<?= htmlspecialchars($logoUrl, ENT_QUOTES, 'UTF-8') ?>"
+                      alt="<?= htmlspecialchars(!empty($partner['logoAltText']) ? (string)$partner['logoAltText'] : (string)$partner['orgName'] . ' logo', ENT_QUOTES, 'UTF-8') ?>"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  <?php else: ?>
+                    <span class="pfg-partner-fallback">
+                      <?= htmlspecialchars(!empty($partner['shortName']) ? (string)$partner['shortName'] : (string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                  <?php endif; ?>
+                </div>
+                <p class="pfg-partner-name">
+                  <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                </p>
+              </article>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      <?php endif; ?>
+
+      <?php if (!empty($organisersList) && !empty($ourPartnersList)): ?>
+        <hr class="pfg-partners-divider" aria-hidden="true" />
+      <?php endif; ?>
+
+      <?php if (!empty($ourPartnersList)): ?>
+        <div class="pfg-partners-group">
+          <h3 class="pfg-partners-group-title">Our Partners</h3>
+          <div class="pfg-partners-grid">
+            <?php foreach ($ourPartnersList as $partner):
+                $logoUrl = (string)($partner['logoUrl'] ?? '');
+            ?>
+              <article class="pfg-partner-item">
                 <div class="pfg-partner-tile">
                   <?php if ($logoUrl !== ''): ?>
                     <img
@@ -1278,7 +1288,7 @@ function renderHighlightIconSvg(string $iconName): string
             <?php endforeach; ?>
           </div>
         </div>
-      <?php endforeach; ?>
+      <?php endif; ?>
     </div>
   </section>
 

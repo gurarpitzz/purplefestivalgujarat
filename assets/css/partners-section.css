@@ -1,6 +1,6 @@
 /* ==========================================================================
-   Organisers & Partners Section — Dark Purple Partner Wall (#5B2A86)
-   Modeled after centered white-tile tier showcase with warm-gold accents
+   Organisers & Partners Section — Compact Dark Purple Partner Wall (#5B2A86)
+   Fits cleanly in a single viewport with centered white-tile rows & gold accents
    ========================================================================== */
 
 .pfg-partners-section,
@@ -17,19 +17,19 @@
     radial-gradient(ellipse 80% 60% at 50% 0%, rgba(126, 68, 178, 0.28) 0%, transparent 65%),
     #5b2a86;
   color: #ffffff;
-  padding: 4.75rem 0 5.25rem;
+  padding: 2.75rem 0 3.1rem;
 }
 
 @media (max-width: 639px) {
   .pfg-partners-section {
-    padding: 3.75rem 0 4.25rem;
+    padding: 2.25rem 0 2.6rem;
   }
 }
 
 .pfg-partners-inner {
   position: relative;
   z-index: 2;
-  max-width: 1180px;
+  max-width: 1020px;
   margin: 0 auto;
   padding: 0 1.25rem;
   text-align: center;
@@ -37,7 +37,7 @@
 
 @media (min-width: 640px) {
   .pfg-partners-inner {
-    padding: 0 2rem;
+    padding: 0 1.75rem;
   }
 }
 
@@ -48,8 +48,8 @@
 }
 
 .pfg-partners-group-title {
-  margin: 0 0 1.75rem;
-  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  margin: 0 0 1rem;
+  font-size: clamp(0.85rem, 1.15vw, 0.98rem);
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -57,59 +57,78 @@
   line-height: 1.3;
 }
 
-.pfg-partners-row {
+/* Tier 1: Centered Flex Row for Organisers */
+.pfg-partners-row--organisers {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 1.35rem 1.4rem;
+  gap: 1rem;
   width: 100%;
+}
+
+.pfg-partners-row--organisers .pfg-partner-item {
+  width: 196px;
+  max-width: 100%;
+}
+
+@media (max-width: 479px) {
+  .pfg-partners-row--organisers .pfg-partner-item {
+    width: calc(50% - 0.5rem);
+    min-width: 138px;
+  }
+}
+
+/* Tier 2: Symmetrical 4-Column Compact Grid for Our Partners */
+.pfg-partners-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  width: 100%;
+  align-items: start;
+}
+
+@media (min-width: 640px) {
+  .pfg-partners-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pfg-partners-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem 1.1rem;
+  }
 }
 
 .pfg-partner-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 210px;
-  max-width: 100%;
-}
-
-.pfg-partner-item--wide {
-  width: 280px;
-}
-
-@media (max-width: 479px) {
-  .pfg-partner-item {
-    width: calc(50% - 0.7rem);
-    min-width: 144px;
-  }
-
-  .pfg-partner-item--wide {
-    width: 100%;
-    max-width: 300px;
-  }
+  width: 100%;
 }
 
 .pfg-partner-tile {
   width: 100%;
-  height: 102px;
-  border-radius: 14px;
+  height: 74px;
+  border-radius: 12px;
   background-color: #ffffff;
-  padding: 0.8rem 1.05rem;
+  padding: 0.55rem 0.85rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 26px rgba(24, 8, 44, 0.24), 0 2px 6px rgba(24, 8, 44, 0.12);
+  box-shadow: 0 8px 20px rgba(24, 8, 44, 0.22), 0 2px 5px rgba(24, 8, 44, 0.12);
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
 .pfg-partner-item:hover .pfg-partner-tile {
-  transform: translateY(-3px);
-  box-shadow: 0 14px 32px rgba(24, 8, 44, 0.34);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(24, 8, 44, 0.32);
 }
 
 .pfg-partner-tile img {
   max-width: 100%;
-  max-height: 76px;
+  max-height: 54px;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -117,42 +136,42 @@
 }
 
 .pfg-partner-fallback {
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 800;
   color: #191b45;
   line-height: 1.25;
 }
 
 .pfg-partner-role {
-  margin: 0.65rem 0 0;
-  font-size: 0.65rem;
+  margin: 0.42rem 0 0;
+  font-size: 0.6rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: #f6b948;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .pfg-partner-name {
-  margin: 0.6rem 0 0;
-  font-size: 0.8rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
   font-weight: 600;
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.94);
-  max-width: 25ch;
+  line-height: 1.28;
+  color: rgba(255, 255, 255, 0.93);
+  max-width: 24ch;
 }
 
 .pfg-partner-role + .pfg-partner-name {
-  margin-top: 0.22rem;
+  margin-top: 0.14rem;
 }
 
 .pfg-partners-divider {
-  width: 58px;
+  width: 52px;
   height: 2px;
   border: 0;
   border-radius: 9999px;
   background-color: #f6b948;
-  margin: 2.75rem auto;
+  margin: 1.55rem auto;
   opacity: 0.92;
 }
 
