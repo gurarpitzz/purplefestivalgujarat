@@ -2,59 +2,55 @@ name: Build & Package Native PHP+MySQL Site for Bluehost
 
 on:
   push:
-    branches:
-      - php-mysql-migration
-      - main
+    branches: [main, php-mysql-migration]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  package-php-site:
-    name: Validate PHP Syntax & Package Release Bundle
+  package-php:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup PHP 8.2
+      - name: Setup PHP 8.3
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
-          extensions: pdo, pdo_mysql, pdo_sqlite, mbstring, json, openssl, curl
-          coverage: none
+          php-version: "8.3"
+          extensions: pdo, pdo_mysql, pdo_sqlite, mbstring, json, openssl
 
-      - name: Validate PHP syntax (php -l) across all files in php-site/
+      - name: Validate PHP syntax across all files
         run: |
-          set -e
-          COUNT=0
-          while IFS= read -r -d '' file; do
-            php -l "$file"
-            COUNT=$((COUNT + 1))
-          done < <(find php-site -type f -name "*.php" -print0)
-          echo "Successfully linted $COUNT PHP files with zero syntax errors."
-          if [ "$COUNT" -eq 0 ]; then
-            echo "Error: No PHP files found in php-site/"
-            exit 1
-          fi
+          find . -maxdepth 4 -name "*.php" -not -path "./node_modules/*" -print0 | xargs -0 -n1 php -l
 
-      - name: Package php-site/ contents into bluehost-php-site.tar.gz
+      - name: Package Bluehost PHP document root archive
         run: |
-          tar -C php-site \
-            --exclude="./.env.php" \
-            --exclude="./database/*.sqlite" \
-            --exclude="./database/*.sqlite-journal" \
-            --exclude="./database/*.sqlite-wal" \
-            --exclude="./database/*.sqlite-shm" \
-            -czf bluehost-php-site.tar.gz .
-          ls -lh bluehost-php-site.tar.gz
+          rm -f database/*.sqlite*
+          tar -czf bluehost-php-site.tar.gz \
+            .htaccess \
+            .cpanel.yml \
+            index.php \
+            login.php \
+            programme.php \
+            accessibility.php \
+            admin \
+            api \
+            apply \
+            assets \
+            auth \
+            dashboard \
+            database \
+            includes \
+            legal \
+            rgst
 
-      - name: Publish bluehost-php-site.tar.gz to latest-php-build GitHub Release
+      - name: Upload to latest-php-build GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest-php-build --cleanup-tag --yes || true
+          gh release delete latest-php-build --yes || true
           gh release create latest-php-build bluehost-php-site.tar.gz \
-            --title "Purple Festival Gujarat 2027 — Native PHP+MySQL Bluehost Build (latest)" \
-            --notes "Zero-Node.js native PHP 8 + MySQL/MariaDB production bundle for Bluehost Apache. Deploy directly into \`/home1/tstpllmy/public_html/purplefestivalgujarat\` via: \`curl -fsSL https://github.com/${{ github.repository }}/releases/download/latest-php-build/bluehost-php-site.tar.gz | tar -xz -C /home1/tstpllmy/public_html/purplefestivalgujarat\`"
+            --title "Bluehost Native PHP + MySQL Site (latest)" \
+            --notes "Complete native HTML5 + CSS3 + Vanilla JS + GSAP + PHP + MySQL deployment archive for Bluehost Apache."

@@ -6,6 +6,7 @@ uploads/
 .env
 .env.local
 .env.*.local
+.env.php
 *.log
 *.tsbuildinfo
 next-env.d.ts
@@ -13,10 +14,10 @@ playwright-report/
 test-results/
 coverage/
 hello.txt
-php-site/database/*.sqlite*
-php-site/.env.php
+login_bg.webp
+database/*.sqlite*
 
-# Raw root reference docs & duplicate media (all normalized assets live in public/assets/ and docs/)
+# Raw root reference docs & duplicate media (all normalized assets live in assets/ and docs/)
 /*.pdf
 /*.docx
 /*.pptx
