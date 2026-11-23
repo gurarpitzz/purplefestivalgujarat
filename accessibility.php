@@ -186,7 +186,7 @@ foreach ($disabilityList as $dItem) {
 }
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
-    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=1" />';
+    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />';
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -346,11 +346,13 @@ require_once __DIR__ . '/includes/header.php';
   <!-- All 21 Specified Disabilities under RPwD Act 2016 -->
   <?php
   $disabilitiesSectionConfig = [
+      'sectionId' => 'rpwd-disabilities',
       'headingId' => 'rpwd-heading',
       'eyebrow' => 'Rights of Persons with Disabilities (RPwD) Act, 2016',
       'title' => 'All 21 Benchmark Disabilities & Tailored Supports',
       'subtitle' => 'Disability disclosure is always voluntary at Purple Festival Gujarat 2027. Persons with disabilities are welcome in every role — attendee, delegate, speaker, artist, athlete, volunteer, or organizer.',
       'showGuideCta' => false,
+      'showExplorer' => true,
       'initialExpandedCount' => 3,
   ];
   require __DIR__ . '/includes/disabilities-section.php';

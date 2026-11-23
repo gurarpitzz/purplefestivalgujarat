@@ -130,19 +130,23 @@ if (!function_exists('renderDisabilityIconSvg')) {
 }
 
 $cfg = isset($disabilitiesSectionConfig) && is_array($disabilitiesSectionConfig) ? $disabilitiesSectionConfig : [];
+$sectionId = (string)($cfg['sectionId'] ?? '');
 $headingId = (string)($cfg['headingId'] ?? 'disabilities-heading');
 $eyebrow = (string)($cfg['eyebrow'] ?? 'Rights of Persons with Disabilities Act, 2016');
 $title = (string)($cfg['title'] ?? 'Understanding the 21 Specified Disabilities');
 $subtitle = (string)($cfg['subtitle'] ?? "Every individual's access needs are unique. These categories are an educational guide — never a restrictive gate for festival participation.");
 $showGuideCta = array_key_exists('showGuideCta', $cfg) ? (bool)$cfg['showGuideCta'] : true;
+$guideCtaHref = (string)($cfg['guideCtaHref'] ?? '/accessibility#rpwd-disabilities');
+$showExplorer = array_key_exists('showExplorer', $cfg) ? (bool)$cfg['showExplorer'] : true;
 $initialExpandedCount = (int)($cfg['initialExpandedCount'] ?? 0);
-$totalDisabilities = count($disabilityList);
+$totalDisabilities = isset($disabilityList) && is_array($disabilityList) ? count($disabilityList) : 0;
 ?>
 
 <section
+  <?= $sectionId !== '' ? 'id="' . htmlspecialchars($sectionId, ENT_QUOTES, 'UTF-8') . '"' : '' ?>
   aria-labelledby="<?= htmlspecialchars($headingId, ENT_QUOTES, 'UTF-8') ?>"
-  class="pfg-dis-section"
-  data-disabilities-explorer="true"
+  class="pfg-dis-section<?= $showExplorer ? '' : ' pfg-dis-section--teaser' ?>"
+  <?= $showExplorer ? 'data-disabilities-explorer="true"' : '' ?>
 >
   <!-- Ambient Translucent Lavender Sweeping Waves -->
   <svg
@@ -153,13 +157,13 @@ $totalDisabilities = count($disabilityList);
   >
     <defs>
       <linearGradient id="pfgWaveSoft" x1="0" y1="0" x2="1" y2="0.4">
-        <stop offset="0%" stop-color="#E7D8FF" stop-opacity="0.45" />
-        <stop offset="50%" stop-color="#F2EAFF" stop-opacity="0.22" />
-        <stop offset="100%" stop-color="#DFC8FF" stop-opacity="0.45" />
+        <stop offset="0%" stop-color="#CBB0FB" stop-opacity="0.46" />
+        <stop offset="50%" stop-color="#DFCAFF" stop-opacity="0.30" />
+        <stop offset="100%" stop-color="#C09AF8" stop-opacity="0.46" />
       </linearGradient>
     </defs>
     <path d="M0,190 C360,120 740,260 1160,175 C1370,132 1495,148 1600,170 L1600,360 C1280,310 860,390 420,295 C190,245 70,255 0,285 Z" fill="url(#pfgWaveSoft)" />
-    <path d="M0,510 C320,445 690,565 1120,475 C1350,425 1490,445 1600,480 L1600,720 C1230,660 820,765 390,655 C165,595 65,610 0,635 Z" fill="#E6D4FF" fill-opacity="0.32" />
+    <path d="M0,510 C320,445 690,565 1120,475 C1350,425 1490,445 1600,480 L1600,720 C1230,660 820,765 390,655 C165,595 65,610 0,635 Z" fill="#C09AF8" fill-opacity="0.36" />
   </svg>
 
   <!-- Perimeter Illustrations -->
@@ -205,12 +209,12 @@ $totalDisabilities = count($disabilityList);
   >
     <defs>
       <linearGradient id="pfgBottomWaveGrad" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stop-color="#D1B2FA" />
-        <stop offset="50%" stop-color="#E1C9FE" />
-        <stop offset="100%" stop-color="#C89FF9" />
+        <stop offset="0%" stop-color="#A569F2" />
+        <stop offset="50%" stop-color="#BE8EF9" />
+        <stop offset="100%" stop-color="#8E4EE8" />
       </linearGradient>
     </defs>
-    <path d="M0,46 C260,86 580,22 930,68 C1210,104 1430,36 1600,52 L1600,120 L0,120 Z" fill="#D8BCFC" fill-opacity="0.72" />
+    <path d="M0,46 C260,86 580,22 930,68 C1210,104 1430,36 1600,52 L1600,120 L0,120 Z" fill="#BD8EF8" fill-opacity="0.78" />
     <path d="M0,70 C340,26 670,96 1040,54 C1290,26 1465,62 1600,38 L1600,120 L0,120 Z" fill="url(#pfgBottomWaveGrad)" />
   </svg>
 
@@ -234,7 +238,7 @@ $totalDisabilities = count($disabilityList);
       </div>
 
       <?php if ($showGuideCta): ?>
-        <a href="/accessibility" class="pfg-dis-guide-cta">
+        <a href="<?= htmlspecialchars($guideCtaHref, ENT_QUOTES, 'UTF-8') ?>" class="pfg-dis-guide-cta">
           <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="16" cy="4" r="1" />
             <path d="m18 19 1-7-6 1" />
@@ -247,6 +251,7 @@ $totalDisabilities = count($disabilityList);
       <?php endif; ?>
     </div>
 
+    <?php if ($showExplorer): ?>
     <!-- Search Input & Category Filter Pills -->
     <div class="pfg-dis-controls">
       <div class="pfg-dis-search-wrap">
@@ -380,9 +385,11 @@ $totalDisabilities = count($disabilityList);
         </article>
       <?php endforeach; ?>
     </div>
+    <?php endif; ?>
   </div>
 </section>
 
+<?php if ($showExplorer): ?>
 <script>
 (function () {
   "use strict";
@@ -481,3 +488,5 @@ $totalDisabilities = count($disabilityList);
   }
 })();
 </script>
+<?php endif; ?>
+

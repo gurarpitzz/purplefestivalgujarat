@@ -612,7 +612,7 @@ $structuredData = [
 ];
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
-    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=1" />';
+    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1020,6 +1020,8 @@ function renderHighlightIconSvg(string $iconName): string
       'title' => 'Understanding the 21 Specified Disabilities',
       'subtitle' => "Every individual's access needs are unique. These categories are an educational guide — never a restrictive gate for festival participation.",
       'showGuideCta' => true,
+      'guideCtaHref' => '/accessibility#rpwd-disabilities',
+      'showExplorer' => false,
       'initialExpandedCount' => 0,
   ];
   require __DIR__ . '/includes/disabilities-section.php';
