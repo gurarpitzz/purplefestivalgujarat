@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Award,
+  Check,
   CheckCircle2,
   Download,
   FileCheck2,
@@ -29,6 +30,7 @@ import {
   FESTIVAL_NAME,
   OCCUPATION_OPTIONS,
 } from "@/lib/constants";
+import { SiteHeader } from "@/components/SiteHeader";
 
 export interface CategoryOption {
   id: string;
@@ -268,6 +270,7 @@ export default function RegistrationWizard({
   initialCategoryParam,
 }: WizardProps) {
   const [showHub, setShowHub] = useState<boolean>(!initialCategoryParam);
+  const [selectedPathwayId, setSelectedPathwayId] = useState<string>("ATTENDEE");
   const [step, setStep] = useState<number>(1);
   const [draft, setDraft] = useState<WizardDraft>(() =>
     createEmptyDraft(currentUser)
@@ -847,130 +850,82 @@ export default function RegistrationWizard({
       },
     ];
 
+    const activePathway =
+      pathways.find((p) => p.id === selectedPathwayId) ?? pathways[0];
+
     return (
-      <div className="min-h-screen editorial-mesh-light py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-[#432F56] hover:underline touch-target"
-            >
-              <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-              Back to Festival Home
-            </Link>
-            <div className="flex items-center gap-3">
-              {currentUser ? (
-                <Link
-                  href="/dashboard"
-                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#17151C] text-[#F9F7FC] text-sm font-semibold inline-flex items-center gap-2"
-                >
-                  Dashboard ({currentUser.fullName.split(" ")[0]})
-                </Link>
-              ) : (
-                <Link
-                  href="/login"
-                  className="min-h-[44px] px-4 py-2 rounded-xl border border-[#59436D]/30 bg-white text-[#432F56] text-sm font-semibold inline-flex items-center"
-                >
-                  Already registered? Sign In
-                </Link>
-              )}
-            </div>
-          </div>
-
-          <header className="rounded-2xl editorial-hero-bg text-[#F9F7FC] p-6 sm:p-10 shadow-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#D5B77B]">
-              {FESTIVAL_DATES_DISPLAY} • {FESTIVAL_LOCATION_DISPLAY}
-            </p>
-            <h1 className="mt-2 font-display text-3xl sm:text-4xl font-semibold">
-              Register for {FESTIVAL_NAME}
+      <>
+        <SiteHeader />
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="min-h-[calc(100vh-76px)] bg-white text-[#202D59] focus:outline-none"
+        >
+          <div className="mx-auto flex max-w-[560px] flex-col px-5 pb-20 pt-14 sm:pt-20">
+            <h1 className="text-[clamp(1.65rem,3.4vw,2.3rem)] font-bold leading-[1.2] tracking-[-0.02em] text-[#202D59]">
+              What type of registration are you interested in for Purple Fest Gujarat?
             </h1>
-            <p className="mt-3 text-base text-[#D7CCE2] max-w-2xl">
-              Choose how you would like to participate. You can register for multiple
-              roles under a single account and update your accessibility accommodations
-              at any time.
-            </p>
-            <div className="mt-5 rounded-xl bg-[#25212B]/90 border border-[#D5B77B]/40 p-4 flex items-start gap-3">
-              <HeartHandshake
-                className="w-5 h-5 text-[#D5B77B] shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
-              <p className="text-sm text-[#F9F7FC]">
-                <strong>Inclusive by design:</strong> Disability status and registration
-                category are completely independent. Persons with disabilities are welcome
-                to register as Attendees, Delegates, Volunteers, SLI Professionals,
-                Students, or Institutional Representatives.
-              </p>
-            </div>
-          </header>
 
-          <section aria-labelledby="pathways-heading">
-            <h2
-              id="pathways-heading"
-              className="font-display text-2xl font-semibold text-[#17151C] mb-4"
+            <div
+              role="radiogroup"
+              aria-label="Registration pathway options"
+              className="mt-8 flex flex-col gap-3"
             >
-              Choose Your Registration Pathway
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {pathways.map((p) => {
-                const Icon = p.icon;
+                const isSelected = selectedPathwayId === p.id;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={p.onClick}
-                    className={`surface-card text-left rounded-2xl p-6 transition-all border-2 flex flex-col justify-between gap-4 hover:shadow-lg ${
-                      p.highlight
-                        ? "bg-[#17151C] text-[#F9F7FC] border-[#D5B77B] md:col-span-2"
-                        : "bg-white text-[#211B29] border-[#59436D]/20 hover:border-[#9273B5]"
+                    role="radio"
+                    aria-checked={isSelected}
+                    onClick={() => setSelectedPathwayId(p.id)}
+                    onDoubleClick={p.onClick}
+                    className={`touch-target flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors ${
+                      isSelected
+                        ? "bg-[#CFCFF8] ring-2 ring-[#202D59]"
+                        : "bg-[#DDDDF9] hover:bg-[#D2D2F7]"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-                          p.highlight
-                            ? "bg-[#9273B5] text-[#17151C]"
-                            : "bg-[#E8DFF0] text-[#432F56]"
-                        }`}
-                      >
-                        <Icon className="w-6 h-6" aria-hidden="true" />
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          p.highlight
-                            ? "bg-[#D5B77B]/20 text-[#D5B77B] border border-[#D5B77B]/40"
-                            : "bg-[#F6F1F8] text-[#59436D]"
-                        }`}
-                      >
+                    <div className="min-w-0">
+                      <span className="block text-[17px] font-semibold leading-snug text-[#202D59]">
+                        {p.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs font-medium text-[#46537C]">
                         {p.badge}
                       </span>
                     </div>
-                    <div>
-                      <h3 className="font-display text-xl font-semibold">
-                        {p.title}
-                      </h3>
-                      <p
-                        className={`mt-1.5 text-sm ${
-                          p.highlight ? "text-[#D7CCE2]" : "text-[#4B4257]"
-                        }`}
-                      >
-                        {p.description}
-                      </p>
-                    </div>
-                    <span
-                      className={`inline-flex items-center gap-2 text-sm font-bold ${
-                        p.highlight ? "text-[#D5B77B]" : "text-[#59436D]"
-                      }`}
-                    >
-                      Begin Registration
-                      <ArrowRight className="w-4 h-4" aria-hidden="true" />
-                    </span>
+                    {isSelected && (
+                      <Check
+                        className="h-5 w-5 shrink-0 text-[#202D59]"
+                        aria-hidden="true"
+                      />
+                    )}
                   </button>
                 );
               })}
             </div>
-          </section>
-        </div>
-      </div>
+
+            <div className="mt-6 flex items-center justify-between gap-4">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[#46537C] hover:text-[#202D59] hover:underline"
+              >
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                Back to Home
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => activePathway?.onClick()}
+                className="touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-[#DDDDF9] px-7 py-2.5 text-[16px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </main>
+      </>
     );
   }
 
