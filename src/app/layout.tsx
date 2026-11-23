@@ -1,16 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import { AccessibilityProvider } from "@/components/AccessibilityProvider";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
-
-const dmSans = DM_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-dm-sans",
-  display: "swap",
-  preload: true,
-});
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://purplefestivalgujarat.com";
 
@@ -96,8 +87,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={dmSans.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&display=swap"
+        />
         <link
           rel="preload"
           as="image"

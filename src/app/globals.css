@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  --font-dm-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   /* Authentic PurpleFest Reference Palette (purplefestivalvadodara-main.ajeetgraphics.com) */
   --pf-lavender: #ddddf9;
   --pf-lavender-soft: #ededfc;
