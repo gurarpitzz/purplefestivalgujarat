@@ -28,8 +28,15 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
 
-      - name: Package .next production bundle
-        run: tar -czf bluehost-next-build.tar.gz .next
+      - name: Compile standalone single-thread DB runners (no tsx/esbuild needed on Bluehost)
+        run: |
+          mkdir -p dist-db
+          npx esbuild src/db/migrate.ts --bundle --platform=node --external:@electric-sql/pglite --external:pg --outfile=dist-db/migrate.cjs
+          npx esbuild src/db/seed.ts --bundle --platform=node --external:@electric-sql/pglite --external:pg --outfile=dist-db/seed.cjs
+          npx esbuild src/db/bootstrap-superadmin.ts --bundle --platform=node --external:@electric-sql/pglite --external:pg --outfile=dist-db/bootstrap-superadmin.cjs
+
+      - name: Package .next + dist-db production bundle
+        run: tar -czf bluehost-next-build.tar.gz .next dist-db
 
       - name: Upload to latest-build GitHub Release
         env:
@@ -38,4 +45,4 @@ jobs:
           gh release delete latest-build --yes || true
           gh release create latest-build bluehost-next-build.tar.gz \
             --title "Bluehost Production Build (latest)" \
-            --notes "Pre-built Linux x64 .next production bundle for Bluehost deployment."
+            --notes "Pre-built Linux x64 .next production bundle + compiled DB runners for Bluehost deployment."

@@ -2,7 +2,12 @@ import React from "react";
 import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getCurrentUser } from "@/lib/auth";
-import { FESTIVAL_EDITION_SLUG } from "@/lib/constants";
+import {
+  ACCOMMODATION_TYPES_SEED,
+  FESTIVAL_EDITION_SLUG,
+  REGISTRATION_CATEGORIES_SEED,
+  RPWD_21_DISABILITIES,
+} from "@/lib/constants";
 import RegistrationWizard from "@/components/RegistrationWizard";
 
 export const dynamic = "force-dynamic";
@@ -20,14 +25,38 @@ export default async function ApplyPage({
 }) {
   const params = await searchParams;
 
-  const [edition] = await db
-    .select()
-    .from(schema.festivalEditions)
-    .where(eq(schema.festivalEditions.slug, FESTIVAL_EDITION_SLUG))
-    .limit(1);
+  let categories: Array<{
+    id: string;
+    code: string;
+    name: string;
+    description: string | null;
+    requiresPayment: boolean;
+    feeInr: number;
+    requiresApproval: boolean;
+    requiresDocumentUpload: boolean;
+  }> = [];
+  let disabilityCategories: Array<{
+    id: string;
+    code: string;
+    name: string;
+    rpwdGroup: string;
+  }> = [];
+  let accommodationTypes: Array<{
+    id: string;
+    code: string;
+    label: string;
+    description: string | null;
+  }> = [];
+  let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
 
-  const [categories, disabilityCategories, accommodationTypes, user] =
-    await Promise.all([
+  try {
+    const [edition] = await db
+      .select()
+      .from(schema.festivalEditions)
+      .where(eq(schema.festivalEditions.slug, FESTIVAL_EDITION_SLUG))
+      .limit(1);
+
+    const [catRows, disRows, accRows, currentUser] = await Promise.all([
       edition
         ? db
             .select()
@@ -51,6 +80,45 @@ export default async function ApplyPage({
         .orderBy(asc(schema.accommodationTypes.displayOrder)),
       getCurrentUser(),
     ]);
+
+    categories = catRows;
+    disabilityCategories = disRows;
+    accommodationTypes = accRows;
+    user = currentUser;
+  } catch (err) {
+    console.error("ApplyPage database load error:", err);
+  }
+
+  if (categories.length === 0) {
+    categories = REGISTRATION_CATEGORIES_SEED.map((c) => ({
+      id: c.code,
+      code: c.code,
+      name: c.name,
+      description: c.description,
+      requiresPayment: c.requiresPayment,
+      feeInr: c.feeInr,
+      requiresApproval: c.requiresApproval,
+      requiresDocumentUpload: c.requiresDocumentUpload,
+    }));
+  }
+
+  if (disabilityCategories.length === 0) {
+    disabilityCategories = RPWD_21_DISABILITIES.map((d) => ({
+      id: d.code,
+      code: d.code,
+      name: d.name,
+      rpwdGroup: d.rpwdGroup,
+    }));
+  }
+
+  if (accommodationTypes.length === 0) {
+    accommodationTypes = ACCOMMODATION_TYPES_SEED.map((a) => ({
+      id: a.code,
+      code: a.code,
+      label: a.label,
+      description: null,
+    }));
+  }
 
   return (
     <RegistrationWizard
