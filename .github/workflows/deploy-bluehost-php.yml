@@ -2,11 +2,15 @@ name: Build & Package Native PHP+MySQL Site for Bluehost
 
 on:
   push:
-    branches: [main, php-mysql-migration]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: package-php-release
+  cancel-in-progress: true
 
 jobs:
   package-php:
@@ -50,7 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest-php-build --yes || true
+          gh release upload latest-php-build bluehost-php-site.tar.gz --clobber || \
           gh release create latest-php-build bluehost-php-site.tar.gz \
             --title "Bluehost Native PHP + MySQL Site (latest)" \
             --notes "Complete native HTML5 + CSS3 + Vanilla JS + GSAP + PHP + MySQL deployment archive for Bluehost Apache."
