@@ -1,0 +1,179 @@
+/* ==========================================================================
+   Organisers & Partners Section — Dark Purple Partner Wall (#5B2A86)
+   Modeled after centered white-tile tier showcase with warm-gold accents
+   ========================================================================== */
+
+.pfg-partners-section,
+.pfg-partners-section *,
+.pfg-partners-section *::before,
+.pfg-partners-section *::after {
+  box-sizing: border-box;
+}
+
+.pfg-partners-section {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(126, 68, 178, 0.28) 0%, transparent 65%),
+    #5b2a86;
+  color: #ffffff;
+  padding: 4.75rem 0 5.25rem;
+}
+
+@media (max-width: 639px) {
+  .pfg-partners-section {
+    padding: 3.75rem 0 4.25rem;
+  }
+}
+
+.pfg-partners-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .pfg-partners-inner {
+    padding: 0 2rem;
+  }
+}
+
+.pfg-partners-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pfg-partners-group-title {
+  margin: 0 0 1.75rem;
+  font-size: clamp(0.95rem, 1.4vw, 1.15rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #f6b948;
+  line-height: 1.3;
+}
+
+.pfg-partners-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.35rem 1.4rem;
+  width: 100%;
+}
+
+.pfg-partner-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 210px;
+  max-width: 100%;
+}
+
+.pfg-partner-item--wide {
+  width: 280px;
+}
+
+@media (max-width: 479px) {
+  .pfg-partner-item {
+    width: calc(50% - 0.7rem);
+    min-width: 144px;
+  }
+
+  .pfg-partner-item--wide {
+    width: 100%;
+    max-width: 300px;
+  }
+}
+
+.pfg-partner-tile {
+  width: 100%;
+  height: 102px;
+  border-radius: 14px;
+  background-color: #ffffff;
+  padding: 0.8rem 1.05rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 26px rgba(24, 8, 44, 0.24), 0 2px 6px rgba(24, 8, 44, 0.12);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.pfg-partner-item:hover .pfg-partner-tile {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 32px rgba(24, 8, 44, 0.34);
+}
+
+.pfg-partner-tile img {
+  max-width: 100%;
+  max-height: 76px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.pfg-partner-fallback {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #191b45;
+  line-height: 1.25;
+}
+
+.pfg-partner-role {
+  margin: 0.65rem 0 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f6b948;
+  line-height: 1.25;
+}
+
+.pfg-partner-name {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.94);
+  max-width: 25ch;
+}
+
+.pfg-partner-role + .pfg-partner-name {
+  margin-top: 0.22rem;
+}
+
+.pfg-partners-divider {
+  width: 58px;
+  height: 2px;
+  border: 0;
+  border-radius: 9999px;
+  background-color: #f6b948;
+  margin: 2.75rem auto;
+  opacity: 0.92;
+}
+
+/* Accessibility: High Contrast */
+html[data-contrast="high"] .pfg-partners-section {
+  background: #1a092b;
+}
+
+html[data-contrast="high"] .pfg-partner-tile {
+  border: 2px solid #ffffff;
+}
+
+/* Accessibility: Reduced Motion */
+html[data-reduced-motion="true"] .pfg-partner-tile {
+  transition: none !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pfg-partner-tile {
+    transition: none !important;
+    transform: none !important;
+  }
+}

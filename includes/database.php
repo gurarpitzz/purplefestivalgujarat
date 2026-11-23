@@ -492,10 +492,26 @@ if (!function_exists('seedDatabase')) {
             ]);
         }
 
-        // 10. Organizations & Partners
+        // 10. Organizations & Partners (Brochure Page 5 — 11 Confirmed Partners)
         $partnersCount = (int)$pdo->query("SELECT COUNT(*) FROM partners")->fetchColumn();
-        if ($partnersCount === 0) {
+        $hasFullBrochureSeed = (int)$pdo->query(
+            "SELECT COUNT(*) FROM partners WHERE id = '61000000-0000-4000-8000-000000000011'"
+        )->fetchColumn();
+        if ($partnersCount === 0 || $hasFullBrochureSeed === 0) {
             $partnerDefs = [
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000004',
+                    'part_id'     => '61000000-0000-4000-8000-000000000004',
+                    'name'        => 'PRAANGAN, Vadodara',
+                    'short_name'  => 'PRAANGAN',
+                    'logo_url'    => '/assets/logos/praangan.jpg',
+                    'logo_alt'    => 'PRAANGAN, Vadodara — A center for children with special needs logo',
+                    'description' => 'A centre for children with special needs.',
+                    'category'    => 'Organisers',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 1,
+                ],
                 [
                     'org_id'      => '60000000-0000-4000-8000-000000000001',
                     'part_id'     => '61000000-0000-4000-8000-000000000001',
@@ -503,93 +519,195 @@ if (!function_exists('seedDatabase')) {
                     'short_name'  => 'Brotherhood',
                     'logo_url'    => '/assets/logos/brotherhood-transparent.png',
                     'logo_alt'    => 'Brotherhood official logo',
-                    'description' => 'Co-organiser advancing disability inclusion, film festivals, and cultural participation across India.',
-                    'category'    => 'Organizers',
-                    'consent'     => 1,
-                    'status'      => 'PUBLISHED',
-                    'order'       => 1,
-                ],
-                [
-                    'org_id'      => '60000000-0000-4000-8000-000000000002',
-                    'part_id'     => '61000000-0000-4000-8000-000000000002',
-                    'name'        => 'Global Inclusive Education Network (GIEN)',
-                    'short_name'  => 'GIEN',
-                    'logo_url'    => '/assets/logos/gien.jpg',
-                    'logo_alt'    => 'Global Inclusive Education Network (GIEN) official logo',
-                    'description' => 'Co-organiser driving inclusive education policy, teacher training, and universal design for learning.',
-                    'category'    => 'Organizers',
+                    'description' => 'Rights and inclusion of persons with disabilities.',
+                    'category'    => 'Organisers',
                     'consent'     => 1,
                     'status'      => 'PUBLISHED',
                     'order'       => 2,
                 ],
                 [
-                    'org_id'      => '60000000-0000-4000-8000-000000000003',
-                    'part_id'     => '61000000-0000-4000-8000-000000000003',
-                    'name'        => 'The Maharaja Sayajirao University of Baroda',
-                    'short_name'  => 'MSU Baroda',
-                    'logo_url'    => null,
-                    'logo_alt'    => 'The Maharaja Sayajirao University of Baroda',
-                    'description' => 'Committed academic and venue host via Faculty of Social Work and Department of Physical Education.',
-                    'category'    => 'Venue & Academic Partners',
+                    'org_id'      => '60000000-0000-4000-8000-000000000002',
+                    'part_id'     => '61000000-0000-4000-8000-000000000002',
+                    'name'        => 'Global Inclusive Education Network',
+                    'short_name'  => 'GIEN',
+                    'logo_url'    => '/assets/logos/gien.jpg',
+                    'logo_alt'    => 'Global Inclusive Education Network (GIEN) official logo',
+                    'description' => 'Making education inclusive for every child.',
+                    'category'    => 'Organisers',
                     'consent'     => 1,
                     'status'      => 'PUBLISHED',
                     'order'       => 3,
                 ],
                 [
-                    'org_id'      => '60000000-0000-4000-8000-000000000004',
-                    'part_id'     => '61000000-0000-4000-8000-000000000004',
-                    'name'        => 'Praangan',
-                    'short_name'  => 'Praangan',
-                    'logo_url'    => '/assets/logos/praangan.jpg',
-                    'logo_alt'    => 'Praangan Foundation logo',
-                    'description' => 'Co-organiser advancing creative expression, accessibility, and inclusive community initiatives.',
-                    'category'    => 'Organizers',
+                    'org_id'      => '60000000-0000-4000-8000-000000000003',
+                    'part_id'     => '61000000-0000-4000-8000-000000000003',
+                    'name'        => 'Faculty of Social Work, MSU Baroda',
+                    'short_name'  => 'MSU Baroda (FSW)',
+                    'logo_url'    => '/assets/logos/msu-baroda.png',
+                    'logo_alt'    => 'The Maharaja Sayajirao University of Baroda official crest',
+                    'description' => 'Venue partner hosting plenary sessions, academic dialogues, and inclusive campus activities.',
+                    'category'    => 'Venue Partners',
                     'consent'     => 1,
                     'status'      => 'PUBLISHED',
                     'order'       => 4,
                 ],
                 [
-                    'org_id'      => '60000000-0000-4000-8000-000000000005',
-                    'part_id'     => '61000000-0000-4000-8000-000000000005',
-                    'name'        => 'Centre for Disability Studies and Action, TISS',
-                    'short_name'  => 'CDSA-TISS',
-                    'logo_url'    => '/assets/logos/cdsa-tiss.jpg',
-                    'logo_alt'    => 'Centre for Disability Studies and Action, TISS logo',
-                    'description' => 'Academic Partner advancing disability studies, social work research, and inclusive policy.',
-                    'category'    => 'Knowledge Partners',
+                    'org_id'      => '60000000-0000-4000-8000-000000000006',
+                    'part_id'     => '61000000-0000-4000-8000-000000000006',
+                    'name'        => 'Department of Physical Education, MSU Baroda',
+                    'short_name'  => 'MSU Baroda (DPE)',
+                    'logo_url'    => '/assets/logos/msu-baroda.png',
+                    'logo_alt'    => 'The Maharaja Sayajirao University of Baroda official crest',
+                    'description' => 'Venue partner coordinating adaptive athletics and Para Sports events.',
+                    'category'    => 'Venue Partners',
                     'consent'     => 1,
                     'status'      => 'PUBLISHED',
                     'order'       => 5,
                 ],
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000007',
+                    'part_id'     => '61000000-0000-4000-8000-000000000007',
+                    'name'        => 'GMERS Medical College and Hospital, Gotri',
+                    'short_name'  => 'GMERS Gotri',
+                    'logo_url'    => '/assets/logos/gmers-gotri.png',
+                    'logo_alt'    => 'GMERS Medical College and Hospital, Gotri official logo',
+                    'description' => 'Venue and medical readiness partner supporting inclusive health and on-site care.',
+                    'category'    => 'Venue Partners',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 6,
+                ],
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000008',
+                    'part_id'     => '61000000-0000-4000-8000-000000000008',
+                    'name'        => 'State Commissioner for Persons with Disabilities, Goa',
+                    'short_name'  => 'SCPD Goa',
+                    'logo_url'    => '/assets/logos/scpd-goa.png',
+                    'logo_alt'    => 'State Commission for Persons with Disabilities - Goa logo',
+                    'description' => 'Knowledge Partner sharing insights from India’s International Purple Fest in Goa.',
+                    'category'    => 'Knowledge Partners',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 7,
+                ],
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000009',
+                    'part_id'     => '61000000-0000-4000-8000-000000000009',
+                    'name'        => 'Department for Empowerment of Persons with Disabilities, Goa',
+                    'short_name'  => 'DEPwD Goa',
+                    'logo_url'    => '/assets/logos/depwd-goa.png',
+                    'logo_alt'    => 'Department for Empowerment of Persons with Disabilities, Government of Goa logo',
+                    'description' => 'Knowledge Partner advancing cross-state accessibility standards and festival knowledge exchange.',
+                    'category'    => 'Knowledge Partners',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 8,
+                ],
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000005',
+                    'part_id'     => '61000000-0000-4000-8000-000000000005',
+                    'name'        => 'CDSA, Tata Institute of Social Sciences, Mumbai',
+                    'short_name'  => 'CDSA-TISS',
+                    'logo_url'    => '/assets/logos/cdsa-tiss.jpg',
+                    'logo_alt'    => 'CDSA, Tata Institute of Social Sciences, Mumbai logo',
+                    'description' => 'Academic Partner advancing disability studies, social work research, and inclusive policy.',
+                    'category'    => 'Academic Partner',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 9,
+                ],
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000010',
+                    'part_id'     => '61000000-0000-4000-8000-000000000010',
+                    'name'        => 'Gujarat National Law University, Gandhinagar',
+                    'short_name'  => 'GNLU Gandhinagar',
+                    'logo_url'    => '/assets/logos/gnlu.png',
+                    'logo_alt'    => 'Gujarat National Law University, Gandhinagar official emblem',
+                    'description' => 'Legal Partner supporting disability rights, RPwD Act 2016 awareness, and legal empowerment.',
+                    'category'    => 'Legal Partner',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 10,
+                ],
+                [
+                    'org_id'      => '60000000-0000-4000-8000-000000000011',
+                    'part_id'     => '61000000-0000-4000-8000-000000000011',
+                    'name'        => 'AYJNIHH, Mumbai',
+                    'short_name'  => 'AYJNISHD(D)',
+                    'logo_url'    => '/assets/logos/ayjnihh.png',
+                    'logo_alt'    => 'Ali Yavar Jung National Institute of Speech and Hearing Disabilities (AYJNIHH), Mumbai official emblem',
+                    'description' => 'Education Partner supporting speech, hearing, and Indian Sign Language inclusion.',
+                    'category'    => 'Education Partner',
+                    'consent'     => 1,
+                    'status'      => 'PUBLISHED',
+                    'order'       => 11,
+                ],
             ];
-            $orgStmt = $pdo->prepare("
-                INSERT IGNORE INTO organizations (id, name, short_name, logo_url, logo_alt_text, description, created_at)
+            $checkOrgStmt = $pdo->prepare("SELECT COUNT(*) FROM organizations WHERE id = :id");
+            $orgInsertStmt = $pdo->prepare("
+                INSERT INTO organizations (id, name, short_name, logo_url, logo_alt_text, description, created_at)
                 VALUES (:id, :name, :short_name, :logo_url, :logo_alt, :description, :now)
             ");
-            $partStmt = $pdo->prepare("
-                INSERT IGNORE INTO partners (id, edition_id, organization_id, category, consent_verified, display_order, status, created_at, updated_at)
+            $orgUpdateStmt = $pdo->prepare("
+                UPDATE organizations
+                SET name = :name, short_name = :short_name, logo_url = :logo_url, logo_alt_text = :logo_alt, description = :description
+                WHERE id = :id
+            ");
+            $checkPartStmt = $pdo->prepare("SELECT COUNT(*) FROM partners WHERE id = :id");
+            $partInsertStmt = $pdo->prepare("
+                INSERT INTO partners (id, edition_id, organization_id, category, consent_verified, display_order, status, created_at, updated_at)
                 VALUES (:id, :edition_id, :org_id, :category, :consent, :order, :status, :now, :now)
             ");
+            $partUpdateStmt = $pdo->prepare("
+                UPDATE partners
+                SET category = :category, display_order = :order, consent_verified = :consent, status = :status, updated_at = :now
+                WHERE id = :id
+            ");
             foreach ($partnerDefs as $p) {
-                $orgStmt->execute([
-                    ':id'          => $p['org_id'],
-                    ':name'        => $p['name'],
-                    ':short_name'  => $p['short_name'],
-                    ':logo_url'    => $p['logo_url'],
-                    ':logo_alt'    => $p['logo_alt'],
-                    ':description' => $p['description'],
-                    ':now'         => $now,
-                ]);
-                $partStmt->execute([
-                    ':id'         => $p['part_id'],
-                    ':edition_id' => $editionId,
-                    ':org_id'     => $p['org_id'],
-                    ':category'   => $p['category'],
-                    ':consent'    => $p['consent'],
-                    ':order'      => $p['order'],
-                    ':status'     => $p['status'],
-                    ':now'        => $now,
-                ]);
+                $checkOrgStmt->execute([':id' => $p['org_id']]);
+                if ((int)$checkOrgStmt->fetchColumn() > 0) {
+                    $orgUpdateStmt->execute([
+                        ':id'          => $p['org_id'],
+                        ':name'        => $p['name'],
+                        ':short_name'  => $p['short_name'],
+                        ':logo_url'    => $p['logo_url'],
+                        ':logo_alt'    => $p['logo_alt'],
+                        ':description' => $p['description'],
+                    ]);
+                } else {
+                    $orgInsertStmt->execute([
+                        ':id'          => $p['org_id'],
+                        ':name'        => $p['name'],
+                        ':short_name'  => $p['short_name'],
+                        ':logo_url'    => $p['logo_url'],
+                        ':logo_alt'    => $p['logo_alt'],
+                        ':description' => $p['description'],
+                        ':now'         => $now,
+                    ]);
+                }
+
+                $checkPartStmt->execute([':id' => $p['part_id']]);
+                if ((int)$checkPartStmt->fetchColumn() > 0) {
+                    $partUpdateStmt->execute([
+                        ':id'       => $p['part_id'],
+                        ':category' => $p['category'],
+                        ':order'    => $p['order'],
+                        ':consent'  => $p['consent'],
+                        ':status'   => $p['status'],
+                        ':now'      => $now,
+                    ]);
+                } else {
+                    $partInsertStmt->execute([
+                        ':id'         => $p['part_id'],
+                        ':edition_id' => $editionId,
+                        ':org_id'     => $p['org_id'],
+                        ':category'   => $p['category'],
+                        ':consent'    => $p['consent'],
+                        ':order'      => $p['order'],
+                        ':status'     => $p['status'],
+                        ':now'        => $now,
+                    ]);
+                }
             }
         }
 

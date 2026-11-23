@@ -220,30 +220,102 @@ $FALLBACK_PROGRAMME = [
 $FALLBACK_PARTNERS = [
     [
         'partnerId' => 'p-1',
-        'category' => 'Organizers',
+        'category' => 'Organisers',
+        'orgName' => 'PRAANGAN, Vadodara',
+        'shortName' => 'PRAANGAN',
+        'logoUrl' => '/assets/logos/praangan.jpg',
+        'logoAltText' => 'PRAANGAN, Vadodara logo',
+        'description' => 'A centre for children with special needs.',
+    ],
+    [
+        'partnerId' => 'p-2',
+        'category' => 'Organisers',
         'orgName' => 'Brotherhood',
         'shortName' => 'Brotherhood',
         'logoUrl' => '/assets/logos/brotherhood-transparent.png',
         'logoAltText' => 'Brotherhood official logo',
-        'description' => 'Co-organiser advancing disability inclusion, film festivals, and cultural participation across India.',
-    ],
-    [
-        'partnerId' => 'p-2',
-        'category' => 'Organizers',
-        'orgName' => 'Global Inclusive Education Network (GIEN)',
-        'shortName' => 'GIEN',
-        'logoUrl' => '/assets/logos/gien.jpg',
-        'logoAltText' => 'Global Inclusive Education Network (GIEN) official logo',
-        'description' => 'Co-organiser driving inclusive education policy, teacher training, and universal design for learning.',
+        'description' => 'Rights and inclusion of persons with disabilities.',
     ],
     [
         'partnerId' => 'p-3',
-        'category' => 'Venue & Academic Partners',
-        'orgName' => 'The Maharaja Sayajirao University of Baroda',
-        'shortName' => 'MSU Baroda',
-        'logoUrl' => null,
-        'logoAltText' => 'The Maharaja Sayajirao University of Baroda',
-        'description' => 'Committed academic and venue host via Faculty of Social Work and Department of Physical Education.',
+        'category' => 'Organisers',
+        'orgName' => 'Global Inclusive Education Network',
+        'shortName' => 'GIEN',
+        'logoUrl' => '/assets/logos/gien.jpg',
+        'logoAltText' => 'Global Inclusive Education Network (GIEN) official logo',
+        'description' => 'Making education inclusive for every child.',
+    ],
+    [
+        'partnerId' => 'p-4',
+        'category' => 'Venue Partners',
+        'orgName' => 'Faculty of Social Work, MSU Baroda',
+        'shortName' => 'MSU Baroda (FSW)',
+        'logoUrl' => '/assets/logos/msu-baroda.png',
+        'logoAltText' => 'The Maharaja Sayajirao University of Baroda crest',
+        'description' => 'Venue partner hosting academic sessions and inclusive dialogues.',
+    ],
+    [
+        'partnerId' => 'p-5',
+        'category' => 'Venue Partners',
+        'orgName' => 'Department of Physical Education, MSU Baroda',
+        'shortName' => 'MSU Baroda (DPE)',
+        'logoUrl' => '/assets/logos/msu-baroda.png',
+        'logoAltText' => 'The Maharaja Sayajirao University of Baroda crest',
+        'description' => 'Venue partner coordinating adaptive sports and Para Sports.',
+    ],
+    [
+        'partnerId' => 'p-6',
+        'category' => 'Venue Partners',
+        'orgName' => 'GMERS Medical College and Hospital, Gotri',
+        'shortName' => 'GMERS Gotri',
+        'logoUrl' => '/assets/logos/gmers-gotri.png',
+        'logoAltText' => 'GMERS Medical College and Hospital, Gotri crest',
+        'description' => 'Venue and medical readiness partner.',
+    ],
+    [
+        'partnerId' => 'p-7',
+        'category' => 'Knowledge Partners',
+        'orgName' => 'State Commissioner for Persons with Disabilities, Goa',
+        'shortName' => 'SCPD Goa',
+        'logoUrl' => '/assets/logos/scpd-goa.png',
+        'logoAltText' => 'State Commission for Persons with Disabilities - Goa logo',
+        'description' => 'Knowledge Partner supporting Purple Fest exchange.',
+    ],
+    [
+        'partnerId' => 'p-8',
+        'category' => 'Knowledge Partners',
+        'orgName' => 'Department for Empowerment of Persons with Disabilities, Goa',
+        'shortName' => 'DEPwD Goa',
+        'logoUrl' => '/assets/logos/depwd-goa.png',
+        'logoAltText' => 'Department for Empowerment of Persons with Disabilities, Goa logo',
+        'description' => 'Knowledge Partner advancing accessibility practices.',
+    ],
+    [
+        'partnerId' => 'p-9',
+        'category' => 'Academic Partner',
+        'orgName' => 'CDSA, Tata Institute of Social Sciences, Mumbai',
+        'shortName' => 'CDSA-TISS',
+        'logoUrl' => '/assets/logos/cdsa-tiss.jpg',
+        'logoAltText' => 'CDSA, Tata Institute of Social Sciences, Mumbai logo',
+        'description' => 'Academic Partner advancing disability studies and social work research.',
+    ],
+    [
+        'partnerId' => 'p-10',
+        'category' => 'Legal Partner',
+        'orgName' => 'Gujarat National Law University, Gandhinagar',
+        'shortName' => 'GNLU Gandhinagar',
+        'logoUrl' => '/assets/logos/gnlu.png',
+        'logoAltText' => 'Gujarat National Law University, Gandhinagar logo',
+        'description' => 'Legal Partner supporting disability rights and RPwD Act 2016 awareness.',
+    ],
+    [
+        'partnerId' => 'p-11',
+        'category' => 'Education Partner',
+        'orgName' => 'AYJNIHH, Mumbai',
+        'shortName' => 'AYJNISHD(D)',
+        'logoUrl' => '/assets/logos/ayjnihh.png',
+        'logoAltText' => 'AYJNIHH Mumbai official logo',
+        'description' => 'Education Partner supporting speech, hearing, and ISL inclusion.',
     ],
 ];
 
@@ -612,7 +684,8 @@ $structuredData = [
 ];
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
-    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />';
+    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />' . "\n"
+    . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=1" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1105,66 +1178,107 @@ function renderHighlightIconSvg(string $iconName): string
   </section>
 
   <!-- ============================================================
-       7. PARTNERS & ORGANISERS (Consent-Verified Published Only)
+       7. PARTNERS & ORGANISERS (Dark Purple #5B2A86 Partner Showcase)
        ============================================================ -->
+  <?php
+  $partnerBuckets = [
+      'ORGANISERS' => ['title' => 'Organisers', 'items' => []],
+      'VENUE' => ['title' => 'Venue Partners', 'items' => []],
+      'KNOWLEDGE' => ['title' => 'Knowledge Partners', 'items' => []],
+      'ACADEMIC_LEGAL_EDU' => ['title' => 'Academic, Legal & Education Partners', 'items' => []],
+      'STRATEGIC' => ['title' => 'Strategic Partners', 'items' => []],
+  ];
+
+  foreach ($publishedPartners as $partnerItem) {
+      $catRaw = strtolower(trim((string)($partnerItem['category'] ?? '')));
+      $orgRaw = strtolower(trim((string)($partnerItem['orgName'] ?? '')));
+      $roleLabel = '';
+
+      if (str_contains($catRaw, 'organis') || str_contains($catRaw, 'organiz')) {
+          $bucketKey = 'ORGANISERS';
+      } elseif (str_contains($catRaw, 'venue')) {
+          $bucketKey = 'VENUE';
+      } elseif (
+          str_contains($catRaw, 'academic') ||
+          str_contains($catRaw, 'legal') ||
+          str_contains($catRaw, 'education') ||
+          str_contains($orgRaw, 'tiss') ||
+          str_contains($orgRaw, 'gnlu') ||
+          str_contains($orgRaw, 'ayjnihh')
+      ) {
+          $bucketKey = 'ACADEMIC_LEGAL_EDU';
+          if (str_contains($catRaw, 'academic') || str_contains($orgRaw, 'tiss')) {
+              $roleLabel = 'Academic Partner';
+          } elseif (str_contains($catRaw, 'legal') || str_contains($orgRaw, 'gnlu')) {
+              $roleLabel = 'Legal Partner';
+          } elseif (str_contains($catRaw, 'education') || str_contains($orgRaw, 'ayjnihh')) {
+              $roleLabel = 'Education Partner';
+          }
+      } elseif (str_contains($catRaw, 'knowledge')) {
+          $bucketKey = 'KNOWLEDGE';
+      } else {
+          $bucketKey = 'STRATEGIC';
+      }
+
+      $partnerItem['roleLabel'] = $roleLabel;
+      $partnerBuckets[$bucketKey]['items'][] = $partnerItem;
+  }
+
+  $nonEmptyPartnerGroups = array_values(array_filter(
+      $partnerBuckets,
+      static fn(array $grp): bool => !empty($grp['items'])
+  ));
+  ?>
   <section
     id="partners"
     aria-labelledby="partners-heading"
-    class="border-b border-[#202D59]/10 bg-white py-20 sm:py-24"
+    class="pfg-partners-section"
   >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
-      <div class="max-w-2xl space-y-3">
-        <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">
-          Confirmed Collaborations
-        </p>
-        <h2
-          id="partners-heading"
-          class="text-3xl font-extrabold tracking-tight text-[#202D59] sm:text-5xl"
-        >
-          Organisers &amp; Partners
-        </h2>
-        <p class="text-sm text-[#46537C]">
-          Only organisations with verified publication consent are displayed publicly; other
-          invited institutions remain in CMS draft until confirmed.
-        </p>
-      </div>
-
-      <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <?php foreach ($publishedPartners as $partner): ?>
-          <article class="flex flex-col justify-between rounded-xl border border-[#202D59]/12 bg-[#EFEFEF]/45 p-6">
-            <div>
-              <span class="inline-block rounded bg-[#DDDDF9] px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-[#202D59]">
-                <?= htmlspecialchars($partner['category'], ENT_QUOTES, 'UTF-8') ?>
-              </span>
-              <div class="mt-4 flex h-20 items-center justify-start rounded-lg bg-white p-3">
-                <?php if (!empty($partner['logoUrl'])): ?>
-                  <img
-                    src="<?= htmlspecialchars((string)$partner['logoUrl'], ENT_QUOTES, 'UTF-8') ?>"
-                    alt="<?= htmlspecialchars(!empty($partner['logoAltText']) ? (string)$partner['logoAltText'] : $partner['orgName'] . ' logo', ENT_QUOTES, 'UTF-8') ?>"
-                    width="180"
-                    height="56"
-                    loading="lazy"
-                    decoding="async"
-                    class="max-h-14 w-auto object-contain"
-                  />
-                <?php else: ?>
-                  <span class="text-base font-extrabold text-[#202D59]">
-                    <?= htmlspecialchars(!empty($partner['shortName']) ? (string)$partner['shortName'] : $partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
-                  </span>
+    <h2 id="partners-heading" class="sr-only">
+      Organisers and Partners
+    </h2>
+    <div class="pfg-partners-inner">
+      <?php foreach ($nonEmptyPartnerGroups as $gIdx => $group): ?>
+        <?php if ($gIdx > 0): ?>
+          <hr class="pfg-partners-divider" aria-hidden="true" />
+        <?php endif; ?>
+        <div class="pfg-partners-group">
+          <h3 class="pfg-partners-group-title">
+            <?= htmlspecialchars($group['title'], ENT_QUOTES, 'UTF-8') ?>
+          </h3>
+          <div class="pfg-partners-row">
+            <?php foreach ($group['items'] as $partner):
+                $logoUrl = (string)($partner['logoUrl'] ?? '');
+                $isWideTile = $logoUrl !== '' && (str_contains($logoUrl, 'scpd-goa') || str_contains($logoUrl, 'depwd-goa'));
+            ?>
+              <article class="pfg-partner-item<?= $isWideTile ? ' pfg-partner-item--wide' : '' ?>">
+                <div class="pfg-partner-tile">
+                  <?php if ($logoUrl !== ''): ?>
+                    <img
+                      src="<?= htmlspecialchars($logoUrl, ENT_QUOTES, 'UTF-8') ?>"
+                      alt="<?= htmlspecialchars(!empty($partner['logoAltText']) ? (string)$partner['logoAltText'] : (string)$partner['orgName'] . ' logo', ENT_QUOTES, 'UTF-8') ?>"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  <?php else: ?>
+                    <span class="pfg-partner-fallback">
+                      <?= htmlspecialchars(!empty($partner['shortName']) ? (string)$partner['shortName'] : (string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                  <?php endif; ?>
+                </div>
+                <?php if (!empty($partner['roleLabel'])): ?>
+                  <p class="pfg-partner-role">
+                    <?= htmlspecialchars((string)$partner['roleLabel'], ENT_QUOTES, 'UTF-8') ?>
+                  </p>
                 <?php endif; ?>
-              </div>
-              <h3 class="mt-4 text-lg font-bold text-[#202D59]">
-                <?= htmlspecialchars($partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
-              </h3>
-              <?php if (!empty($partner['description'])): ?>
-                <p class="mt-2 text-sm text-[#46537C]">
-                  <?= htmlspecialchars((string)$partner['description'], ENT_QUOTES, 'UTF-8') ?>
+                <p class="pfg-partner-name">
+                  <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
                 </p>
-              <?php endif; ?>
-            </div>
-          </article>
-        <?php endforeach; ?>
-      </div>
+              </article>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      <?php endforeach; ?>
     </div>
   </section>
 
