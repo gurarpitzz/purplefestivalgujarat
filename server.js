@@ -1,10 +1,11 @@
 process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || "1";
+process.env.NODE_ENV = process.env.NODE_ENV || "production";
 
 const { createServer } = require("http");
 const { parse } = require("url");
 const next = require("next");
 
-const dev = process.env.NODE_ENV !== "production";
+const dev = process.env.NODE_ENV === "development";
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
 
@@ -23,6 +24,6 @@ app.prepare().then(() => {
     }
   }).listen(port, (err) => {
     if (err) throw err;
-    console.log(`> Purple Festival Gujarat 2027 ready on http://${hostname}:${port}`);
+    console.log(`> Purple Festival Gujarat 2027 ready on http://${hostname}:${port} (dev=${dev})`);
   });
 });
