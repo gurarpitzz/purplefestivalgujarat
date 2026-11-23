@@ -1,0 +1,73 @@
+# ============================================================================
+# Purple Festival Gujarat 2027 — Apache Routing & Security Rules (.htaccess)
+# ============================================================================
+
+Options -Indexes -MultiViews
+DirectoryIndex index.php index.html
+
+# Prevent Apache mod_dir from issuing 301 trailing-slash redirects on POST requests to directory routes
+<IfModule mod_dir.c>
+    DirectorySlash Off
+</IfModule>
+
+# Block direct HTTP access to sensitive files (.env*, SQL dumps, SQLite DBs)
+<FilesMatch "^(\.env|\.pfg27_env|composer\.(json|lock))|\.(sql|sqlite|sqlite3|db|log)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. Block direct HTTP access to internal directories: database/, includes/, and hidden dotfiles
+    RewriteRule ^(database|includes)(/|$) - [F,L,NC]
+    RewriteRule (^|/)\.(?!well-known/) - [F,L]
+
+    # 2. Explicit clean route mappings for core pages & portals
+    RewriteRule ^$ index.php [QSA,L]
+    RewriteRule ^login/?$ login.php [QSA,L]
+    RewriteRule ^auth/login/?$ auth/login.php [QSA,L]
+    RewriteRule ^programme/?$ programme.php [QSA,L]
+    RewriteRule ^accessibility/?$ accessibility.php [QSA,L]
+    RewriteRule ^apply/?$ apply/index.php [QSA,L]
+    RewriteRule ^dashboard/?$ dashboard/index.php [QSA,L]
+    RewriteRule ^dashboard/pass-print/?$ dashboard/pass-print.php [QSA,L]
+    RewriteRule ^admin/?$ admin/index.php [QSA,L]
+    RewriteRule ^rgst/?$ rgst/index.php [QSA,L]
+    RewriteRule ^legal/privacy/?$ legal/privacy.php [QSA,L]
+    RewriteRule ^legal/terms/?$ legal/terms.php [QSA,L]
+    RewriteRule ^legal/accessibility-statement/?$ legal/accessibility-statement.php [QSA,L]
+
+    # 3. Explicit clean route mappings for JSON API endpoints
+    RewriteRule ^api/registrations/?$ api/registrations/index.php [QSA,L]
+    RewriteRule ^api/checkins/?$ api/checkins/index.php [QSA,L]
+    RewriteRule ^api/checkins/confirm/?$ api/checkins/confirm.php [QSA,L]
+    RewriteRule ^api/coupons/validate/?$ api/coupons/validate.php [QSA,L]
+    RewriteRule ^api/qr/verify/?$ api/qr/verify.php [QSA,L]
+    RewriteRule ^api/qr/pass/?$ api/qr/pass.php [QSA,L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^api/qr/([A-Za-z0-9_-]+)/?$ api/qr/pass.php?registrationId=$1 [QSA,L]
+
+    # 4. Serve existing static assets and files directly
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # 5. Resolve extensionless URLs to matching <path>/index.php if directory exists
+    RewriteCond %{REQUEST_FILENAME}/index.php -f
+    RewriteRule ^(.+?)/?$ $1/index.php [QSA,L]
+
+    # 6. Resolve extensionless URLs to matching <path>.php file (e.g. /api/auth/login -> api/auth/login.php)
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.+?)/?$ $1.php [QSA,L]
+</IfModule>
