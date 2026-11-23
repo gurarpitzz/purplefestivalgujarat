@@ -1,0 +1,41 @@
+name: Build Production Bundle for Bluehost
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Next.js production bundle
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Package .next production bundle
+        run: tar -czf bluehost-next-build.tar.gz .next
+
+      - name: Upload to latest-build GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest-build --yes || true
+          gh release create latest-build bluehost-next-build.tar.gz \
+            --title "Bluehost Production Build (latest)" \
+            --notes "Pre-built Linux x64 .next production bundle for Bluehost deployment."
