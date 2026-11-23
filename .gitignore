@@ -13,6 +13,8 @@ playwright-report/
 test-results/
 coverage/
 hello.txt
+php-site/database/*.sqlite*
+php-site/.env.php
 
 # Raw root reference docs & duplicate media (all normalized assets live in public/assets/ and docs/)
 /*.pdf
