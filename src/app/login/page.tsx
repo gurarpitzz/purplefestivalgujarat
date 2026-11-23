@@ -5,18 +5,32 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   Eye,
   EyeOff,
-  KeyRound,
-  Lock,
-  Mail,
   ShieldCheck,
-  UserPlus,
 } from "lucide-react";
 
 type AuthMode = "login" | "signup" | "forgot" | "reset";
+
+const SPONSORS = [
+  {
+    name: "Purple Festival Gujarat 2027",
+    src: "/assets/logos/purple-festival.jpg",
+  },
+  {
+    name: "Brotherhood",
+    src: "/assets/logos/brotherhood.jpg",
+  },
+  {
+    name: "Global Inclusive Education Network (GIEN)",
+    src: "/assets/logos/gien.jpg",
+  },
+  {
+    name: "Praangan",
+    src: "/assets/logos/praangan.jpg",
+  },
+] as const;
 
 function LoginPortalContent() {
   const router = useRouter();
@@ -204,118 +218,99 @@ function LoginPortalContent() {
     }
   }
 
+  const inputClass =
+    "w-full min-h-[46px] rounded-lg border border-[#DCE5F7] bg-[#EEF4FF] px-4 py-2.5 text-[15px] text-[#202D59] placeholder-[#64748B] transition-colors focus:border-[#202D59] focus:bg-white focus:outline-none";
+
   return (
-    <div className="min-h-screen editorial-hero-bg text-[#F9F7FC] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full mx-auto">
-        <div className="mb-6 flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-sm font-medium text-[#D7CCE2] hover:text-[#F9F7FC] touch-target"
-          >
-            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-            Back to Festival Home
-          </Link>
-          <Link
-            href="/apply"
-            className="text-sm font-semibold text-[#D5B77B] hover:underline touch-target inline-flex items-center"
-          >
-            Register Now
-          </Link>
-        </div>
-
-        <div className="surface-card rounded-2xl bg-[#25212B]/95 border border-[#383242] shadow-2xl p-6 sm:p-8 text-[#F9F7FC]">
-          <div className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#D5B77B]">
-              Purple Festival Gujarat 2027
-            </p>
-            <h1 className="mt-1 font-display text-2xl sm:text-3xl font-semibold text-[#F9F7FC]">
-              {mode === "login" && "Sign In to Your Portal"}
-              {mode === "signup" && "Create Participant Account"}
-              {mode === "forgot" && "Reset Your Password"}
-              {mode === "reset" && "Set a New Password"}
-            </h1>
-            <p className="mt-2 text-sm text-[#D7CCE2]">
-              {mode === "login" &&
-                "Participants, Delegates, Volunteers, SLI Professionals, and Authorized Festival Staff sign in here."}
-              {mode === "signup" &&
-                "Use one account to manage all your registrations, accommodations, and digital QR passes."}
-              {mode === "forgot" &&
-                "Enter your registered email address and we will queue a secure password reset link."}
-              {mode === "reset" &&
-                "Choose a strong new password of at least 8 characters."}
-            </p>
-          </div>
-
-          {(mode === "login" || mode === "signup") && (
-            <div
-              role="tablist"
-              aria-label="Account access mode"
-              className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#17151C] border border-[#383242] mb-6"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === "login"}
-                onClick={() => switchMode("login")}
-                className={`min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
-                  mode === "login"
-                    ? "bg-[#9273B5] text-[#17151C]"
-                    : "text-[#D7CCE2] hover:text-[#F9F7FC]"
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === "signup"}
-                onClick={() => switchMode("signup")}
-                className={`min-h-[44px] rounded-lg text-sm font-semibold transition-colors ${
-                  mode === "signup"
-                    ? "bg-[#9273B5] text-[#17151C]"
-                    : "text-[#D7CCE2] hover:text-[#F9F7FC]"
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-          )}
-
-          {error && (
-            <div
-              role="alert"
-              className="mb-5 rounded-xl bg-[#B42332]/20 border border-[#F07D87]/60 p-4 flex items-start gap-3 text-sm text-[#FFD9DD]"
-            >
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-[#FF99A3]" aria-hidden="true" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {successMsg && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="mb-5 rounded-xl bg-[#19734B]/25 border border-[#56C28E]/60 p-4 flex items-start gap-3 text-sm text-[#D7F7E7]"
-            >
-              <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-[#7DE2B2]" aria-hidden="true" />
-              <span>{successMsg}</span>
-            </div>
-          )}
-
-          {mode === "login" && (
-            <form onSubmit={handleLogin} className="space-y-4" noValidate>
-              <div>
-                <label
-                  htmlFor="login-email"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#16215C] bg-cover bg-center px-4 py-10 sm:px-8 focus:outline-none"
+      style={{
+        backgroundImage: "url('/assets/login-bg.webp')",
+      }}
+    >
+      <div className="relative z-10 mx-auto grid w-full max-w-5xl items-center gap-10 lg:grid-cols-12 lg:gap-12">
+        {/* Left: Clean Floating White Organiser / Sponsor Strip */}
+        <section
+          aria-label="Festival Organisers and Partners"
+          className="order-2 flex justify-center lg:order-1 lg:col-span-6 lg:justify-start"
+        >
+          <div className="w-full max-w-[540px] rounded-2xl bg-white/95 px-5 py-5 shadow-[0_24px_60px_rgba(12,18,48,0.28)] backdrop-blur-sm sm:px-7 sm:py-6">
+            <div className="grid grid-cols-2 items-center gap-y-4 divide-slate-200 sm:grid-cols-4 sm:divide-x">
+              {SPONSORS.map((sponsor) => (
+                <div
+                  key={sponsor.name}
+                  className="flex h-16 items-center justify-center px-3"
                 >
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail
-                    className="w-4 h-4 text-[#B6A1C8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                    aria-hidden="true"
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={sponsor.src}
+                    alt={sponsor.name}
+                    width={120}
+                    height={56}
+                    className="max-h-13 w-auto object-contain"
                   />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Right: Clean Floating White Sign-In Card */}
+        <section
+          aria-labelledby="login-heading"
+          className="order-1 flex justify-center lg:order-2 lg:col-span-6 lg:justify-end"
+        >
+          <div className="w-full max-w-[400px] rounded-2xl bg-white p-8 text-[#202D59] shadow-[0_24px_60px_rgba(12,18,48,0.3)] sm:p-10">
+            <div className="mb-6 text-center">
+              <h1
+                id="login-heading"
+                className="text-2xl font-bold tracking-[-0.02em] text-[#111827] sm:text-[26px]"
+              >
+                {mode === "login" && "Sign In"}
+                {mode === "signup" && "Create Account"}
+                {mode === "forgot" && "Reset Password"}
+                {mode === "reset" && "Set New Password"}
+              </h1>
+              <p className="mt-1 text-xs font-medium text-[#64748B]">
+                {mode === "login" && "With Your Credentials"}
+                {mode === "signup" && "Purple Festival Gujarat 2027 Portal"}
+                {mode === "forgot" && "Enter your registered email address"}
+                {mode === "reset" && "Choose a new password (min. 8 characters)"}
+              </p>
+            </div>
+
+            {error && (
+              <div
+                role="alert"
+                className="mb-4 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-800"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {successMsg && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-4 flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-800"
+              >
+                <CheckCircle2
+                  className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600"
+                  aria-hidden="true"
+                />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {mode === "login" && (
+              <form onSubmit={handleLogin} className="space-y-4" noValidate>
+                <div>
+                  <label htmlFor="login-email" className="sr-only">
+                    Email Address
+                  </label>
                   <input
                     id="login-email"
                     name="email"
@@ -324,33 +319,15 @@ function LoginPortalContent() {
                     autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.org"
-                    className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D] focus:border-[#D5B77B]"
+                    placeholder="Email address"
+                    className={inputClass}
                   />
                 </div>
-              </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label
-                    htmlFor="login-password"
-                    className="block text-sm font-medium text-[#E8DFF0]"
-                  >
+                <div className="relative">
+                  <label htmlFor="login-password" className="sr-only">
                     Password
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => switchMode("forgot")}
-                    className="text-xs font-medium text-[#D5B77B] hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock
-                    className="w-4 h-4 text-[#B6A1C8] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-                    aria-hidden="true"
-                  />
                   <input
                     id="login-password"
                     name="password"
@@ -359,149 +336,146 @@ function LoginPortalContent() {
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    className="w-full min-h-[44px] pl-10 pr-12 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D] focus:border-[#D5B77B]"
+                    placeholder="Password"
+                    className={`${inputClass} pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     aria-pressed={showPassword}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-[#B6A1C8] hover:text-[#F9F7FC] rounded-lg"
+                    className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-[#64748B] hover:text-[#202D59]"
                   >
                     {showPassword ? (
-                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
                     ) : (
-                      <Eye className="w-4 h-4" aria-hidden="true" />
+                      <Eye className="h-4 w-4" aria-hidden="true" />
                     )}
                   </button>
                 </div>
-              </div>
 
-              {mfaRequired && (
-                <div className="rounded-xl bg-[#17151C] border border-[#9273B5] p-4 space-y-2">
-                  <label
-                    htmlFor="login-mfa"
-                    className="flex items-center gap-2 text-sm font-semibold text-[#E8DFF0]"
+                {mfaRequired && (
+                  <div className="space-y-1.5 rounded-lg border border-[#A459FF]/40 bg-[#F5F0FF] p-3">
+                    <label
+                      htmlFor="login-mfa"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-[#202D59]"
+                    >
+                      <ShieldCheck className="h-4 w-4 text-[#A459FF]" aria-hidden="true" />
+                      6-Digit Authenticator Code
+                    </label>
+                    <input
+                      id="login-mfa"
+                      name="mfaCode"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      maxLength={8}
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value)}
+                      placeholder="000 000"
+                      className="w-full min-h-[42px] rounded-md border border-[#DCE5F7] bg-white px-3 text-center font-mono text-base tracking-[0.25em] text-[#202D59]"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
+                >
+                  {loading
+                    ? "Signing in..."
+                    : mfaRequired
+                      ? "Verify & Login"
+                      : "Login"}
+                </button>
+
+                <div className="flex items-center justify-between pt-1 text-xs font-medium text-[#64748B]">
+                  <button
+                    type="button"
+                    onClick={() => switchMode("signup")}
+                    className="hover:text-[#202D59] hover:underline"
                   >
-                    <ShieldCheck className="w-4 h-4 text-[#D5B77B]" aria-hidden="true" />
-                    6-Digit Authenticator Code (MFA)
+                    Create Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchMode("forgot")}
+                    className="hover:text-[#202D59] hover:underline"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {mode === "signup" && (
+              <form onSubmit={handleSignup} className="space-y-3.5" noValidate>
+                <div>
+                  <label htmlFor="signup-name" className="sr-only">
+                    Full Name
                   </label>
                   <input
-                    id="login-mfa"
-                    name="mfaCode"
+                    id="signup-name"
                     type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
                     required
-                    maxLength={8}
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value)}
-                    placeholder="000 000"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-lg bg-[#25212B] border border-[#383242] text-[#F9F7FC] tracking-[0.25em] text-center font-mono text-lg"
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary-pfg w-full min-h-[48px] rounded-xl bg-[#9273B5] hover:bg-[#A58DBB] text-[#17151C] font-bold text-base transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                <KeyRound className="w-4 h-4" aria-hidden="true" />
-                {loading
-                  ? "Signing in..."
-                  : mfaRequired
-                    ? "Verify Code & Sign In"
-                    : "Sign In"}
-              </button>
-            </form>
-          )}
-
-          {mode === "signup" && (
-            <form onSubmit={handleSignup} className="space-y-4" noValidate>
-              <div>
-                <label
-                  htmlFor="signup-name"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
-                >
-                  Full Name
-                </label>
-                <input
-                  id="signup-name"
-                  type="text"
-                  required
-                  autoComplete="name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Aarav Patel"
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="signup-email"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
-                >
-                  Email Address
-                </label>
-                <input
-                  id="signup-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.org"
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label
-                    htmlFor="signup-phone"
-                    className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
-                  >
-                    Phone (Optional)
-                  </label>
-                  <input
-                    id="signup-phone"
-                    type="tel"
-                    autoComplete="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 98250 12345"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D]"
+                    autoComplete="name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Full Name"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="signup-country"
-                    className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
-                  >
-                    Country
+                  <label htmlFor="signup-email" className="sr-only">
+                    Email Address
                   </label>
                   <input
-                    id="signup-country"
-                    type="text"
-                    autoComplete="country-name"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC]"
+                    id="signup-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email address"
+                    className={inputClass}
                   />
                 </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="signup-password"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
-                >
-                  Password (minimum 8 characters)
-                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label htmlFor="signup-phone" className="sr-only">
+                      Phone
+                    </label>
+                    <input
+                      id="signup-phone"
+                      type="tel"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Phone"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="signup-country" className="sr-only">
+                      Country
+                    </label>
+                    <input
+                      id="signup-country"
+                      type="text"
+                      autoComplete="country-name"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      placeholder="Country"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
                 <div className="relative">
+                  <label htmlFor="signup-password" className="sr-only">
+                    Password
+                  </label>
                   <input
                     id="signup-password"
                     type={showPassword ? "text" : "password"}
@@ -510,149 +484,133 @@ function LoginPortalContent() {
                     autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a strong password"
-                    className="w-full min-h-[44px] pl-4 pr-12 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D]"
+                    placeholder="Password (min. 8 chars)"
+                    className={`${inputClass} pr-11`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
                     aria-pressed={showPassword}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-[#B6A1C8] hover:text-[#F9F7FC]"
+                    className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-[#64748B] hover:text-[#202D59]"
                   >
                     {showPassword ? (
-                      <EyeOff className="w-4 h-4" aria-hidden="true" />
+                      <EyeOff className="h-4 w-4" aria-hidden="true" />
                     ) : (
-                      <Eye className="w-4 h-4" aria-hidden="true" />
+                      <Eye className="h-4 w-4" aria-hidden="true" />
                     )}
                   </button>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary-pfg w-full min-h-[48px] rounded-xl bg-[#9273B5] hover:bg-[#A58DBB] text-[#17151C] font-bold text-base transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                <UserPlus className="w-4 h-4" aria-hidden="true" />
-                {loading ? "Creating Account..." : "Create Participant Account"}
-              </button>
-            </form>
-          )}
-
-          {mode === "forgot" && (
-            <form onSubmit={handleForgot} className="space-y-4" noValidate>
-              <div>
-                <label
-                  htmlFor="forgot-email"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
                 >
-                  Registered Email Address
-                </label>
-                <input
-                  id="forgot-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.org"
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] placeholder-[#8E829D]"
-                />
-              </div>
+                  {loading ? "Creating Account..." : "Create Account"}
+                </button>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary-pfg w-full min-h-[48px] rounded-xl bg-[#9273B5] hover:bg-[#A58DBB] text-[#17151C] font-bold text-base transition-colors disabled:opacity-60"
-              >
-                {loading ? "Sending Request..." : "Request Password Reset"}
-              </button>
+                <div className="text-center text-xs font-medium text-[#64748B]">
+                  <button
+                    type="button"
+                    onClick={() => switchMode("login")}
+                    className="hover:text-[#202D59] hover:underline"
+                  >
+                    Already have an account? Sign In
+                  </button>
+                </div>
+              </form>
+            )}
 
-              <button
-                type="button"
-                onClick={() => switchMode("login")}
-                className="w-full min-h-[44px] text-sm font-medium text-[#D7CCE2] hover:text-[#F9F7FC]"
-              >
-                Back to Sign In
-              </button>
-            </form>
-          )}
-
-          {mode === "reset" && (
-            <form onSubmit={handleResetComplete} className="space-y-4" noValidate>
-              <div>
-                <label
-                  htmlFor="reset-token"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
+            {mode === "forgot" && (
+              <form onSubmit={handleForgot} className="space-y-4" noValidate>
+                <div>
+                  <label htmlFor="forgot-email" className="sr-only">
+                    Registered Email Address
+                  </label>
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Registered email address"
+                    className={inputClass}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
                 >
-                  Reset Token
-                </label>
-                <input
-                  id="reset-token"
-                  type="text"
-                  required
-                  value={resetToken}
-                  onChange={(e) => setResetToken(e.target.value)}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC] font-mono text-sm"
-                />
-              </div>
+                  {loading ? "Sending..." : "Request Reset"}
+                </button>
+                <div className="text-center text-xs font-medium text-[#64748B]">
+                  <button
+                    type="button"
+                    onClick={() => switchMode("login")}
+                    className="hover:text-[#202D59] hover:underline"
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              </form>
+            )}
 
-              <div>
-                <label
-                  htmlFor="reset-new-password"
-                  className="block text-sm font-medium text-[#E8DFF0] mb-1.5"
+            {mode === "reset" && (
+              <form onSubmit={handleResetComplete} className="space-y-4" noValidate>
+                <div>
+                  <label htmlFor="reset-token" className="sr-only">
+                    Reset Token
+                  </label>
+                  <input
+                    id="reset-token"
+                    type="text"
+                    required
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Reset token"
+                    className={`${inputClass} font-mono text-sm`}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="reset-new-password" className="sr-only">
+                    New Password
+                  </label>
+                  <input
+                    id="reset-new-password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="New password (min. 8 chars)"
+                    className={inputClass}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary-pfg w-full min-h-[46px] rounded-lg bg-[#A459FF] text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-60"
                 >
-                  New Password (minimum 8 characters)
-                </label>
-                <input
-                  id="reset-new-password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#17151C] border border-[#383242] text-[#F9F7FC]"
-                />
-              </div>
+                  {loading ? "Updating..." : "Update Password"}
+                </button>
+              </form>
+            )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary-pfg w-full min-h-[48px] rounded-xl bg-[#9273B5] hover:bg-[#A58DBB] text-[#17151C] font-bold text-base transition-colors disabled:opacity-60"
+            <div className="mt-6 text-center">
+              <Link
+                href="/"
+                className="text-sm font-medium text-[#A459FF] transition-colors hover:text-[#202D59] hover:underline"
               >
-                {loading ? "Updating Password..." : "Update Password"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => switchMode("login")}
-                className="w-full min-h-[44px] text-sm font-medium text-[#D7CCE2] hover:text-[#F9F7FC]"
-              >
-                Back to Sign In
-              </button>
-            </form>
-          )}
-
-          <div className="mt-6 pt-5 border-t border-[#383242] text-xs text-[#D7CCE2] flex flex-col gap-1.5">
-            <p>
-              Staff accounts (Admin, Superadmin, and Reception Desk RGST) are
-              automatically routed to their authorized portal upon sign-in.
-            </p>
-            <p>
-              Need accessibility assistance? Email{" "}
-              <a
-                href="mailto:purplefestivalvadodara@gmail.com"
-                className="text-[#D5B77B] underline"
-              >
-                purplefestivalvadodara@gmail.com
-              </a>
-              .
-            </p>
+                Return to Home Page
+              </Link>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -660,7 +618,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen editorial-hero-bg flex items-center justify-center text-[#F9F7FC]">
+        <div className="flex min-h-screen items-center justify-center bg-[#16215C] text-white">
           Loading sign-in portal...
         </div>
       }
