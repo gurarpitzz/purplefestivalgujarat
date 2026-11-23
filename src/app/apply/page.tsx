@@ -5,10 +5,13 @@ import { getCurrentUser } from "@/lib/auth";
 import {
   ACCOMMODATION_TYPES_SEED,
   FESTIVAL_EDITION_SLUG,
-  REGISTRATION_CATEGORIES_SEED,
   RPWD_21_DISABILITIES,
 } from "@/lib/constants";
-import RegistrationWizard from "@/components/RegistrationWizard";
+import RegistrationWizard, {
+  type AccommodationOption,
+  type CategoryOption,
+  type DisabilityOption,
+} from "@/components/RegistrationWizard";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +21,45 @@ export const metadata = {
     "Accessible registration for Attendees, Delegates, Volunteers, and Indian Sign Language Interpreters for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara).",
 };
 
+const FALLBACK_CATEGORIES: CategoryOption[] = [
+  {
+    id: "ATTENDEE",
+    code: "ATTENDEE",
+    name: "General Attendee / Visitor",
+    description: "Free entry to cultural stages, exhibitions, para-sports & festival zones.",
+    requiresApproval: false,
+    requiresPayment: false,
+    feeAmountInr: 0,
+  },
+  {
+    id: "DELEGATE",
+    code: "DELEGATE",
+    name: "Conference Delegate",
+    description: "Full access to policy panels, NEP 2020 & UDL symposiums, and delegate kit.",
+    requiresApproval: false,
+    requiresPayment: false,
+    feeAmountInr: 0,
+  },
+  {
+    id: "VOLUNTEER",
+    code: "VOLUNTEER",
+    name: "Festival Volunteer",
+    description: "Join the accessibility & hospitality volunteer corps (requires approval).",
+    requiresApproval: true,
+    requiresPayment: false,
+    feeAmountInr: 0,
+  },
+  {
+    id: "SLI",
+    code: "SLI",
+    name: "Sign Language Interpreter (SLI)",
+    description: "Certified Indian Sign Language interpreter supporting festival stages & panels.",
+    requiresApproval: true,
+    requiresPayment: false,
+    feeAmountInr: 0,
+  },
+];
+
 export default async function ApplyPage({
   searchParams,
 }: {
@@ -25,28 +67,9 @@ export default async function ApplyPage({
 }) {
   const params = await searchParams;
 
-  let categories: Array<{
-    id: string;
-    code: string;
-    name: string;
-    description: string | null;
-    requiresPayment: boolean;
-    feeInr: number;
-    requiresApproval: boolean;
-    requiresDocumentUpload: boolean;
-  }> = [];
-  let disabilityCategories: Array<{
-    id: string;
-    code: string;
-    name: string;
-    rpwdGroup: string;
-  }> = [];
-  let accommodationTypes: Array<{
-    id: string;
-    code: string;
-    label: string;
-    description: string | null;
-  }> = [];
+  let categories: CategoryOption[] = [];
+  let disabilityCategories: DisabilityOption[] = [];
+  let accommodationTypes: AccommodationOption[] = [];
   let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
 
   try {
@@ -90,16 +113,7 @@ export default async function ApplyPage({
   }
 
   if (categories.length === 0) {
-    categories = REGISTRATION_CATEGORIES_SEED.map((c) => ({
-      id: c.code,
-      code: c.code,
-      name: c.name,
-      description: c.description,
-      requiresPayment: c.requiresPayment,
-      feeInr: c.feeInr,
-      requiresApproval: c.requiresApproval,
-      requiresDocumentUpload: c.requiresDocumentUpload,
-    }));
+    categories = FALLBACK_CATEGORIES;
   }
 
   if (disabilityCategories.length === 0) {
@@ -108,6 +122,7 @@ export default async function ApplyPage({
       code: d.code,
       name: d.name,
       rpwdGroup: d.rpwdGroup,
+      description: d.description,
     }));
   }
 
