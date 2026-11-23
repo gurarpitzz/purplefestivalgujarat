@@ -36,7 +36,7 @@ export function WelcomeCharacters({ className = "" }: WelcomeCharactersProps) {
         alt=""
         width={680}
         height={480}
-        loading="lazy"
+        loading="eager"
         decoding="async"
         className="h-full w-auto max-w-none object-contain object-bottom drop-shadow-[0_3px_10px_rgba(166,154,216,0.22)]"
       />

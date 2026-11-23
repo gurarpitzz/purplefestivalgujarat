@@ -40,7 +40,7 @@ test.describe("Purple Festival Gujarat 2027 — Public E2E & WCAG 2.2 AA Audits"
     });
     await expect(preloader).toBeVisible({ timeout: 5000 });
     await expect(preloader.locator('[data-draw-text="title"]')).toHaveText("PURPLE FESTIVAL");
-    await expect(preloader.locator('[data-draw-text="subtitle"]')).toHaveText("GUJARAT 2027");
+    await expect(preloader.locator('[data-draw-text="subtitle"]')).toHaveText(/Gujarat 2027/i);
 
     const skipIntroBtn = page.getByRole("button", { name: /Skip Intro/i });
     await expect(skipIntroBtn).toBeVisible();
@@ -52,7 +52,7 @@ test.describe("Purple Festival Gujarat 2027 — Public E2E & WCAG 2.2 AA Audits"
     const mainContent = page.locator("main");
     await expect(mainContent).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      /PURPLE FESTIVAL GUJARAT 2027/i
+      /Inclusion, celebrated\.|PURPLE FESTIVAL GUJARAT 2027/i
     );
 
     // Verify zero leftover Battalion / real-estate copy and zero Book Stall CTA

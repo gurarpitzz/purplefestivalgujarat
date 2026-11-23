@@ -118,72 +118,107 @@ const FALLBACK_GALLERY = [
   },
 ];
 
-async function getHomePageData() {
+type HomePagePayload = {
+  sections: (typeof schema.cmsSections.$inferSelect)[];
+  publishedPartners: Array<{
+    partnerId: string;
+    category: string;
+    displayOrder: number;
+    orgName: string;
+    shortName: string | null;
+    logoUrl: string | null;
+    logoAltText: string | null;
+    description: string | null;
+    websiteUrl: string | null;
+  }>;
+  programme: (typeof schema.programmeItems.$inferSelect)[];
+  disabilities: (typeof schema.disabilityCategories.$inferSelect)[];
+  faqs: (typeof schema.faqItems.$inferSelect)[];
+  gallery: (typeof schema.mediaAssets.$inferSelect)[];
+};
+
+let homeCache: { expiresAt: number; data: HomePagePayload } | null = null;
+
+async function getHomePageData(): Promise<HomePagePayload> {
+  const now = Date.now();
+  if (homeCache && homeCache.expiresAt > now) {
+    return homeCache.data;
+  }
+
   try {
-    const [homePage] = await db
-      .select()
-      .from(schema.cmsPages)
-      .where(eq(schema.cmsPages.slug, "home"))
-      .limit(1);
-
-    const sections = homePage
-      ? await db
-          .select()
-          .from(schema.cmsSections)
-          .where(
-            and(
-              eq(schema.cmsSections.pageId, homePage.id),
-              eq(schema.cmsSections.status, "PUBLISHED")
-            )
+    const [
+      sections,
+      publishedPartners,
+      programme,
+      disabilities,
+      faqs,
+      gallery,
+    ] = await Promise.all([
+      db
+        .select({
+          id: schema.cmsSections.id,
+          pageId: schema.cmsSections.pageId,
+          sectionKey: schema.cmsSections.sectionKey,
+          title: schema.cmsSections.title,
+          subtitle: schema.cmsSections.subtitle,
+          body: schema.cmsSections.body,
+          data: schema.cmsSections.data,
+          displayOrder: schema.cmsSections.displayOrder,
+          status: schema.cmsSections.status,
+          updatedBy: schema.cmsSections.updatedBy,
+          updatedAt: schema.cmsSections.updatedAt,
+        })
+        .from(schema.cmsSections)
+        .innerJoin(schema.cmsPages, eq(schema.cmsSections.pageId, schema.cmsPages.id))
+        .where(
+          and(
+            eq(schema.cmsPages.slug, "home"),
+            eq(schema.cmsSections.status, "PUBLISHED")
           )
-          .orderBy(asc(schema.cmsSections.displayOrder))
-      : [];
+        )
+        .orderBy(asc(schema.cmsSections.displayOrder)),
+      db
+        .select({
+          partnerId: schema.partners.id,
+          category: schema.partners.category,
+          displayOrder: schema.partners.displayOrder,
+          orgName: schema.organizations.name,
+          shortName: schema.organizations.shortName,
+          logoUrl: schema.organizations.logoUrl,
+          logoAltText: schema.organizations.logoAltText,
+          description: schema.organizations.description,
+          websiteUrl: schema.organizations.websiteUrl,
+        })
+        .from(schema.partners)
+        .innerJoin(
+          schema.organizations,
+          eq(schema.partners.organizationId, schema.organizations.id)
+        )
+        .where(eq(schema.partners.status, "PUBLISHED"))
+        .orderBy(asc(schema.partners.displayOrder)),
+      db
+        .select()
+        .from(schema.programmeItems)
+        .where(eq(schema.programmeItems.status, "PUBLISHED"))
+        .orderBy(asc(schema.programmeItems.dayNumber), asc(schema.programmeItems.displayOrder))
+        .limit(6),
+      db
+        .select()
+        .from(schema.disabilityCategories)
+        .orderBy(asc(schema.disabilityCategories.displayOrder)),
+      db
+        .select()
+        .from(schema.faqItems)
+        .where(eq(schema.faqItems.status, "PUBLISHED"))
+        .orderBy(asc(schema.faqItems.displayOrder)),
+      db
+        .select()
+        .from(schema.mediaAssets)
+        .where(eq(schema.mediaAssets.category, "GALLERY"))
+        .limit(6),
+    ]);
 
-    const publishedPartners = await db
-      .select({
-        partnerId: schema.partners.id,
-        category: schema.partners.category,
-        displayOrder: schema.partners.displayOrder,
-        orgName: schema.organizations.name,
-        shortName: schema.organizations.shortName,
-        logoUrl: schema.organizations.logoUrl,
-        logoAltText: schema.organizations.logoAltText,
-        description: schema.organizations.description,
-        websiteUrl: schema.organizations.websiteUrl,
-      })
-      .from(schema.partners)
-      .innerJoin(
-        schema.organizations,
-        eq(schema.partners.organizationId, schema.organizations.id)
-      )
-      .where(eq(schema.partners.status, "PUBLISHED"))
-      .orderBy(asc(schema.partners.displayOrder));
-
-    const programme = await db
-      .select()
-      .from(schema.programmeItems)
-      .where(eq(schema.programmeItems.status, "PUBLISHED"))
-      .orderBy(asc(schema.programmeItems.dayNumber), asc(schema.programmeItems.displayOrder))
-      .limit(6);
-
-    const disabilities = await db
-      .select()
-      .from(schema.disabilityCategories)
-      .orderBy(asc(schema.disabilityCategories.displayOrder));
-
-    const faqs = await db
-      .select()
-      .from(schema.faqItems)
-      .where(eq(schema.faqItems.status, "PUBLISHED"))
-      .orderBy(asc(schema.faqItems.displayOrder));
-
-    const gallery = await db
-      .select()
-      .from(schema.mediaAssets)
-      .where(eq(schema.mediaAssets.category, "GALLERY"))
-      .limit(6);
-
-    return {
+    const payload: HomePagePayload = {
       sections,
       publishedPartners,
       programme,
@@ -191,6 +226,11 @@ async function getHomePageData() {
       faqs,
       gallery,
     };
+
+    if (sections.length > 0 || disabilities.length > 0) {
+      homeCache = { expiresAt: now + 15_000, data: payload };
+    }
+    return payload;
   } catch {
     return {
       sections: [],
@@ -302,8 +342,76 @@ export default async function HomePage() {
           { name: "Satish Kapoor", number: "+91 92117 60202" },
         ];
 
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Festival",
+        "@id": "https://purplefestivalgujarat.com/#festival",
+        name: "Purple Festival Gujarat 2027",
+        alternateName: "PurpleFest Gujarat 2027",
+        description:
+          "India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities under the RPwD Act 2016.",
+        startDate: "2027-01-21T09:00:00+05:30",
+        endDate: "2027-01-23T21:00:00+05:30",
+        eventStatus: "https://schema.org/EventScheduled",
+        eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+        isAccessibleForFree: true,
+        inLanguage: ["en-IN", "gu", "hi"],
+        image: ["https://purplefestivalgujarat.com/assets/logos/purple-festival.jpg"],
+        location: {
+          "@type": "Place",
+          name: "The Maharaja Sayajirao University of Baroda & Vadodara Sports Venues",
+          address: {
+            "@type": "PostalAddress",
+            addressLocality: "Vadodara",
+            addressRegion: "Gujarat",
+            postalCode: "390002",
+            addressCountry: "IN",
+          },
+        },
+        organizer: [
+          {
+            "@type": "Organization",
+            name: "Brotherhood",
+            url: "https://purplefestivalgujarat.com",
+          },
+          {
+            "@type": "Organization",
+            name: "Global Inclusive Education Network (GIEN)",
+            url: "https://purplefestivalgujarat.com",
+          },
+        ],
+        offers: {
+          "@type": "Offer",
+          url: "https://purplefestivalgujarat.com/apply",
+          price: "0",
+          priceCurrency: "INR",
+          availability: "https://schema.org/InStock",
+          validFrom: "2026-11-01T00:00:00+05:30",
+        },
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://purplefestivalgujarat.com/#faq",
+        mainEntity: faqList.map((f) => ({
+          "@type": "Question",
+          name: f.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: f.answer,
+          },
+        })),
+      },
+    ],
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       <Preloader />
       <SiteHeader />
 
@@ -655,6 +763,10 @@ export default async function HomePage() {
                         <img
                           src={partner.logoUrl}
                           alt={partner.logoAltText || `${partner.orgName} logo`}
+                          width={180}
+                          height={56}
+                          loading="lazy"
+                          decoding="async"
                           className="max-h-14 w-auto object-contain"
                         />
                       ) : (
@@ -706,7 +818,10 @@ export default async function HomePage() {
                     <img
                       src={img.url}
                       alt={img.altText}
+                      width={800}
+                      height={500}
                       loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
                     />
                   </div>

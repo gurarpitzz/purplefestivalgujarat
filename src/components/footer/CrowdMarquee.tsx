@@ -94,6 +94,7 @@ export function CrowdMarquee({
     const ctxs = [backCtx, frontCtx];
     const imgs = CROWD_SHEETS.map((src) => {
       const im = new Image();
+      im.decoding = "async";
       im.src = src;
       return im;
     });
@@ -353,7 +354,15 @@ export function CrowdMarquee({
 
     Promise.all(
       imgs.map((im) =>
-        im.decode ? im.decode().catch(() => {}) : Promise.resolve()
+        (im.decode ? im.decode().catch(() => {}) : Promise.resolve()).then(() => {
+          if (unmounted) return;
+          if (!assetsReady) {
+            assetsReady = true;
+            rebuildLayout();
+          } else {
+            syncAnimation();
+          }
+        })
       )
     ).then(() => {
       if (unmounted) return;
