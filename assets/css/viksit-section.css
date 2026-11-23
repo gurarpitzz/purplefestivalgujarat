@@ -1,0 +1,347 @@
+/* ==========================================================================
+   Viksit Bharat@2047 Section — Royal Purple Illustrated Layout
+   ========================================================================== */
+
+.pfg-viksit-section,
+.pfg-viksit-section *,
+.pfg-viksit-section *::before,
+.pfg-viksit-section *::after {
+  box-sizing: border-box;
+}
+
+.pfg-viksit-section {
+  position: relative;
+  overflow: hidden;
+  color: #ffffff;
+  background:
+    radial-gradient(ellipse 48% 58% at 18% 36%, rgba(176, 126, 255, 0.48) 0%, transparent 72%),
+    radial-gradient(ellipse 55% 40% at 62% 85%, rgba(206, 166, 255, 0.34) 0%, transparent 72%),
+    linear-gradient(112deg, #8448f2 0%, #682ecf 42%, #501ca8 78%, #602ac2 100%);
+  padding: 3.5rem 0 5.5rem;
+}
+
+@media (min-width: 1024px) {
+  .pfg-viksit-section {
+    min-height: 575px;
+    padding: 3.75rem 0 8.5rem;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Decorative Atmospheric Layers */
+.pfg-viksit-mandala {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: clamp(160px, 20vw, 310px);
+  height: auto;
+  z-index: 1;
+  opacity: 0.72;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pfg-viksit-skyline {
+  position: absolute;
+  right: 0;
+  bottom: clamp(8px, 1.5vw, 22px);
+  width: clamp(420px, 55vw, 860px);
+  height: auto;
+  z-index: 2;
+  opacity: 0.78;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.7) 14%, #000000 32%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.7) 14%, #000000 32%);
+  pointer-events: none;
+  user-select: none;
+}
+
+.pfg-viksit-bottom-waves {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: clamp(54px, 6.8vw, 108px);
+  z-index: 4;
+  display: block;
+  pointer-events: none;
+}
+
+/* Portrait Image (mobile flush-left above wave, desktop anchored bottom-left) */
+.pfg-viksit-portrait {
+  position: relative;
+  display: block;
+  width: min(310px, 84vw);
+  height: auto;
+  margin: 1.5rem auto -4.5rem 0;
+  z-index: 3;
+  pointer-events: none;
+  user-select: none;
+}
+
+@media (min-width: 1024px) {
+  .pfg-viksit-portrait {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    margin: 0;
+    height: clamp(420px, 38vw, 545px);
+    width: auto;
+    max-width: 36vw;
+    object-fit: contain;
+    object-position: left bottom;
+  }
+}
+
+/* Main Content Layout */
+.pfg-viksit-inner {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2.25rem;
+  align-items: center;
+}
+
+@media (min-width: 640px) {
+  .pfg-viksit-inner {
+    padding: 0 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pfg-viksit-inner {
+    padding-left: clamp(295px, 27vw, 395px);
+    padding-right: 2.25rem;
+    grid-template-columns: minmax(0, 1.02fr) minmax(0, 1.08fr);
+    gap: clamp(1.5rem, 3vw, 2.75rem);
+  }
+}
+
+/* Center Narrative Copy */
+.pfg-viksit-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.pfg-viksit-eyebrow {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.pfg-viksit-bar {
+  margin-top: 0.7rem;
+  width: 56px;
+  height: 2.5px;
+  border-radius: 9999px;
+  background-color: #ffffff;
+}
+
+.pfg-viksit-title {
+  margin: 0.95rem 0 0;
+  font-size: clamp(1.9rem, 3.15vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  text-shadow: 0 2px 14px rgba(40, 12, 90, 0.25);
+}
+
+.pfg-viksit-body {
+  margin: 1.15rem 0 0;
+  max-width: 44ch;
+  font-size: 0.98rem;
+  line-height: 1.58;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.pfg-viksit-disclaimer {
+  margin: 1.35rem 0 0;
+  padding-left: 0.9rem;
+  border-left: 2.5px solid rgba(255, 255, 255, 0.8);
+  max-width: 44ch;
+  font-size: 0.82rem;
+  line-height: 1.52;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Right Pillar Arc + Frosted Pills + Parliament Badge */
+.pfg-viksit-visual-right {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .pfg-viksit-visual-right {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0;
+  }
+}
+
+.pfg-viksit-arc-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pfg-viksit-arc-svg {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .pfg-viksit-arc-wrap {
+    flex: 1;
+    padding-left: 2.15rem;
+  }
+
+  .pfg-viksit-arc-svg {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 8%;
+    width: 38px;
+    height: 84%;
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+.pfg-viksit-pill {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.62rem 1.15rem 0.62rem 0.72rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(235, 220, 255, 0.94) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 24px rgba(42, 12, 92, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  color: #19103d;
+}
+
+@media (min-width: 640px) {
+  .pfg-viksit-pill {
+    max-width: 312px;
+  }
+
+  .pfg-viksit-pill:nth-of-type(1),
+  .pfg-viksit-pill:nth-of-type(4) {
+    margin-left: 1.4rem;
+  }
+
+  .pfg-viksit-pill:nth-of-type(2),
+  .pfg-viksit-pill:nth-of-type(3) {
+    margin-left: 0;
+  }
+}
+
+.pfg-viksit-pill-icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background-color: #ede2ff;
+  color: #241254;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pfg-viksit-pill-icon svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+}
+
+.pfg-viksit-pill-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.24;
+  color: #19103d;
+}
+
+/* Circular Viksit Bharat @2047 Emblem */
+.pfg-viksit-emblem {
+  position: relative;
+  z-index: 3;
+  width: 152px;
+  height: 152px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 28%, #ffffff 0%, #efe3ff 58%, #cfafff 100%);
+  border: 2px solid rgba(255, 255, 255, 0.86);
+  box-shadow: 0 12px 32px rgba(34, 10, 78, 0.3), 0 0 28px rgba(212, 180, 255, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.8rem;
+}
+
+@media (min-width: 640px) {
+  .pfg-viksit-emblem {
+    margin-left: -1.35rem;
+  }
+}
+
+.pfg-viksit-emblem-svg {
+  width: 78px;
+  height: auto;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.pfg-viksit-emblem-title {
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: #19103d;
+}
+
+.pfg-viksit-emblem-year {
+  margin: 0.1rem 0 0;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #3f188f;
+}
+
+/* Accessibility: High Contrast */
+html[data-contrast="high"] .pfg-viksit-section {
+  background: #220a4d;
+}
+
+html[data-contrast="high"] .pfg-viksit-pill,
+html[data-contrast="high"] .pfg-viksit-emblem {
+  background: #ffffff;
+  border: 2px solid #19103d;
+}
+
+/* Accessibility: Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  .pfg-viksit-section * {
+    transition: none !important;
+  }
+}

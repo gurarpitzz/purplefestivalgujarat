@@ -684,6 +684,7 @@ $structuredData = [
 ];
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
+    . '  <link rel="stylesheet" href="/assets/css/viksit-section.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />';
 
@@ -965,78 +966,190 @@ function renderHighlightIconSvg(string $iconName): string
   </section>
 
   <!-- ============================================================
-       3. VIKSIT BHARAT@2047
+       3. VIKSIT BHARAT@2047 (Royal Purple Illustrated Vision Showcase)
        ============================================================ -->
+  <?php
+  $viksitEyebrow = !empty($viksitSection['subtitle'])
+      ? (string)$viksitSection['subtitle']
+      : "Aligned with India's Vision for 2047";
+  $viksitTitle = !empty($viksitSection['title'])
+      ? (string)$viksitSection['title']
+      : 'A Viksit Bharat Must Be an Inclusive Bharat.';
+  $viksitBody = !empty($viksitSection['body'])
+      ? (string)$viksitSection['body']
+      : "India's vision for Viksit Bharat@2047 is about progress that reaches every citizen. Purple Festival Gujarat 2027 advances accessible education, dignified livelihoods, assistive technology, and equal cultural participation as pillars of an inclusive nation.";
+  $viksitDisclaimer = !empty($viksitData['disclaimer'])
+      ? (string)$viksitData['disclaimer']
+      : 'Purple Festival Gujarat 2027 contributes to the wider national vision for inclusive development under Viksit Bharat@2047.';
+
+  $viksitPillarItems = [
+      [
+          'label' => 'Inclusive Education & NEP 2020',
+          'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></svg>',
+      ],
+      [
+          'label' => 'Assistive & Digital Public Innovation',
+          'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="11" x="4" y="4" rx="2"/><path d="M2 19h20"/><path d="M9 9.5h6"/></svg>',
+      ],
+      [
+          'label' => 'Dignified Livelihoods & Equal Opportunity',
+          'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></svg>',
+      ],
+      [
+          'label' => 'Barrier-Free Cultural & Civic Participation',
+          'icon'  => '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a3 3 0 0 1 0 5.74"/></svg>',
+      ],
+  ];
+  ?>
   <section
     aria-labelledby="viksit-heading"
-    class="bg-[#202D59] py-20 text-white sm:py-24"
+    class="pfg-viksit-section"
     data-surface="dark"
   >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
-      <div class="grid gap-10 lg:grid-cols-12 lg:items-center">
-        <div class="space-y-5 lg:col-span-8">
-          <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#DDDDF9]">
-            <?= htmlspecialchars(
-                !empty($viksitSection['subtitle'])
-                    ? (string)$viksitSection['subtitle']
-                    : "Aligned with India's Vision for 2047",
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
-          </p>
-          <h2
-            id="viksit-heading"
-            class="text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl"
-          >
-            <?= htmlspecialchars(
-                !empty($viksitSection['title'])
-                    ? (string)$viksitSection['title']
-                    : 'A Viksit Bharat Must Be an Inclusive Bharat.',
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
-          </h2>
-          <p class="max-w-3xl text-base leading-relaxed text-[#DDDDF9] sm:text-lg">
-            <?= htmlspecialchars(
-                !empty($viksitSection['body'])
-                    ? (string)$viksitSection['body']
-                    : "India's vision for Viksit Bharat@2047 is about progress that reaches every citizen. Purple Festival Gujarat 2027 advances accessible education, dignified livelihoods, assistive technology, and equal cultural participation as pillars of an inclusive nation.",
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
-          </p>
-          <p class="text-xs text-[#DDDDF9]/75">
-            <?= htmlspecialchars(
-                !empty($viksitData['disclaimer'])
-                    ? (string)$viksitData['disclaimer']
-                    : 'Purple Festival Gujarat 2027 contributes to the wider national vision for inclusive development under Viksit Bharat@2047.',
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
-          </p>
-        </div>
+    <!-- Subtle Ashoka Chakra Watermark behind Portrait -->
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 200 200"
+      style="position:absolute;left:18px;top:36px;width:clamp(190px,18vw,290px);height:auto;z-index:1;opacity:0.15;pointer-events:none;color:#ffffff;"
+    >
+      <circle cx="100" cy="100" r="88" fill="none" stroke="currentColor" stroke-width="8" />
+      <circle cx="100" cy="100" r="18" fill="currentColor" />
+      <g stroke="currentColor" stroke-width="3">
+        <?php for ($sp = 0; $sp < 24; $sp++): $ang = $sp * 15; ?>
+          <line x1="100" y1="82" x2="100" y2="16" transform="rotate(<?= $ang ?> 100 100)" />
+        <?php endfor; ?>
+      </g>
+    </svg>
 
-        <div class="grid gap-3 sm:grid-cols-2 lg:col-span-4 lg:grid-cols-1">
-          <?php
-          $viksitPillars = [
-              'Inclusive Education & NEP 2020',
-              'Assistive & Digital Public Innovation',
-              'Dignified Livelihoods & Equal Opportunity',
-              'Barrier-Free Cultural & Civic Participation',
-          ];
-          foreach ($viksitPillars as $pillar):
-          ?>
-            <div class="flex items-center gap-3 rounded-lg border border-white/15 bg-white/10 px-4 py-3.5 text-sm font-semibold text-white">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 shrink-0 text-[#A459FF]" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="m9 12 2 2 4-4" />
-              </svg>
-              <span><?= htmlspecialchars($pillar, ENT_QUOTES, 'UTF-8') ?></span>
+    <!-- Decorative Top-Right Mandala & Bottom Gujarat Skyline -->
+    <img
+      src="/assets/illustrations/viksit-mandala-tr.png"
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      decoding="async"
+      class="pfg-viksit-mandala"
+    />
+    <img
+      src="/assets/illustrations/viksit-skyline-bottom.png"
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      decoding="async"
+      class="pfg-viksit-skyline"
+    />
+
+    <!-- Main Inner Layout -->
+    <div class="pfg-viksit-inner">
+      <div class="pfg-viksit-copy">
+        <p class="pfg-viksit-eyebrow">
+          <?= htmlspecialchars($viksitEyebrow, ENT_QUOTES, 'UTF-8') ?>
+        </p>
+        <div class="pfg-viksit-bar" aria-hidden="true"></div>
+        <h2 id="viksit-heading" class="pfg-viksit-title">
+          <?= htmlspecialchars($viksitTitle, ENT_QUOTES, 'UTF-8') ?>
+        </h2>
+        <p class="pfg-viksit-body">
+          <?= htmlspecialchars($viksitBody, ENT_QUOTES, 'UTF-8') ?>
+        </p>
+        <p class="pfg-viksit-disclaimer">
+          <?= htmlspecialchars($viksitDisclaimer, ENT_QUOTES, 'UTF-8') ?>
+        </p>
+      </div>
+
+      <div class="pfg-viksit-visual-right">
+        <div class="pfg-viksit-arc-wrap">
+          <svg
+            class="pfg-viksit-arc-svg"
+            viewBox="0 0 42 280"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <path d="M 34 18 Q 10 140 34 262" fill="none" stroke="rgba(255,255,255,0.68)" stroke-width="2" />
+            <circle cx="30" cy="28" r="5" fill="#ffffff" />
+            <circle cx="22" cy="100" r="5" fill="#ffffff" />
+            <circle cx="22" cy="180" r="5" fill="#ffffff" />
+            <circle cx="30" cy="252" r="5" fill="#ffffff" />
+          </svg>
+          <?php foreach ($viksitPillarItems as $vPillar): ?>
+            <div class="pfg-viksit-pill">
+              <span class="pfg-viksit-pill-icon" aria-hidden="true">
+                <?= $vPillar['icon'] ?>
+              </span>
+              <span class="pfg-viksit-pill-label">
+                <?= htmlspecialchars($vPillar['label'], ENT_QUOTES, 'UTF-8') ?>
+              </span>
             </div>
           <?php endforeach; ?>
         </div>
+
+        <div class="pfg-viksit-emblem" aria-label="Viksit Bharat @2047 Emblem">
+          <svg
+            class="pfg-viksit-emblem-svg"
+            viewBox="0 0 110 72"
+            fill="none"
+            aria-hidden="true"
+          >
+            <!-- Tricolour Flag -->
+            <line x1="55" y1="30" x2="55" y2="4" stroke="#3B1A7A" stroke-width="2.2" stroke-linecap="round" />
+            <rect x="56" y="5" width="22" height="5" fill="#FF9933" rx="0.5" />
+            <rect x="56" y="10" width="22" height="5" fill="#FFFFFF" />
+            <rect x="56" y="15" width="22" height="5" fill="#138808" rx="0.5" />
+            <circle cx="67" cy="12.5" r="2" fill="none" stroke="#1D3A8A" stroke-width="0.9" />
+            <!-- Parliament Dome & Colonade -->
+            <path d="M12 44 C28 24 82 24 98 44 Z" fill="#5D35B0" opacity="0.24" />
+            <path d="M16 44 C32 27 78 27 94 44" stroke="#3B1A7A" stroke-width="2.2" stroke-linecap="round" />
+            <rect x="10" y="44" width="90" height="4" rx="1.5" fill="#3B1A7A" />
+            <g stroke="#3B1A7A" stroke-width="2.6" stroke-linecap="round">
+              <line x1="18" y1="49" x2="18" y2="63" />
+              <line x1="28" y1="49" x2="28" y2="63" />
+              <line x1="38" y1="49" x2="38" y2="63" />
+              <line x1="48" y1="49" x2="48" y2="63" />
+              <line x1="58" y1="49" x2="58" y2="63" />
+              <line x1="68" y1="49" x2="68" y2="63" />
+              <line x1="78" y1="49" x2="78" y2="63" />
+              <line x1="88" y1="49" x2="88" y2="63" />
+            </g>
+            <rect x="6" y="64" width="98" height="4" rx="2" fill="#3B1A7A" />
+          </svg>
+          <p class="pfg-viksit-emblem-title">Viksit Bharat</p>
+          <p class="pfg-viksit-emblem-year">@2047</p>
+        </div>
       </div>
     </div>
+
+    <!-- Hon'ble PM Portrait + Tricolour Ribbon -->
+    <img
+      src="/assets/illustrations/viksit-pm-portrait.png"
+      alt="Hon'ble Prime Minister Narendra Modi — Viksit Bharat@2047"
+      loading="lazy"
+      decoding="async"
+      class="pfg-viksit-portrait"
+    />
+
+    <!-- Flowing Bottom Purple Waves -->
+    <svg
+      class="pfg-viksit-bottom-waves"
+      viewBox="0 0 1600 120"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="pfgViksitWaveBack" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#8A4BF5" stop-opacity="0.72" />
+          <stop offset="50%" stop-color="#A16BFF" stop-opacity="0.62" />
+          <stop offset="100%" stop-color="#7635DF" stop-opacity="0.78" />
+        </linearGradient>
+        <linearGradient id="pfgViksitWaveFront" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#6B2AD6" />
+          <stop offset="48%" stop-color="#8848F2" />
+          <stop offset="100%" stop-color="#6225CA" />
+        </linearGradient>
+      </defs>
+      <path d="M0,44 C260,12 520,74 860,48 C1190,22 1410,66 1600,32 L1600,120 L0,120 Z" fill="url(#pfgViksitWaveBack)" />
+      <path d="M0,74 C310,36 620,98 980,68 C1260,44 1460,72 1600,46 L1600,120 L0,120 Z" fill="url(#pfgViksitWaveFront)" />
+      <path d="M0,74 C310,36 620,98 980,68 C1260,44 1460,72 1600,46" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="2" />
+    </svg>
   </section>
 
   <!-- ============================================================
