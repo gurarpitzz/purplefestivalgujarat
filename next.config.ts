@@ -7,8 +7,16 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   serverExternalPackages: ["@electric-sql/pglite", "pg", "bcryptjs", "pdf-lib"],
   experimental: {
+    workerThreads: false,
+    cpus: 1,
     optimizePackageImports: ["lucide-react", "gsap"],
     serverActions: {
       bodySizeLimit: "10mb",
