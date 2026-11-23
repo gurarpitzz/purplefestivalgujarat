@@ -611,6 +611,9 @@ $structuredData = [
     ],
 ];
 
+$extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
+    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=1" />';
+
 require_once __DIR__ . '/includes/header.php';
 
 function renderHighlightIconSvg(string $iconName): string
@@ -1010,166 +1013,17 @@ function renderHighlightIconSvg(string $iconName): string
   <!-- ============================================================
        5. UNDERSTANDING THE 21 DISABILITIES (RPwD Act, 2016)
        ============================================================ -->
-  <section
-    aria-labelledby="disabilities-heading"
-    class="border-b border-[#202D59]/10 bg-white py-20 sm:py-24"
-  >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
-      <div class="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-        <div class="max-w-3xl space-y-3">
-          <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">
-            Rights of Persons with Disabilities Act, 2016
-          </p>
-          <h2
-            id="disabilities-heading"
-            class="text-3xl font-extrabold tracking-tight text-[#202D59] sm:text-5xl"
-          >
-            Understanding the 21 Specified Disabilities
-          </h2>
-          <p class="text-base text-[#46537C]">
-            Every individual&apos;s access needs are unique. These categories are an
-            educational guide — never a restrictive gate for festival participation.
-          </p>
-        </div>
-        <a
-          href="/accessibility"
-          class="touch-target inline-flex shrink-0 items-center gap-2 border-2 border-[#202D59] px-5 py-2.5 text-sm font-bold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-            <circle cx="16" cy="4" r="1" />
-            <path d="m18 19 1-7-6 1" />
-            <path d="m5 8 3-3 5.5 3-2.36 3.5" />
-            <path d="M4.24 14.5a5 5 0 0 0 6.88 6" />
-            <path d="M13.76 17.5a5 5 0 0 0-6.88-6" />
-          </svg>
-          <span>Full Accessibility Guide</span>
-        </a>
-      </div>
-
-      <!-- Interactive Disabilities Explorer -->
-      <div class="mt-10 space-y-6" data-disabilities-explorer="true">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div class="relative w-full lg:max-w-sm">
-            <label for="disability-search" class="sr-only">
-              Search the 21 specified disabilities or accommodations
-            </label>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#202D59]" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
-            <input
-              id="disability-search"
-              type="search"
-              placeholder="Search disabilities or accommodations..."
-              class="touch-target w-full rounded-lg border border-[#202D59]/25 bg-white pl-10 pr-4 text-sm text-[#202D59] placeholder:text-[#46537C] focus:border-[#A459FF]"
-            />
-          </div>
-
-          <div
-            role="group"
-            aria-label="Filter disabilities by RPwD category"
-            class="flex flex-wrap gap-2"
-          >
-            <?php foreach ($rpwdGroups as $gIdx => $grp): ?>
-              <button
-                type="button"
-                data-rpwd-group-btn="<?= htmlspecialchars($grp, ENT_QUOTES, 'UTF-8') ?>"
-                aria-pressed="<?= $gIdx === 0 ? 'true' : 'false' ?>"
-                class="touch-target rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors <?= $gIdx === 0 ? 'border-[#202D59] bg-[#202D59] text-white' : 'border-[#202D59]/20 bg-white text-[#202D59] hover:border-[#A459FF] hover:bg-[#DDDDF9]' ?>"
-              >
-                <?= htmlspecialchars($grp, ENT_QUOTES, 'UTF-8') ?>
-              </button>
-            <?php endforeach; ?>
-          </div>
-        </div>
-
-        <p id="disability-count-status" class="text-xs font-medium text-[#46537C]" aria-live="polite">
-          Showing <?= count($disabilityList) ?> of <?= count($disabilityList) ?> specified disabilities under the Rights of Persons with Disabilities (RPwD) Act, 2016.
-        </p>
-
-        <div id="disability-empty-state" class="surface-card hidden rounded-2xl border border-[#59436D]/20 bg-white p-8 text-center">
-          <p class="text-sm font-medium text-[#211B29]">
-            No disabilities match your search filter. Try clearing your search filter.
-          </p>
-        </div>
-
-        <div id="disability-grid" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <?php foreach ($disabilityList as $dItem):
-              $panelId = 'disability-panel-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', $dItem['code']);
-              $searchBlob = strtolower(
-                  $dItem['name'] . ' ' .
-                  $dItem['rpwdGroup'] . ' ' .
-                  $dItem['description'] . ' ' .
-                  implode(' ', $dItem['accommodationExamples'])
-              );
-          ?>
-            <article
-              data-disability-card="true"
-              data-rpwd-group="<?= htmlspecialchars($dItem['rpwdGroup'], ENT_QUOTES, 'UTF-8') ?>"
-              data-search-text="<?= htmlspecialchars($searchBlob, ENT_QUOTES, 'UTF-8') ?>"
-              class="surface-card flex flex-col rounded-2xl border border-[#59436D]/20 bg-white shadow-xs transition-shadow hover:shadow-md"
-            >
-              <button
-                type="button"
-                data-disability-toggle="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
-                aria-expanded="false"
-                aria-controls="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
-                class="touch-target flex w-full items-start justify-between gap-3 rounded-2xl p-5 text-left"
-              >
-                <div class="space-y-1.5">
-                  <div class="flex items-center gap-2">
-                    <span class="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-[#E8DFF0] px-1.5 text-xs font-bold text-[#432F56]">
-                      <?= str_pad((string)$dItem['displayOrder'], 2, '0', STR_PAD_LEFT) ?>
-                    </span>
-                    <span class="text-[11px] font-semibold tracking-wider uppercase text-[#59436D]">
-                      <?= htmlspecialchars($dItem['rpwdGroup'], ENT_QUOTES, 'UTF-8') ?>
-                    </span>
-                  </div>
-                  <h3 class="font-display text-base font-semibold leading-snug text-[#211B29]">
-                    <?= htmlspecialchars($dItem['name'], ENT_QUOTES, 'UTF-8') ?>
-                  </h3>
-                </div>
-                <svg data-chevron="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-1 h-5 w-5 shrink-0 text-[#59436D] transition-transform" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
-
-              <div
-                id="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
-                class="hidden border-t border-[#59436D]/15 px-5 pb-5 pt-4 text-sm text-[#211B29]"
-              >
-                <p class="leading-relaxed text-[#4B4257]">
-                  <?= htmlspecialchars($dItem['description'], ENT_QUOTES, 'UTF-8') ?>
-                </p>
-                <?php if (!empty($dItem['accommodationExamples'])): ?>
-                  <div class="mt-4 rounded-xl bg-[#F6F1F8] p-3.5">
-                    <p class="mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase text-[#432F56]">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true">
-                        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                        <path d="m9 12 2 2 4-4" />
-                      </svg>
-                      Festival Accommodations
-                    </p>
-                    <ul class="space-y-1.5 text-xs text-[#211B29]">
-                      <?php foreach ($dItem['accommodationExamples'] as $ex): ?>
-                        <li class="flex items-start gap-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#19734B]" aria-hidden="true">
-                            <circle cx="12" cy="12" r="10" />
-                            <path d="m9 12 2 2 4-4" />
-                          </svg>
-                          <span><?= htmlspecialchars((string)$ex, ENT_QUOTES, 'UTF-8') ?></span>
-                        </li>
-                      <?php endforeach; ?>
-                    </ul>
-                  </div>
-                <?php endif; ?>
-              </div>
-            </article>
-          <?php endforeach; ?>
-        </div>
-      </div>
-    </div>
-  </section>
+  <?php
+  $disabilitiesSectionConfig = [
+      'headingId' => 'disabilities-heading',
+      'eyebrow' => 'Rights of Persons with Disabilities Act, 2016',
+      'title' => 'Understanding the 21 Specified Disabilities',
+      'subtitle' => "Every individual's access needs are unique. These categories are an educational guide — never a restrictive gate for festival participation.",
+      'showGuideCta' => true,
+      'initialExpandedCount' => 0,
+  ];
+  require __DIR__ . '/includes/disabilities-section.php';
+  ?>
 
   <!-- ============================================================
        6. PROGRAMME PREVIEW
@@ -1495,98 +1349,7 @@ function renderHighlightIconSvg(string $iconName): string
 (function () {
   "use strict";
 
-  // 1. Disabilities Explorer (Group filter, search, and accordion toggle)
-  var selectedGroup = "All";
-  var searchInput = document.getElementById("disability-search");
-  var groupBtns = document.querySelectorAll("[data-rpwd-group-btn]");
-  var cards = document.querySelectorAll("[data-disability-card]");
-  var countStatus = document.getElementById("disability-count-status");
-  var emptyState = document.getElementById("disability-empty-state");
-  var gridEl = document.getElementById("disability-grid");
-
-  function filterDisabilities() {
-    var q = searchInput ? searchInput.value.trim().toLowerCase() : "";
-    var visibleCount = 0;
-
-    for (var i = 0; i < cards.length; i++) {
-      var card = cards[i];
-      var grp = card.getAttribute("data-rpwd-group") || "";
-      var text = card.getAttribute("data-search-text") || "";
-      var matchesGroup = selectedGroup === "All" || grp === selectedGroup;
-      var matchesQuery = !q || text.indexOf(q) !== -1;
-
-      if (matchesGroup && matchesQuery) {
-        card.classList.remove("hidden");
-        card.classList.add("flex");
-        visibleCount++;
-      } else {
-        card.classList.remove("flex");
-        card.classList.add("hidden");
-      }
-    }
-
-    if (countStatus) {
-      countStatus.textContent =
-        "Showing " +
-        visibleCount +
-        " of " +
-        cards.length +
-        " specified disabilities under the Rights of Persons with Disabilities (RPwD) Act, 2016.";
-    }
-
-    if (emptyState && gridEl) {
-      if (visibleCount === 0) {
-        emptyState.classList.remove("hidden");
-        gridEl.classList.add("hidden");
-      } else {
-        emptyState.classList.add("hidden");
-        gridEl.classList.remove("hidden");
-      }
-    }
-  }
-
-  for (var g = 0; g < groupBtns.length; g++) {
-    groupBtns[g].addEventListener("click", function () {
-      selectedGroup = this.getAttribute("data-rpwd-group-btn") || "All";
-      for (var k = 0; k < groupBtns.length; k++) {
-        var btn = groupBtns[k];
-        var active = btn.getAttribute("data-rpwd-group-btn") === selectedGroup;
-        btn.setAttribute("aria-pressed", active ? "true" : "false");
-        btn.className =
-          "touch-target rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors " +
-          (active
-            ? "border-[#202D59] bg-[#202D59] text-white"
-            : "border-[#202D59]/20 bg-white text-[#202D59] hover:border-[#A459FF] hover:bg-[#DDDDF9]");
-      }
-      filterDisabilities();
-    });
-  }
-
-  if (searchInput) {
-    searchInput.addEventListener("input", filterDisabilities);
-  }
-
-  var toggleBtns = document.querySelectorAll("[data-disability-toggle]");
-  for (var t = 0; t < toggleBtns.length; t++) {
-    toggleBtns[t].addEventListener("click", function () {
-      var panelId = this.getAttribute("data-disability-toggle");
-      var panel = panelId ? document.getElementById(panelId) : null;
-      if (!panel) return;
-      var isOpen = this.getAttribute("aria-expanded") === "true";
-      var nextOpen = !isOpen;
-      this.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-      var chev = this.querySelector("[data-chevron]");
-      if (nextOpen) {
-        panel.classList.remove("hidden");
-        if (chev) chev.classList.add("rotate-180");
-      } else {
-        panel.classList.add("hidden");
-        if (chev) chev.classList.remove("rotate-180");
-      }
-    });
-  }
-
-  // 2. Home FAQ Accordion
+  // Home FAQ Accordion
   var faqBtns = document.querySelectorAll("[data-faq-toggle]");
   for (var f = 0; f < faqBtns.length; f++) {
     faqBtns[f].addEventListener("click", function () {
