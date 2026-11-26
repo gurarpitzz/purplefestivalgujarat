@@ -106,13 +106,22 @@ $results = [];
 $passed = 0;
 $failed = 0;
 
-$apacheGet = static function (string $path): array {
+$apacheGet = static function (string $path, array $cookies = []): array {
     $ch = curl_init('http://127.0.0.1:8089' . $path);
     $headers = [];
+    $reqHeaders = [];
+    if (!empty($cookies)) {
+        $pairs = [];
+        foreach ($cookies as $ck => $cv) {
+            $pairs[] = $ck . '=' . $cv;
+        }
+        $reqHeaders[] = 'Cookie: ' . implode('; ', $pairs);
+    }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_FOLLOWLOCATION => false,
         CURLOPT_TIMEOUT        => 8,
+        CURLOPT_HTTPHEADER     => $reqHeaders,
         CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$headers): int {
             $t = trim($line);
             if (strpos($t, ':') !== false) {
@@ -175,16 +184,61 @@ try {
         ['A-23', 'GET /.user.ini (.htaccess 403)', '/.user.ini', 403],
         ['A-24', 'GET /.cpanel.yml (.htaccess 403)', '/.cpanel.yml', 403],
         ['A-25', 'GET /nonexistent-pfg27-route (clean 404)', '/nonexistent-pfg27-route', 404],
+        ['A-30', 'GET /register (Phase 5 signup clean route)', '/register', 200],
+        ['A-31', 'GET /verify-email (Phase 5 verify clean route)', '/verify-email', 200],
+        ['A-32', 'GET /forgot-password (Phase 5 forgot-password clean route)', '/forgot-password', 200],
+        ['A-33', 'GET /reset-password (Phase 5 reset-password clean route)', '/reset-password', 200],
+        ['A-34', 'GET /staff/login (Phase 5 isolated staff portal)', '/staff/login', 200],
+        ['A-35', 'GET /apply/attendee unauth redirect (302)', '/apply/attendee', 302],
+        ['A-36', 'GET /api/attendance unauth (401)', '/api/attendance', 401],
+        ['A-37', 'GET /api/account/dashboard unauth (401)', '/api/account/dashboard', 401],
+        ['A-38', 'GET /api/admin/permission-profiles unauth (401)', '/api/admin/permission-profiles', 401],
+        ['A-39', 'GET /api/admin/assignments unauth (401)', '/api/admin/assignments', 401],
     ] as [$id, $label, $path, $exp]) {
         $r = $apacheGet($path);
         $ok = ($r['status'] === $exp);
         if ($path === '/api/registrations' && $ok) {
             $j = json_decode($r['body'], true);
-            $ok = is_array($j) && ($j['edition']['slug'] ?? '') === 'gujarat-2027' && count($j['categories'] ?? []) === 8;
+            $cats = $j['categories'] ?? [];
+            $codes = array_map(static fn(array $c): string => strtoupper((string)($c['code'] ?? '')), is_array($cats) ? $cats : []);
+            sort($codes);
+            $ok = is_array($j)
+                && ($j['edition']['slug'] ?? '') === 'gujarat-2027'
+                && count($cats) === 3
+                && $codes === ['ATTENDEE', 'SLI', 'VOLUNTEER'];
         }
         $serverHdr = $r['headers']['server'] ?? 'Apache';
         $record($id, $label, $ok, "HTTP {$r['status']} (expected {$exp}) | Server: {$serverHdr}");
     }
+
+    // A-40: GET /api/qr/pass retired route (401 unauth + 410 Gone authenticated via Apache rewrite)
+    putenv('PFG_ENV_FILE=' . $testEnvFile);
+    require_once dirname(__DIR__) . '/includes/config.php';
+    require_once dirname(__DIR__) . '/includes/database.php';
+    require_once dirname(__DIR__) . '/includes/auth.php';
+    $apPdo = getDb();
+    $apUser = $apPdo->query("SELECT u.id FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.code = 'PARTICIPANT' AND u.is_active = 1 AND u.deleted_at IS NULL LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $a40Ok = false;
+    $a40Evidence = 'No participant user found to create ephemeral test session';
+    if (is_array($apUser) && !empty($apUser['id'])) {
+        $rawSessTok = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+        $sessId = uuid4();
+        $apPdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 0, :exp, :now)')
+            ->execute([':id' => $sessId, ':uid' => $apUser['id'], ':th' => hashToken($rawSessTok), ':exp' => nowSql(time() + 300), ':now' => nowSql()]);
+        $rQrUnauth = $apacheGet('/api/qr/pass');
+        $rQrAuth = $apacheGet('/api/qr/pass', [SESSION_COOKIE_NAME => $rawSessTok]);
+        $apPdo->prepare('DELETE FROM sessions WHERE id = :id')->execute([':id' => $sessId]);
+        $qrJson = json_decode($rQrAuth['body'], true);
+        $a40Ok = ($rQrUnauth['status'] === 401 && $rQrAuth['status'] === 410 && !empty($qrJson['deprecated']));
+        $a40Evidence = sprintf(
+            'unauth=%d, auth=%d (expected 410 Gone, deprecated=%s) | Server: %s',
+            $rQrUnauth['status'],
+            $rQrAuth['status'],
+            !empty($qrJson['deprecated']) ? 'true' : 'false',
+            $rQrAuth['headers']['server'] ?? 'Apache'
+        );
+    }
+    $record('A-40', 'GET /api/qr/pass retired QR endpoint (410 Gone via Apache rewrite)', $a40Ok, $a40Evidence);
 
     // 2. Real Apache .htaccess Security Headers check
     $home = $apacheGet('/');
@@ -222,10 +276,12 @@ echo "\n============================================================\n";
 printf("APACHE VERIFICATION — TOTAL: %d | PASSED: %d | FAILED: %d\n", $passed + $failed, $passed, $failed);
 echo "============================================================\n";
 
-file_put_contents(
-    $tmpDir . DIRECTORY_SEPARATOR . 'apache_results.json',
-    json_encode(['passed' => $passed, 'failed' => $failed, 'results' => $results], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+$apacheJson = json_encode(
+    ['total' => $passed + $failed, 'passed' => $passed, 'failed' => $failed, 'results' => $results],
+    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 );
+file_put_contents($tmpDir . DIRECTORY_SEPARATOR . 'phase17_apache_results.json', $apacheJson);
+file_put_contents($tmpDir . DIRECTORY_SEPARATOR . 'apache_results.json', $apacheJson);
 
 exit($failed > 0 ? 1 : 0);
 
