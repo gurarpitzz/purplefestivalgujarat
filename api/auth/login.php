@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 /**
  * POST /api/auth/login
- * Phase 2 Hardened Staff Authentication:
+ * Phase 5: also admits verified PARTICIPANT accounts (portal 'staff' stays strictly staff-only;
+ * unverified participants get 403 + emailVerificationRequired ONLY after a valid password).
+ * Phase 2 Hardened Staff Authentication (all invariants preserved):
  * - Persistent DB-backed rate limiting (IP + identifier)
  * - Constant-time dummy bcrypt check & uniform errors (zero account/lockout/role enumeration)
  * - Expired lockout reset (fixes sticky lockout)
@@ -38,6 +40,12 @@ try {
     $recoveryCode = isset($input['recoveryCode'])
         ? (string)$input['recoveryCode']
         : (isset($input['recovery_code']) ? (string)$input['recovery_code'] : '');
+
+    // Phase 5: optional portal hint ('staff' | 'participant') and validated post-login destination.
+    $portal = strtolower(trim((string)($input['portal'] ?? '')));
+    $nextRedirect = isset($input['next']) && is_string($input['next'])
+        ? pfgValidateSafeRedirect($input['next'], '')
+        : '';
 
     if ($identifier === '' || $password === '') {
         jsonResponse(['error' => 'Username and password are required.'], 400);
@@ -148,15 +156,60 @@ try {
         || in_array('RGST', $roles, true);
 
     if (!$isStaff) {
+        // Phase 5: verified PARTICIPANT accounts may sign in, but never through the isolated Staff Portal.
+        if ($portal === 'staff') {
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => 'ACCESS_DENIED',
+                'resourceType' => 'auth',
+                'resourceId'   => $user['id'],
+                'metadata'     => ['reason' => 'non_staff_login_blocked'],
+            ]);
+            jsonResponse([
+                'error' => 'This portal is restricted to authorized festival staff (Superadmin, Admin, and Registration Desk).',
+            ], 403);
+        }
+
+        $accountStatus = strtoupper((string)($user['account_status'] ?? 'ACTIVE'));
+
+        // Verification gate is evaluated ONLY after a valid password (zero pre-auth enumeration).
+        if (empty($user['email_verified_at']) && $accountStatus === 'PENDING_VERIFICATION') {
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => 'LOGIN_BLOCKED_UNVERIFIED',
+                'resourceType' => 'user',
+                'resourceId'   => $user['id'],
+            ]);
+            jsonResponse([
+                'error'                     => 'Please verify your email address before signing in. Check your inbox for the verification link or request a new one.',
+                'emailVerificationRequired' => true,
+            ], 403);
+        }
+
+        if (in_array($accountStatus, ['SUSPENDED', 'ARCHIVED', 'DISABLED', 'DEACTIVATED'], true)) {
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => 'ACCESS_DENIED',
+                'resourceType' => 'auth',
+                'resourceId'   => $user['id'],
+                'metadata'     => ['reason' => 'account_not_active', 'accountStatus' => $accountStatus],
+            ]);
+            jsonResponse([
+                'error' => 'This account is not active. Please contact the Festival Secretariat for assistance.',
+            ], 403);
+        }
+    } elseif ($portal === 'participant') {
+        // Staff accounts must use the dedicated Staff Portal (/staff/login) so MFA UX stays isolated.
         logAudit([
             'actorUserId'  => $user['id'],
             'action'       => 'ACCESS_DENIED',
             'resourceType' => 'auth',
             'resourceId'   => $user['id'],
-            'metadata'     => ['reason' => 'non_staff_login_blocked'],
+            'metadata'     => ['reason' => 'staff_on_participant_portal'],
         ]);
         jsonResponse([
-            'error' => 'This portal is restricted to authorized festival staff (Superadmin, Admin, and Registration Desk).',
+            'error'      => 'Festival staff accounts must sign in through the Staff Portal.',
+            'staffLogin' => '/staff/login',
         ], 403);
     }
 
@@ -276,9 +329,16 @@ try {
         'mfaVerified' => $mfaVerified,
     ], $pdo);
 
-    $redirectTo = $mfaEnrollmentRequired
-        ? '/admin?mfa_setup=1'
-        : getPortalPathForRoles($roles);
+    if ($isStaff) {
+        $redirectTo = $mfaEnrollmentRequired
+            ? '/admin?mfa_setup=1'
+            : getPortalPathForRoles($roles);
+    } else {
+        // Participants land on /dashboard unless a safe, non-staff `next` URL was supplied.
+        $nextIsStaffArea = $nextRedirect !== ''
+            && (bool)preg_match('#^/(admin|rgst|staff)(/|\?|$)#i', $nextRedirect);
+        $redirectTo = ($nextRedirect !== '' && !$nextIsStaffArea) ? $nextRedirect : '/dashboard';
+    }
     $displayUsername = !empty($user['username']) ? (string)$user['username'] : (string)$user['email'];
 
     logAudit([
@@ -308,6 +368,7 @@ try {
             'mfaVerified'           => $mfaVerified,
             'mfaRequiredForRole'    => $mfaRequiredForRole,
             'mfaEnrollmentRequired' => $mfaEnrollmentRequired,
+            'emailVerified'         => !empty($user['email_verified_at']),
         ],
         'mfaEnrollmentRequired' => $mfaEnrollmentRequired,
         'csrfToken'             => $session['csrfToken'],
