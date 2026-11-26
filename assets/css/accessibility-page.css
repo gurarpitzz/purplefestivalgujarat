@@ -149,21 +149,64 @@ body > header a[href="/apply"].btn-primary-pfg:hover {
 }
 
 /* ==========================================================================
-   3. DEEP ROYAL PLUM HERO WITH GUJARATI LOTUS-DIAMOND ORNAMENT
+   3. DEEP ROYAL PLUM HERO WITH FULL-HEIGHT GUJARATI BANNER ORNAMENT
    ========================================================================== */
 .pfg-a11y-hero {
   position: relative;
   background-color: var(--pfg-a11y-plum);
   color: #fbf7ee;
-  padding: clamp(2.25rem, 4.4vw, 3.6rem) 0;
+  padding: clamp(2.4rem, 4.6vw, 3.85rem) 0;
   overflow: hidden;
+  isolation: isolate;
 }
 
-.pfg-a11y-hero__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.48fr) minmax(0, 0.72fr);
-  gap: clamp(1.5rem, 4vw, 2.75rem);
-  align-items: center;
+.pfg-a11y-hero__container {
+  position: relative;
+  z-index: 2;
+}
+
+.pfg-a11y-hero__content {
+  max-width: 40rem;
+}
+
+.pfg-a11y-hero__ornament-band {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pfg-a11y-hero__motif {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 40vw;
+  object-fit: cover;
+  object-position: right center;
+  user-select: none;
+  pointer-events: none;
+}
+
+@media (min-width: 960px) {
+  .pfg-a11y-hero__content {
+    max-width: min(41rem, calc(100% - 21rem));
+  }
+}
+
+@media (max-width: 1120px) and (min-width: 861px) {
+  .pfg-a11y-hero__motif {
+    max-width: 34vw;
+  }
+
+  .pfg-a11y-hero__content {
+    max-width: calc(100% - 17.5rem);
+  }
 }
 
 .pfg-a11y-hero__eyebrow {
@@ -265,20 +308,7 @@ body > header a[href="/apply"].btn-primary-pfg:hover {
   border-radius: 2px;
 }
 
-.pfg-a11y-hero__ornament-col {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.pfg-a11y-hero__motif {
-  display: block;
-  width: clamp(210px, 24vw, 275px);
-  height: auto;
-  max-width: 100%;
-  user-select: none;
-  pointer-events: none;
-}
+/* (Full-height hero ornament band is styled in Section 3 above) */
 
 /* ==========================================================================
    4. "ON THIS PAGE" EDITORIAL JUMP BAR
@@ -851,20 +881,13 @@ body > header a[href="/apply"].btn-primary-pfg:hover {
   }
 }
 
+@media (max-width: 860px) {
+  .pfg-a11y-hero__ornament-band {
+    display: none;
+  }
+}
+
 @media (max-width: 780px) {
-  .pfg-a11y-hero__grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 1.5rem;
-  }
-
-  .pfg-a11y-hero__ornament-col {
-    justify-content: flex-start;
-  }
-
-  .pfg-a11y-hero__motif {
-    width: 150px;
-  }
-
   .pfg-a11y-support__row,
   .pfg-a11y-venues__row {
     grid-template-columns: minmax(0, 1fr);
@@ -881,10 +904,6 @@ body > header a[href="/apply"].btn-primary-pfg:hover {
 }
 
 @media (max-width: 480px) {
-  .pfg-a11y-hero__ornament-col {
-    display: none;
-  }
-
   .pfg-a11y-btn-gold {
     width: 100%;
     text-align: center;
@@ -967,6 +986,7 @@ html[data-contrast="high"] .pfg-a11y-directory__reset {
   border: 2px solid #ffffff !important;
 }
 
+html[data-contrast="high"] .pfg-a11y-hero__ornament-band,
 html[data-contrast="high"] .pfg-a11y-hero__motif {
   display: none !important;
 }
@@ -1013,6 +1033,7 @@ html[data-contrast="yellow-black"] .pfg-a11y-directory__reset {
   border: 2px solid #ffea00 !important;
 }
 
+html[data-contrast="yellow-black"] .pfg-a11y-hero__ornament-band,
 html[data-contrast="yellow-black"] .pfg-a11y-hero__motif {
   display: none !important;
 }

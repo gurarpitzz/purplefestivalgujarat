@@ -234,7 +234,7 @@ $officialEmail = defined('OFFICIAL_FESTIVAL_EMAIL') && is_string(OFFICIAL_FESTIV
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..800;1,8..60,400..700&display=swap" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/accessibility-page.css?v=1" />';
+    . '  <link rel="stylesheet" href="/assets/css/accessibility-page.css?v=2" />';
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -246,52 +246,51 @@ require_once __DIR__ . '/includes/header.php';
     class="pfg-a11y-hero"
     data-surface="dark"
   >
-    <div class="pfg-a11y-container">
-      <div class="pfg-a11y-hero__grid">
-        <div>
-          <p class="pfg-a11y-hero__eyebrow">
-            Barrier-Free Festival Architecture
-          </p>
-          <h1 id="accessibility-page-title" class="pfg-a11y-hero__title">
-            Accessibility &amp; Reasonable Accommodations
-          </h1>
-          <p class="pfg-a11y-hero__lead">
-            Purple Festival Gujarat 2027 is engineered for dignified, independent participation
-            across physical, sensory, intellectual, neurodevelopmental, psychosocial, and
-            communication access needs. Request accommodations when you register, or email the
-            accessibility team if you have already applied.
-          </p>
+    <!-- Full-height right-edge Gujarati lotus-diamond banner ornament -->
+    <div class="pfg-a11y-hero__ornament-band" aria-hidden="true">
+      <img
+        src="/assets/editorial/accessibility-hero-motif.svg?v=2"
+        alt=""
+        width="320"
+        height="380"
+        decoding="async"
+        class="pfg-a11y-hero__motif"
+      />
+    </div>
 
-          <div class="pfg-a11y-hero__actions">
-            <a href="/apply" class="pfg-a11y-btn-gold">
-              <span>Register &amp; Request Accommodations</span>
+    <div class="pfg-a11y-container pfg-a11y-hero__container">
+      <div class="pfg-a11y-hero__content">
+        <p class="pfg-a11y-hero__eyebrow">
+          Barrier-Free Festival Architecture
+        </p>
+        <h1 id="accessibility-page-title" class="pfg-a11y-hero__title">
+          Accessibility &amp; Reasonable Accommodations
+        </h1>
+        <p class="pfg-a11y-hero__lead">
+          Purple Festival Gujarat 2027 is engineered for dignified, independent participation
+          across physical, sensory, intellectual, neurodevelopmental, psychosocial, and
+          communication access needs. Request accommodations when you register, or email the
+          accessibility team if you have already applied.
+        </p>
+
+        <div class="pfg-a11y-hero__actions">
+          <a href="/apply" class="pfg-a11y-btn-gold">
+            <span>Register &amp; Request Accommodations</span>
+          </a>
+          <div class="pfg-a11y-hero__secondary">
+            <a
+              href="mailto:<?= htmlspecialchars($officialEmail, ENT_QUOTES, 'UTF-8') ?>"
+              class="pfg-a11y-hero__link"
+            >
+              Email the accessibility team
             </a>
-            <div class="pfg-a11y-hero__secondary">
-              <a
-                href="mailto:<?= htmlspecialchars($officialEmail, ENT_QUOTES, 'UTF-8') ?>"
-                class="pfg-a11y-hero__link"
-              >
-                Email the accessibility team
-              </a>
-              <a
-                href="/legal/accessibility-statement"
-                class="pfg-a11y-hero__link"
-              >
-                WCAG 2.2 Accessibility Statement
-              </a>
-            </div>
+            <a
+              href="/legal/accessibility-statement"
+              class="pfg-a11y-hero__link"
+            >
+              WCAG 2.2 Accessibility Statement
+            </a>
           </div>
-        </div>
-
-        <div class="pfg-a11y-hero__ornament-col" aria-hidden="true">
-          <img
-            src="/assets/editorial/accessibility-hero-motif.svg"
-            alt=""
-            width="260"
-            height="280"
-            decoding="async"
-            class="pfg-a11y-hero__motif"
-          />
         </div>
       </div>
     </div>

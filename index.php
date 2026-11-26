@@ -785,7 +785,7 @@ $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-whats-on.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-programme-highlights.css?v=1" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=1" />';
+    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=2" />';
 
 require_once __DIR__ . '/includes/header.php';
 
