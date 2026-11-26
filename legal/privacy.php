@@ -49,10 +49,12 @@ require_once dirname(__DIR__) . '/includes/header.php';
           <p class="text-[#4B4257]">
             Purple Festival Gujarat 2027 collects personal data strictly with your explicit,
             informed consent in accordance with India&apos;s Digital Personal Data Protection
-            (DPDP) Act, 2023. We process your information solely to manage festival
-            registrations, review Volunteer and Indian Sign Language Interpreter (SLI)
-            applications, arrange requested accessibility accommodations, issue tamper-resistant
-            QR entry credentials, and communicate official festival updates.
+            (DPDP) Act, 2023. We process your information solely to manage participant accounts
+            and three-category festival registrations (<strong>Attendee</strong>,
+            <strong>Volunteer</strong>, and <strong>Sign Language Interpreter (SLI)</strong>),
+            review Volunteer and SLI applications, arrange requested accessibility accommodations,
+            verify your official Registration ID (<code>PFG-2027-NNNNNN</code>) at manual
+            Vadodara Registration Desks, and communicate official festival updates.
           </p>
         </section>
 
@@ -62,26 +64,54 @@ require_once dirname(__DIR__) . '/includes/header.php';
           </h2>
           <p class="text-[#4B4257]">
             Disclosing a disability is <strong>100% optional</strong> and is never required to
-            participate in any category. When you voluntarily share disability information or
-            request accommodations (such as ISL interpretation, Braille schedules, wheelchair
-            seating, or sensory sanctuary access), that data is stored separately, protected by
-            strict role-based access control (RBAC), and visible
-            <strong>only to authorized Accessibility Coordinators and Administrators</strong>.
-            Reception desk (RGST) check-in operators never see your private disability
-            disclosure during QR scanning.
+            participate in any category. <strong>No medical diagnosis or disability certificate is
+            required to request reasonable accommodations</strong> (such as ISL interpretation,
+            Braille schedules, wheelchair seating, or sensory sanctuary access). When you
+            voluntarily share disability information or accommodation free-text details, that
+            information is stored separately, encrypted at rest using authenticated
+            <strong>AES-256-GCM</strong> encryption, protected by strict role-based access
+            control (RBAC), and visible <strong>only to authorized Accessibility Coordinators and
+            Administrators</strong>. Registration Desk (RGST) check-in operators view only minimal
+            attendance-verification fields (Registration ID, name, category, and confirmation
+            status) and never see your disability disclosures, accommodation notes, or emergency
+            contacts.
           </p>
         </section>
 
         <section class="space-y-2">
           <h2 class="font-display text-xl font-bold text-[#211B29]">
-            3. QR Credentials &amp; Security Controls
+            3. Technical Security Safeguards &amp; Zero Third-Party QR Sharing
           </h2>
-          <p class="text-[#4B4257]">
-            Digital QR passes encode opaque, cryptographically signed tokens rather than raw
-            personal or medical details. All authentication sessions use secure HTTP-only
-            cookies, password hashes use strong salted cryptography, and administrative access
-            to participant records is logged in immutable audit trails.
-          </p>
+          <ul class="list-disc space-y-1.5 pl-5 text-[#4B4257]">
+            <li>
+              <strong>Password Protection:</strong> Account passwords are never stored in
+              plaintext and are hashed using salted <strong>bcrypt</strong> (cost factor 12).
+            </li>
+            <li>
+              <strong>Authenticated Encryption at Rest:</strong> Voluntary disability disclosures
+              and accommodation free-text details are encrypted at rest with
+              <strong>AES-256-GCM</strong> authenticated encryption.
+            </li>
+            <li>
+              <strong>Sensitive-Data Audit Logging:</strong> Administrative reads of protected
+              disability or accommodation records generate immutable
+              <code>SENSITIVE_DATA_READ</code> entries in our audit trail alongside authentication
+              and moderation logs.
+            </li>
+            <li>
+              <strong>Session, CSRF &amp; Staff MFA Controls:</strong> Sessions use HttpOnly,
+              SameSite=Lax cookies (with the <code>Secure</code> attribute over HTTPS),
+              state-changing actions require session-bound CSRF tokens, and administrative staff
+              accounts enforce RFC 6238 TOTP multi-factor authentication (MFA).
+            </li>
+            <li>
+              <strong>No Participant QR Passes or Third-Party QR Sharing:</strong> Purple
+              Festival Gujarat 2027 uses official Registration IDs with manual Registration Desk
+              verification rather than participant event-entry QR passes. We do
+              <strong>not</strong> transmit participant data to <code>api.qrserver.com</code> or
+              any external third-party QR generation service.
+            </li>
+          </ul>
         </section>
 
         <section class="space-y-2">
@@ -114,10 +144,12 @@ require_once dirname(__DIR__) . '/includes/header.php';
             5. Data Retention &amp; Contact
           </h2>
           <p class="text-[#4B4257]">
-            Personal data is retained only for the duration necessary to conduct Purple
-            Festival Gujarat 2027, fulfill statutory reporting, and honor post-event
-            certification. We never sell or rent participant data to third parties. To exercise
-            your privacy rights, email
+            Personal data is retained only as long as necessary to conduct Purple Festival
+            Gujarat 2027, fulfill statutory or post-event certification obligations, and meet
+            applicable legal requirements. The exact post-festival retention and erasure window is
+            governed by the organizer&apos;s DPDP Data Retention Policy (finalized prior to
+            festival close under organizer governance). We never sell or rent participant data to
+            third parties. To exercise your privacy rights or request erasure, email
             <a
               href="mailto:purplefestivalvadodara@gmail.com"
               class="font-semibold text-[#59436D] underline"

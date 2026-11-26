@@ -259,9 +259,11 @@ require_once __DIR__ . '/includes/header.php';
       </h2>
       <p class="text-sm leading-relaxed text-[#4B4257]">
         Select any of the following accommodations during registration or update your
-        preferences anytime in your Participant Dashboard. Your disclosure and support
-        requests are strictly confidential and accessible only to authorized accessibility
-        coordinators.
+        preferences anytime in your Participant Dashboard. Disability disclosure is completely
+        optional — no medical diagnosis or certificate is required to request accommodations.
+        Sensitive disclosures and accommodation free-text details are encrypted at rest
+        (AES-256-GCM) and restricted to authorized Accessibility Coordinators and Administrators
+        with access audit logging.
       </p>
     </div>
 
@@ -304,12 +306,20 @@ require_once __DIR__ . '/includes/header.php';
         </div>
 
         <div class="mt-8 grid gap-6 md:grid-cols-3">
-          <?php foreach ($venues as $v): ?>
+          <?php foreach ($venues as $v):
+              $isConfirmedVenue = strtoupper(trim((string)($v['confirmationStatus'] ?? ''))) === 'CONFIRMED';
+          ?>
             <article class="surface-card flex flex-col justify-between rounded-2xl border border-[#59436D]/20 bg-[#F6F1F8]/60 p-6">
               <div>
-                <span class="inline-block rounded-full bg-[#E8DFF0] px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#432F56]">
-                  Status: <?= htmlspecialchars($v['confirmationStatus'], ENT_QUOTES, 'UTF-8') ?>
-                </span>
+                <?php if ($isConfirmedVenue): ?>
+                  <span class="inline-block rounded-full border border-[#19734B]/30 bg-[#19734B]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#135A3A]">
+                    Confirmed Venue
+                  </span>
+                <?php else: ?>
+                  <span class="inline-block rounded-full border border-amber-700/30 bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-wider text-amber-900">
+                    Proposed / Subject to Confirmation
+                  </span>
+                <?php endif; ?>
                 <h3 class="font-display mt-3 text-lg font-bold text-[#211B29]">
                   <?= htmlspecialchars($v['name'], ENT_QUOTES, 'UTF-8') ?>
                 </h3>
@@ -350,7 +360,7 @@ require_once __DIR__ . '/includes/header.php';
       'headingId' => 'rpwd-heading',
       'eyebrow' => 'Rights of Persons with Disabilities (RPwD) Act, 2016',
       'title' => 'All 21 Benchmark Disabilities & Tailored Supports',
-      'subtitle' => 'Disability disclosure is always voluntary at Purple Festival Gujarat 2027. Persons with disabilities are welcome in every role — attendee, delegate, speaker, artist, athlete, volunteer, or organizer.',
+      'subtitle' => 'Disability disclosure is always voluntary at Purple Festival Gujarat 2027. Persons with disabilities are welcome in every role — attendee, volunteer, Indian Sign Language interpreter, speaker, artist, or para-athlete.',
       'showGuideCta' => false,
       'showExplorer' => true,
       'initialExpandedCount' => 3,

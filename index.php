@@ -168,7 +168,7 @@ $FALLBACK_PROGRAMME = [
         'title' => 'Participant Check-in, Accessible Welcome & Registration Desk',
         'category' => 'Registration',
         'venueName' => 'Sama Indoor Stadium & MSU Baroda',
-        'description' => 'QR pass verification, Braille & large-print programme distribution, ISL helpdesk, and wheelchair shuttle orientation.',
+        'description' => 'Registration ID (PFG-2027-NNNNNN) verification at the Vadodara Registration Desk, Braille & large-print programme distribution, ISL helpdesk, and wheelchair shuttle orientation.',
     ],
     [
         'id' => 'prog-2',
@@ -324,25 +324,25 @@ $FALLBACK_FAQS = [
         'id' => 'faq-1',
         'category' => 'Registration',
         'question' => 'Do I need to disclose a disability to attend Purple Festival Gujarat 2027?',
-        'answer' => 'No. Disability disclosure is completely optional and never restricts which category you may apply for. Persons with disabilities can register as Attendees, Delegates, Volunteers, or SLI Professionals.',
+        'answer' => 'No. Disability disclosure is completely optional, no diagnosis is required to request accommodations, and disclosure never restricts which category you may apply for. Persons with disabilities can register across any of our three registration categories: Attendee, Volunteer, or Sign Language Interpreter (SLI).',
     ],
     [
         'id' => 'faq-2',
         'category' => 'Accessibility',
         'question' => 'How do I request Indian Sign Language (ISL), Braille, or wheelchair accommodations?',
-        'answer' => 'You can select your accommodation requirements during registration or update them anytime in your Participant Dashboard. Your requests are visible only to authorized accessibility coordinators.',
+        'answer' => 'You can select your accommodation requirements during registration or update them anytime in your Participant Dashboard. Sensitive disability disclosures and accommodation free-text details are encrypted at rest and visible only to authorized accessibility coordinators.',
     ],
     [
         'id' => 'faq-3',
-        'category' => 'QR Pass & Check-in',
-        'question' => 'How will I receive my digital QR entry pass?',
-        'answer' => 'Once your registration is confirmed (or your Volunteer/SLI application is approved), your unique digital QR pass is issued automatically in your Participant Dashboard and can be downloaded as an accessible PDF.',
+        'category' => 'Registration & Check-in',
+        'question' => 'How do registration and check-in work at the Vadodara festival venues?',
+        'answer' => 'Register in one of three categories — Attendee, Volunteer, or Sign Language Interpreter (SLI) — to receive your official Registration ID (for example, PFG-2027-000100). Attendee registrations are confirmed directly, while Volunteer and SLI applications undergo organizer review. On festival days, present your Registration ID or registered name at the manual Vadodara Registration Desk for verification and attendance check-in.',
     ],
     [
         'id' => 'faq-4',
         'category' => 'Volunteers & SLI',
         'question' => 'Does submitting a Volunteer or SLI application mean automatic approval?',
-        'answer' => 'No. Volunteer and Indian Sign Language Interpreter applications undergo review by festival coordinators. Once approved, you will receive your role assignment and official digital credential.',
+        'answer' => 'No. Volunteer and Indian Sign Language Interpreter applications undergo review by festival coordinators. Once approved, you will receive your official confirmation, Registration ID status update, and duty schedule in your Participant Dashboard.',
     ],
 ];
 
@@ -430,10 +430,66 @@ $programme = [];
 $disabilityList = [];
 $faqList = [];
 $galleryItems = [];
+$activeAnnouncements = [];
+$dbPartnerTotalCount = null;
+$dbProgrammeTotalCount = null;
+
+$resolveSafeUrl = static function (?string $url, bool $allowRelative = false): ?string {
+    if ($url === null || trim($url) === '') {
+        return null;
+    }
+    if (function_exists('pfgValidateSafeUrl')) {
+        $checked = pfgValidateSafeUrl($url, $allowRelative);
+        return ($checked !== null && $checked !== '') ? $checked : null;
+    }
+    $trimmed = trim($url);
+    if (preg_match('/[\x00-\x1F\x7F\\\\]/', $trimmed)) {
+        return null;
+    }
+    if ($allowRelative && str_starts_with($trimmed, '/') && !str_starts_with($trimmed, '//')) {
+        return $trimmed;
+    }
+    if (!filter_var($trimmed, FILTER_VALIDATE_URL)) {
+        return null;
+    }
+    $scheme = strtolower((string)parse_url($trimmed, PHP_URL_SCHEME));
+    return in_array($scheme, ['http', 'https'], true) ? $trimmed : null;
+};
 
 if (function_exists('getDb')) {
     try {
         $pdo = getDb();
+
+        // 0. Active Published Announcements (within published_at..expires_at window — FND-33)
+        try {
+            $nowTs = function_exists('nowSql') ? nowSql() : date('Y-m-d H:i:s');
+            $stmtAnn = $pdo->prepare("
+                SELECT id, title, message, severity, published_at, expires_at
+                FROM announcements
+                WHERE status = 'PUBLISHED'
+                  AND (published_at IS NULL OR published_at <= :now1)
+                  AND (expires_at IS NULL OR expires_at >= :now2)
+                ORDER BY published_at DESC, created_at DESC
+                LIMIT 3
+            ");
+            $stmtAnn->execute([':now1' => $nowTs, ':now2' => $nowTs]);
+            foreach ($stmtAnn->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $annTitle = trim((string)($row['title'] ?? ''));
+                $annMsg = trim((string)($row['message'] ?? ''));
+                if ($annTitle === '' && $annMsg === '') {
+                    continue;
+                }
+                $activeAnnouncements[] = [
+                    'id'          => (string)($row['id'] ?? ''),
+                    'title'       => $annTitle,
+                    'message'     => $annMsg,
+                    'severity'    => strtoupper(trim((string)($row['severity'] ?? 'INFO'))),
+                    'publishedAt' => (string)($row['published_at'] ?? ''),
+                ];
+            }
+        } catch (\Throwable $e) {
+            // Announcements table unavailable or empty
+        }
 
         // 1. CMS Sections for 'home'
         $stmtSections = $pdo->query("
@@ -455,13 +511,18 @@ if (function_exists('getDb')) {
             }
         }
 
-        // 2. Published Partners
+        // 2. Published & Consent-Verified Partners (§36.2, BLK-03)
+        $cntPartStmt = $pdo->query('SELECT COUNT(*) FROM partners');
+        if ($cntPartStmt !== false) {
+            $dbPartnerTotalCount = (int)$cntPartStmt->fetchColumn();
+        }
         $stmtPartners = $pdo->query("
             SELECT p.id AS partner_id, p.category, p.display_order,
                    o.name AS org_name, o.short_name, o.logo_url, o.logo_alt_text, o.description, o.website_url
             FROM partners p
             INNER JOIN organizations o ON p.organization_id = o.id
             WHERE p.status = 'PUBLISHED'
+              AND p.consent_verified = 1
             ORDER BY p.display_order ASC
         ");
         if ($stmtPartners) {
@@ -471,20 +532,26 @@ if (function_exists('getDb')) {
                     'category' => (string)($row['category'] ?? ''),
                     'orgName' => (string)($row['org_name'] ?? ''),
                     'shortName' => $row['short_name'] ?? null,
-                    'logoUrl' => $row['logo_url'] ?? null,
+                    'logoUrl' => $resolveSafeUrl(isset($row['logo_url']) ? (string)$row['logo_url'] : null, true),
                     'logoAltText' => $row['logo_alt_text'] ?? null,
                     'description' => $row['description'] ?? null,
-                    'websiteUrl' => $row['website_url'] ?? null,
+                    'websiteUrl' => $resolveSafeUrl(isset($row['website_url']) ? (string)$row['website_url'] : null, false),
                 ];
             }
         }
 
-        // 3. Programme Preview (6 items)
+        // 3. Programme Preview (6 published/confirmed items only — never DRAFT/CANCELLED)
+        $cntProgStmt = $pdo->query('SELECT COUNT(*) FROM programme_items');
+        if ($cntProgStmt !== false) {
+            $dbProgrammeTotalCount = (int)$cntProgStmt->fetchColumn();
+        }
         $stmtProg = $pdo->query("
-            SELECT id, day_number, time_slot, title, description, category, venue_name, display_order
-            FROM programme_items
-            WHERE status = 'PUBLISHED'
-            ORDER BY day_number ASC, display_order ASC
+            SELECT pi.id, pi.day_number, pi.time_slot, pi.title, pi.description, pi.category, pi.venue_name, pi.display_order
+            FROM programme_items pi
+            LEFT JOIN festival_sessions fs ON pi.session_id = fs.id
+            WHERE pi.status IN ('PUBLISHED', 'CONFIRMED')
+              AND (pi.session_id IS NULL OR fs.status IN ('PUBLISHED', 'CONFIRMED'))
+            ORDER BY pi.day_number ASC, pi.display_order ASC
             LIMIT 6
         ");
         if ($stmtProg) {
@@ -553,9 +620,13 @@ if (function_exists('getDb')) {
         ");
         if ($stmtGal) {
             foreach ($stmtGal->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $safeGalUrl = $resolveSafeUrl(isset($row['url']) ? (string)$row['url'] : null, true);
+                if ($safeGalUrl === null) {
+                    continue;
+                }
                 $galleryItems[] = [
                     'id' => (string)($row['id'] ?? ''),
-                    'url' => (string)($row['url'] ?? ''),
+                    'url' => $safeGalUrl,
                     'altText' => (string)($row['alt_text'] ?? ''),
                     'caption' => !empty($row['source_attribution']) ? (string)$row['source_attribution'] : 'Purple Festival Gujarat 2027 Venue',
                 ];
@@ -566,10 +637,12 @@ if (function_exists('getDb')) {
     }
 }
 
-if (empty($publishedPartners)) {
+// Only fall back to static partner seed when DB is unavailable or partners table is empty.
+// If DB has partner records and none are consent_verified + PUBLISHED, NEVER publish unconfirmed partners.
+if (empty($publishedPartners) && ($dbPartnerTotalCount === null || $dbPartnerTotalCount === 0)) {
     $publishedPartners = $FALLBACK_PARTNERS;
 }
-if (empty($programme)) {
+if (empty($programme) && ($dbProgrammeTotalCount === null || $dbProgrammeTotalCount === 0)) {
     $programme = $FALLBACK_PROGRAMME;
 }
 if (empty($disabilityList)) {
@@ -596,6 +669,29 @@ $heroSection = $sectionsByKey['hero'] ?? null;
 $aboutSection = $sectionsByKey['about'] ?? null;
 $viksitSection = $sectionsByKey['viksit-bharat'] ?? null;
 $contactSection = $sectionsByKey['contact'] ?? null;
+
+$heroData = is_array($heroSection['data'] ?? null) ? $heroSection['data'] : [];
+$heroTitle = !empty($heroSection['title']) && trim((string)$heroSection['title']) !== ''
+    ? trim((string)$heroSection['title'])
+    : 'Inclusion, celebrated.';
+$heroBody = !empty($heroSection['body']) && trim((string)$heroSection['body']) !== ''
+    ? trim((string)$heroSection['body'])
+    : "India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities (RPwD Act 2016).";
+$heroCtaLabel = !empty($heroData['primaryCtaLabel']) && trim((string)$heroData['primaryCtaLabel']) !== ''
+    ? trim((string)$heroData['primaryCtaLabel'])
+    : 'Apply Now';
+$rawHeroCtaHref = (string)($heroData['primaryCtaHref'] ?? '');
+$heroCtaHref = $resolveSafeUrl($rawHeroCtaHref, true) ?? '/apply';
+$heroWebsiteUrl = $resolveSafeUrl(
+    isset($heroData['website_url']) ? (string)$heroData['website_url'] : (isset($heroData['websiteUrl']) ? (string)$heroData['websiteUrl'] : null),
+    false
+);
+$heroDatesLabel = !empty($heroData['dates']) && trim((string)$heroData['dates']) !== ''
+    ? trim((string)$heroData['dates'])
+    : '21–23 Jan 2027';
+$heroLocationLabel = !empty($heroData['location']) && trim((string)$heroData['location']) !== ''
+    ? trim((string)$heroData['location'])
+    : 'Vadodara, Gujarat';
 
 $aboutData = is_array($aboutSection['data'] ?? null) ? $aboutSection['data'] : [];
 $stats = !empty($aboutData['stats']) && is_array($aboutData['stats'])
@@ -644,7 +740,7 @@ $structuredData = [
             'image' => [$siteUrl . '/assets/logos/purple-festival.jpg'],
             'location' => [
                 '@type' => 'Place',
-                'name' => 'The Maharaja Sayajirao University of Baroda & Vadodara Sports Venues',
+                'name' => 'Sama Indoor Stadium & Participating Vadodara Venues',
                 'address' => [
                     '@type' => 'PostalAddress',
                     'addressLocality' => 'Vadodara',
@@ -843,6 +939,58 @@ function renderHighlightIconSvg(string $iconName): string
 </div>
 
 <main id="main-content" tabindex="-1" class="focus:outline-none">
+  <?php if (!empty($activeAnnouncements)): ?>
+    <!-- Active Published Announcements Banner (FND-33) -->
+    <div
+      role="region"
+      aria-label="Festival Announcements"
+      class="border-b border-[#202D59]/15 bg-[#202D59] text-white"
+      data-surface="dark"
+    >
+      <div class="mx-auto max-w-[1440px] divide-y divide-white/15 px-5 sm:px-10">
+        <?php foreach ($activeAnnouncements as $ann):
+            $sev = $ann['severity'];
+            $isUrgent = in_array($sev, ['URGENT', 'CRITICAL', 'ALERT', 'ERROR'], true);
+            $isWarn = in_array($sev, ['WARNING', 'IMPORTANT'], true);
+            $badgeClass = $isUrgent
+                ? 'bg-red-500 text-white'
+                : ($isWarn ? 'bg-[#D5B77B] text-[#17151C]' : 'bg-[#A459FF] text-white');
+            $badgeText = $isUrgent ? 'Alert' : ($isWarn ? 'Notice' : 'Update');
+            $annDomId = 'pfg-announcement-' . preg_replace('/[^a-zA-Z0-9_-]/', '', $ann['id']);
+        ?>
+          <div
+            id="<?= htmlspecialchars($annDomId, ENT_QUOTES, 'UTF-8') ?>"
+            data-pfg-announcement="<?= htmlspecialchars($ann['id'], ENT_QUOTES, 'UTF-8') ?>"
+            class="flex items-center justify-between gap-4 py-2.5 text-sm"
+          >
+            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span class="inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wider uppercase <?= $badgeClass ?>">
+                <?= htmlspecialchars($badgeText, ENT_QUOTES, 'UTF-8') ?>
+              </span>
+              <?php if ($ann['title'] !== ''): ?>
+                <strong class="font-bold text-white"><?= htmlspecialchars($ann['title'], ENT_QUOTES, 'UTF-8') ?>:</strong>
+              <?php endif; ?>
+              <?php if ($ann['message'] !== ''): ?>
+                <span class="text-[#E8DFF0]"><?= htmlspecialchars($ann['message'], ENT_QUOTES, 'UTF-8') ?></span>
+              <?php endif; ?>
+            </div>
+            <button
+              type="button"
+              data-dismiss-announcement="<?= htmlspecialchars($ann['id'], ENT_QUOTES, 'UTF-8') ?>"
+              aria-label="Dismiss announcement: <?= htmlspecialchars($ann['title'] !== '' ? $ann['title'] : 'Festival notice', ENT_QUOTES, 'UTF-8') ?>"
+              class="touch-target inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 text-white/90 transition-colors hover:border-white hover:bg-white/10 hover:text-white"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  <?php endif; ?>
+
   <!-- ============================================================
        1. AUTHENTIC LAVENDER-PERIWINKLE HERO (With Gujarat Architectural Line-Art Background)
        ============================================================ -->
@@ -858,35 +1006,40 @@ function renderHighlightIconSvg(string $iconName): string
         id="hero-heading"
         class="text-[clamp(3.1rem,8vw,6.5rem)] font-bold leading-[1.03] tracking-[-0.03em] text-[#202D59]"
       >
-        Inclusion, celebrated.
+        <?= htmlspecialchars($heroTitle, ENT_QUOTES, 'UTF-8') ?>
       </h1>
 
       <!-- Reference-Matched Large Subtitle (~30px desktop, regular weight) -->
       <p class="mt-5 max-w-[920px] text-[clamp(1.2rem,2.2vw,1.95rem)] font-normal leading-[1.35] tracking-[-0.01em] text-[#202D59]">
-        <?= htmlspecialchars(
-            !empty($heroSection['body'])
-                ? (string)$heroSection['body']
-                : "India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities (RPwD Act 2016).",
-            ENT_QUOTES,
-            'UTF-8'
-        ) ?>
+        <?= htmlspecialchars($heroBody, ENT_QUOTES, 'UTF-8') ?>
       </p>
 
       <!-- Single Prominent Centered #A459FF Apply Now CTA (exact reference scale) -->
-      <div class="mt-10 flex items-center justify-center">
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
         <a
-          href="/apply"
+          href="<?= htmlspecialchars($heroCtaHref, ENT_QUOTES, 'UTF-8') ?>"
           class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-9 py-3.5 text-[20px] font-semibold tracking-[-0.01em] text-white transition-colors hover:bg-[#8D3BF2]"
         >
-          Apply Now
+          <?= htmlspecialchars($heroCtaLabel, ENT_QUOTES, 'UTF-8') ?>
         </a>
+        <?php if ($heroWebsiteUrl !== null && $heroWebsiteUrl !== $heroCtaHref): ?>
+          <a
+            href="<?= htmlspecialchars($heroWebsiteUrl, ENT_QUOTES, 'UTF-8') ?>"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-white/75 px-6 py-3.5 text-[17px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
+          >
+            Official Info
+            <span class="sr-only"> (opens in a new tab)</span>
+          </a>
+        <?php endif; ?>
       </div>
 
       <!-- Clean Static Flat Authorized Purple Festival Emblem (NO unwanted 3D animation) -->
       <div class="mt-10 flex flex-col items-center">
         <?= renderPurpleFestEmblemSvg('h-28 w-auto text-[#202D59]/85 sm:h-32') ?>
         <p class="mt-2.5 text-sm font-medium tracking-[0.08em] uppercase text-[#202D59]/75">
-          Purple Festival Gujarat 2027 &middot; Vadodara, Gujarat
+          Purple Festival Gujarat 2027 &middot; <?= htmlspecialchars($heroLocationLabel, ENT_QUOTES, 'UTF-8') ?>
         </p>
       </div>
     </div>
@@ -896,7 +1049,7 @@ function renderHighlightIconSvg(string $iconName): string
       <div class="inline-flex items-center gap-2.5 bg-white px-5 py-3 text-[15px] font-medium text-[#202D59] shadow-xs">
         <span>Purple Festival Gujarat</span>
         <span aria-hidden="true" class="text-[#099F9F]">▼</span>
-        <span class="font-bold text-[#202D59]">21–23 Jan 2027</span>
+        <span class="font-bold text-[#202D59]"><?= htmlspecialchars($heroDatesLabel, ENT_QUOTES, 'UTF-8') ?></span>
       </div>
     </div>
   </section>
@@ -1337,7 +1490,8 @@ function renderHighlightIconSvg(string $iconName): string
           <h3 class="pfg-partners-group-title">Organisers</h3>
           <div class="pfg-partners-row--organisers">
             <?php foreach ($organisersList as $partner):
-                $logoUrl = (string)($partner['logoUrl'] ?? '');
+                $logoUrl = $resolveSafeUrl(isset($partner['logoUrl']) ? (string)$partner['logoUrl'] : null, true) ?? '';
+                $partnerWebsite = $resolveSafeUrl(isset($partner['websiteUrl']) ? (string)$partner['websiteUrl'] : null, false);
             ?>
               <article class="pfg-partner-item">
                 <div class="pfg-partner-tile">
@@ -1355,7 +1509,19 @@ function renderHighlightIconSvg(string $iconName): string
                   <?php endif; ?>
                 </div>
                 <p class="pfg-partner-name">
-                  <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                  <?php if ($partnerWebsite !== null): ?>
+                    <a
+                      href="<?= htmlspecialchars($partnerWebsite, ENT_QUOTES, 'UTF-8') ?>"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="underline-offset-4 hover:underline"
+                    >
+                      <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                      <span class="sr-only"> (opens in a new tab)</span>
+                    </a>
+                  <?php else: ?>
+                    <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                  <?php endif; ?>
                 </p>
               </article>
             <?php endforeach; ?>
@@ -1372,7 +1538,8 @@ function renderHighlightIconSvg(string $iconName): string
           <h3 class="pfg-partners-group-title">Our Partners</h3>
           <div class="pfg-partners-grid">
             <?php foreach ($ourPartnersList as $partner):
-                $logoUrl = (string)($partner['logoUrl'] ?? '');
+                $logoUrl = $resolveSafeUrl(isset($partner['logoUrl']) ? (string)$partner['logoUrl'] : null, true) ?? '';
+                $partnerWebsite = $resolveSafeUrl(isset($partner['websiteUrl']) ? (string)$partner['websiteUrl'] : null, false);
             ?>
               <article class="pfg-partner-item">
                 <div class="pfg-partner-tile">
@@ -1395,7 +1562,19 @@ function renderHighlightIconSvg(string $iconName): string
                   </p>
                 <?php endif; ?>
                 <p class="pfg-partner-name">
-                  <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                  <?php if ($partnerWebsite !== null): ?>
+                    <a
+                      href="<?= htmlspecialchars($partnerWebsite, ENT_QUOTES, 'UTF-8') ?>"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="underline-offset-4 hover:underline"
+                    >
+                      <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                      <span class="sr-only"> (opens in a new tab)</span>
+                    </a>
+                  <?php else: ?>
+                    <?= htmlspecialchars((string)$partner['orgName'], ENT_QUOTES, 'UTF-8') ?>
+                  <?php endif; ?>
                 </p>
               </article>
             <?php endforeach; ?>
@@ -1571,12 +1750,35 @@ function renderHighlightIconSvg(string $iconName): string
             >
               Apply Now
             </a>
-            <a
-              href="/login"
-              class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
-            >
-              Login
-            </a>
+            <?php if (($pfgNavState ?? 'GUEST') === 'ADMIN'): ?>
+              <a
+                href="/admin"
+                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
+              >
+                Admin Portal
+              </a>
+            <?php elseif (($pfgNavState ?? 'GUEST') === 'RGST'): ?>
+              <a
+                href="/rgst"
+                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
+              >
+                Registration Desk
+              </a>
+            <?php elseif (($pfgNavState ?? 'GUEST') === 'PARTICIPANT'): ?>
+              <a
+                href="/dashboard"
+                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
+              >
+                Dashboard
+              </a>
+            <?php else: ?>
+              <a
+                href="/login"
+                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
+              >
+                Login
+              </a>
+            <?php endif; ?>
           </div>
         </div>
       </div>
@@ -1587,6 +1789,54 @@ function renderHighlightIconSvg(string $iconName): string
 <script>
 (function () {
   "use strict";
+
+  // Dismissible Published Announcements Banner (persisted per browser session)
+  var dismissedKey = "pfg27_dismissed_announcements";
+  var dismissed = [];
+  try {
+    var stored = window.sessionStorage.getItem(dismissedKey);
+    if (stored) {
+      var parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) dismissed = parsed;
+    }
+  } catch (e) {}
+
+  function syncAnnouncementRegionVisibility() {
+    var rows = document.querySelectorAll("[data-pfg-announcement]");
+    var visible = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].classList.contains("hidden")) visible++;
+    }
+    var region = rows.length > 0 ? rows[0].closest('[role="region"]') : null;
+    if (region && visible === 0) {
+      region.classList.add("hidden");
+    }
+  }
+
+  var annRows = document.querySelectorAll("[data-pfg-announcement]");
+  for (var a = 0; a < annRows.length; a++) {
+    var aid = annRows[a].getAttribute("data-pfg-announcement");
+    if (aid && dismissed.indexOf(aid) !== -1) {
+      annRows[a].classList.add("hidden");
+    }
+  }
+  syncAnnouncementRegionVisibility();
+
+  var dismissBtns = document.querySelectorAll("[data-dismiss-announcement]");
+  for (var d = 0; d < dismissBtns.length; d++) {
+    dismissBtns[d].addEventListener("click", function () {
+      var id = this.getAttribute("data-dismiss-announcement");
+      var row = this.closest("[data-pfg-announcement]");
+      if (row) row.classList.add("hidden");
+      if (id && dismissed.indexOf(id) === -1) {
+        dismissed.push(id);
+        try {
+          window.sessionStorage.setItem(dismissedKey, JSON.stringify(dismissed));
+        } catch (e) {}
+      }
+      syncAnnouncementRegionVisibility();
+    });
+  }
 
   // Home FAQ Accordion
   var faqBtns = document.querySelectorAll("[data-faq-toggle]");
