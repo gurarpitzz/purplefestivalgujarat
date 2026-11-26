@@ -4,11 +4,16 @@ declare(strict_types=1);
 /**
  * Purple Festival Gujarat 2027 — Admin Overview & Real-Time Analytics API
  * Endpoint: GET /api/admin/overview (or /api/admin/overview.php)
+ *
+ * Attendance metrics come EXCLUSIVELY from the decoupled manual-desk `attendance_records` table (D-01: zero QR
+ * dependency): approval status, assignment status and physical attendance are three separate dimensions.
+ * Every aggregate excludes soft-deleted registrations (FND-39).
  */
 
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/database.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/admin-common.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
@@ -19,11 +24,36 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
     jsonResponse(['error' => 'Method not allowed.'], 405);
 }
 
+/**
+ * Buckets a registration status into the review-pipeline columns shared by Volunteer & SLI pipelines.
+ */
+function pfgOverviewPipelineBucket(string $status): ?string
+{
+    $s = pfgAdminNormalizeStatus($status);
+    if (in_array($s, ['APPROVED', 'CONFIRMED'], true)) {
+        return 'approved';
+    }
+    if ($s === 'SUBMITTED') {
+        return 'submitted';
+    }
+    if (in_array($s, ['UNDER_REVIEW', 'ADDITIONAL_INFO_REQUIRED', 'RESUBMITTED'], true)) {
+        return 'underReview';
+    }
+    if ($s === 'WAITLISTED') {
+        return 'waitlisted';
+    }
+    if ($s === 'REJECTED') {
+        return 'rejected';
+    }
+    return null;
+}
+
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
     $canReadAccomm = hasPermission($user, PERMISSIONS['ACCOMMODATIONS_READ']);
     $canReadPayments = hasPermission($user, PERMISSIONS['PAYMENTS_READ']);
     $canReadAttendance = hasPermission($user, PERMISSIONS['ATTENDANCE_READ_FULL']);
+    $canReadRegistrations = hasPermission($user, PERMISSIONS['REGISTRATIONS_READ_ALL']);
     $pdo = getDb();
     $todayIst = getIstDateString();
 
@@ -48,6 +78,7 @@ try {
     $totalApplications = 0;
     $confirmedRegistrations = 0;
     $approvedRegistrations = 0;
+    $attendees = 0;
     $delegates = 0;
     $volunteerApplications = 0;
     $approvedVolunteers = 0;
@@ -59,8 +90,9 @@ try {
     $categoryMap = [];
     $dailyTrendMap = [];
     $regCategoryById = [];
+    $eligibleRegIds = [];
 
-    $volunteerPipeline = [
+    $emptyPipeline = [
         'total'       => 0,
         'submitted'   => 0,
         'underReview' => 0,
@@ -68,21 +100,15 @@ try {
         'waitlisted'  => 0,
         'rejected'    => 0,
     ];
-    $sliPipeline = [
-        'total'       => 0,
-        'submitted'   => 0,
-        'underReview' => 0,
-        'approved'    => 0,
-        'waitlisted'  => 0,
-        'rejected'    => 0,
-    ];
+    $volunteerPipeline = $emptyPipeline;
+    $sliPipeline = $emptyPipeline;
 
     foreach ($allRegs as $r) {
         $regId = (string)($r['id'] ?? '');
         $userId = (string)($r['user_id'] ?? '');
         $emailKey = strtolower(trim((string)($r['email'] ?? '')));
         $catCode = strtoupper(trim((string)($r['category_code'] ?? 'ATTENDEE')));
-        $status = strtoupper(trim((string)($r['status'] ?? 'SUBMITTED')));
+        $status = pfgAdminNormalizeStatus((string)($r['status'] ?? 'SUBMITTED'));
         $createdAt = (string)($r['created_at'] ?? '');
 
         $totalApplications++;
@@ -95,10 +121,13 @@ try {
         }
 
         $isConfirmed = in_array($status, ['CONFIRMED', 'APPROVED'], true);
-        $isPending = in_array($status, ['SUBMITTED', 'UNDER_REVIEW', 'ADDITIONAL_INFO_REQUIRED', 'PENDING'], true);
+        $isPending = in_array($status, ['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true);
 
         if ($isConfirmed) {
             $confirmedRegistrations++;
+            if ($regId !== '') {
+                $eligibleRegIds[$regId] = true;
+            }
         }
         if ($status === 'APPROVED') {
             $approvedRegistrations++;
@@ -107,6 +136,9 @@ try {
             $pendingApprovals++;
         }
 
+        if ($catCode === 'ATTENDEE') {
+            $attendees++;
+        }
         if ($catCode === 'DELEGATE') {
             $delegates++;
         }
@@ -114,37 +146,26 @@ try {
             $alliesSupporters++;
         }
 
-        if ($catCode === 'VOLUNTEER') {
-            $volunteerApplications++;
-            $volunteerPipeline['total']++;
-            if ($isConfirmed) {
-                $approvedVolunteers++;
-                $volunteerPipeline['approved']++;
-            } elseif ($status === 'SUBMITTED' || $status === 'PENDING') {
-                $volunteerPipeline['submitted']++;
-            } elseif ($status === 'UNDER_REVIEW' || $status === 'ADDITIONAL_INFO_REQUIRED') {
-                $volunteerPipeline['underReview']++;
-            } elseif ($status === 'WAITLISTED') {
-                $volunteerPipeline['waitlisted']++;
-            } elseif ($status === 'REJECTED') {
-                $volunteerPipeline['rejected']++;
-            }
-        }
-
-        if ($catCode === 'SLI') {
-            $sliApplications++;
-            $sliPipeline['total']++;
-            if ($isConfirmed) {
-                $approvedSli++;
-                $sliPipeline['approved']++;
-            } elseif ($status === 'SUBMITTED' || $status === 'PENDING') {
-                $sliPipeline['submitted']++;
-            } elseif ($status === 'UNDER_REVIEW' || $status === 'ADDITIONAL_INFO_REQUIRED') {
-                $sliPipeline['underReview']++;
-            } elseif ($status === 'WAITLISTED') {
-                $sliPipeline['waitlisted']++;
-            } elseif ($status === 'REJECTED') {
-                $sliPipeline['rejected']++;
+        if ($catCode === 'VOLUNTEER' || $catCode === 'SLI') {
+            $bucket = pfgOverviewPipelineBucket($status);
+            if ($catCode === 'VOLUNTEER') {
+                $volunteerApplications++;
+                $volunteerPipeline['total']++;
+                if ($bucket !== null) {
+                    $volunteerPipeline[$bucket]++;
+                }
+                if ($bucket === 'approved') {
+                    $approvedVolunteers++;
+                }
+            } else {
+                $sliApplications++;
+                $sliPipeline['total']++;
+                if ($bucket !== null) {
+                    $sliPipeline[$bucket]++;
+                }
+                if ($bucket === 'approved') {
+                    $approvedSli++;
+                }
             }
         }
 
@@ -184,14 +205,11 @@ try {
         $rid = (string)($row['registration_id'] ?? '');
         $id = (string)($row['id'] ?? '');
         $key = $rid !== '' ? $rid : $id;
+        $st = strtoupper(trim((string)($row['status'] ?? 'REQUESTED')));
         if ($key !== '' && !isset($accommByReg[$key])) {
-            $accommByReg[$key] = strtoupper(trim((string)($row['status'] ?? 'REQUESTED')));
-            $accommRowsAll[] = [
-                'id'             => $id,
-                'registrationId' => $rid,
-                'status'         => $accommByReg[$key],
-            ];
+            $accommByReg[$key] = $st;
         }
+        $accommRowsAll[] = ['id' => $id, 'registrationId' => $rid, 'status' => $st];
     }
 
     $requestedCount = 0;
@@ -223,94 +241,80 @@ try {
         'declined'           => $declinedCount,
     ];
 
-    // 3. Check-ins & Attendance breakdown (excluding soft-deleted registrations — FND-39)
-    $stmtCheckins = $pdo->query("
-        SELECT
-            c.id,
-            c.registration_id,
-            c.venue_label,
-            c.checkin_date_ist,
-            c.method,
-            c.checked_in_at
-        FROM checkins c
-        INNER JOIN registrations r ON c.registration_id = r.id
-        WHERE r.deleted_at IS NULL
-        ORDER BY c.checked_in_at DESC
-    ");
-    $allCheckins = $stmtCheckins ? $stmtCheckins->fetchAll(PDO::FETCH_ASSOC) : [];
-
-    $uniqueCheckedInRegIds = [];
-    $checkedInByCategorySet = [];
-    $attendanceByDayMap = [];
-    $attendanceByVenueMap = [];
-    $todayCheckins = 0;
-
-    foreach ($allCheckins as $c) {
-        $rid = (string)($c['registration_id'] ?? '');
-        $dateIst = (string)($c['checkin_date_ist'] ?? '');
-        if ($dateIst === '' && !empty($c['checked_in_at'])) {
-            $dateIst = getIstDateString((string)$c['checked_in_at']);
-        }
-        $venueLabel = trim((string)($c['venue_label'] ?? 'Main Gate')) ?: 'Main Gate';
-
-        if ($rid !== '') {
-            $uniqueCheckedInRegIds[$rid] = true;
-        }
-        if ($dateIst === $todayIst) {
-            $todayCheckins++;
-        }
-        if ($dateIst !== '') {
-            $attendanceByDayMap[$dateIst] = ($attendanceByDayMap[$dateIst] ?? 0) + 1;
-        }
-        $attendanceByVenueMap[$venueLabel] = ($attendanceByVenueMap[$venueLabel] ?? 0) + 1;
-
-        if ($rid !== '' && isset($regCategoryById[$rid])) {
-            $cat = $regCategoryById[$rid];
-            if (!isset($checkedInByCategorySet[$cat])) {
-                $checkedInByCategorySet[$cat] = [];
-            }
-            $checkedInByCategorySet[$cat][$rid] = true;
-        }
-    }
-
-    foreach ($checkedInByCategorySet as $cat => $regSet) {
-        if (isset($categoryMap[$cat])) {
-            $categoryMap[$cat]['checkedIn'] = count($regSet);
-        }
-    }
-
-    // Recent 20 check-ins with participant details
-    $stmtRecent = $pdo->query("
-        SELECT
-            c.id,
-            c.registration_id,
-            r.registration_code,
-            r.full_name,
-            r.category_code,
-            c.venue_label,
-            c.checkin_date_ist,
-            c.method,
-            c.checked_in_at
-        FROM checkins c
-        INNER JOIN registrations r ON c.registration_id = r.id
-        WHERE r.deleted_at IS NULL
-        ORDER BY c.checked_in_at DESC
-        LIMIT 20
-    ");
-    $recentRows = $stmtRecent ? $stmtRecent->fetchAll(PDO::FETCH_ASSOC) : [];
+    // 3. Manual-desk attendance from `attendance_records` (PRESENT only; REVOKED corrections never count).
+    $uniquePresentRegIds = [];
+    $attendanceMarks = 0;
+    $todayMarks = 0;
+    $dayMarks = [];
+    $dayPeople = [];
+    $venueMarks = [];
+    $presentByCategorySet = [];
     $recentCheckins = [];
-    foreach ($recentRows as $rc) {
-        $recentCheckins[] = [
-            'id'               => (string)$rc['id'],
-            'registrationId'   => (string)$rc['registration_id'],
-            'registrationCode' => (string)$rc['registration_code'],
-            'participantName'  => (string)$rc['full_name'],
-            'categoryCode'     => (string)$rc['category_code'],
-            'venueLabel'       => (string)($rc['venue_label'] ?? 'Main Gate'),
-            'checkinDateIst'   => (string)($rc['checkin_date_ist'] ?? $todayIst),
-            'method'           => (string)($rc['method'] ?? 'QR_CAMERA'),
-            'checkedInAt'      => (string)($rc['checked_in_at'] ?? ''),
-        ];
+    $attendanceAvailable = pfgAdminTableExists($pdo, 'attendance_records');
+
+    if ($attendanceAvailable && $canReadAttendance) {
+        $stmtAtt = $pdo->query("
+            SELECT a.registration_id, a.attendance_date_ist, a.venue_label
+            FROM attendance_records a
+            INNER JOIN registrations r ON a.registration_id = r.id
+            WHERE r.deleted_at IS NULL AND a.status = 'PRESENT'
+        ");
+        foreach (($stmtAtt ? $stmtAtt->fetchAll(PDO::FETCH_ASSOC) : []) as $a) {
+            $rid = (string)$a['registration_id'];
+            $dateIst = (string)($a['attendance_date_ist'] ?? '');
+            $venueLabel = trim((string)($a['venue_label'] ?? '')) ?: 'Registration Desk';
+
+            $attendanceMarks++;
+            $uniquePresentRegIds[$rid] = true;
+            if ($dateIst === $todayIst) {
+                $todayMarks++;
+            }
+            if ($dateIst !== '') {
+                $dayMarks[$dateIst] = ($dayMarks[$dateIst] ?? 0) + 1;
+                $dayPeople[$dateIst][$rid] = true;
+            }
+            $venueMarks[$venueLabel] = ($venueMarks[$venueLabel] ?? 0) + 1;
+            if (isset($regCategoryById[$rid])) {
+                $presentByCategorySet[$regCategoryById[$rid]][$rid] = true;
+            }
+        }
+
+        foreach ($presentByCategorySet as $cat => $regSet) {
+            if (isset($categoryMap[$cat])) {
+                $categoryMap[$cat]['checkedIn'] = count($regSet);
+            }
+        }
+
+        $stmtRecent = $pdo->query("
+            SELECT
+                a.id,
+                a.registration_id,
+                a.attendance_date_ist,
+                a.attendance_scope,
+                a.venue_label,
+                a.marked_at,
+                r.registration_code,
+                r.full_name,
+                r.category_code
+            FROM attendance_records a
+            INNER JOIN registrations r ON a.registration_id = r.id
+            WHERE r.deleted_at IS NULL AND a.status = 'PRESENT'
+            ORDER BY a.marked_at DESC
+            LIMIT 20
+        ");
+        foreach (($stmtRecent ? $stmtRecent->fetchAll(PDO::FETCH_ASSOC) : []) as $rc) {
+            $recentCheckins[] = [
+                'id'               => (string)$rc['id'],
+                'registrationId'   => (string)$rc['registration_id'],
+                'registrationCode' => (string)$rc['registration_code'],
+                'participantName'  => (string)$rc['full_name'],
+                'categoryCode'     => (string)$rc['category_code'],
+                'venueLabel'       => trim((string)($rc['venue_label'] ?? '')) ?: 'Registration Desk',
+                'checkinDateIst'   => (string)($rc['attendance_date_ist'] ?? $todayIst),
+                'method'           => 'MANUAL_DESK',
+                'checkedInAt'      => (string)($rc['marked_at'] ?? ''),
+            ];
+        }
     }
 
     // 4. Payment reconciliation (canonical `payment_orders` ONLY, excluding soft-deleted registrations)
@@ -325,47 +329,84 @@ try {
         'byStatus'           => [],
     ];
 
-    $statusAgg = [];
-    $stmtPay = $pdo->query("
-        SELECT p.id, p.status, p.amount_inr, p.discount_inr, p.net_amount_inr
-        FROM payment_orders p
-        INNER JOIN registrations r ON p.registration_id = r.id
-        WHERE r.deleted_at IS NULL
-    ");
-    $payRows = $stmtPay ? $stmtPay->fetchAll(PDO::FETCH_ASSOC) : [];
-    foreach ($payRows as $pr) {
-        $st = strtoupper(trim((string)($pr['status'] ?? 'PENDING')));
-        $amt = (int)($pr['amount_inr'] ?? 0);
-        $disc = (int)($pr['discount_inr'] ?? 0);
-        $net = (int)($pr['net_amount_inr'] ?? 0);
+    if ($canReadPayments) {
+        $statusAgg = [];
+        $stmtPay = $pdo->query("
+            SELECT p.id, p.status, p.amount_inr, p.discount_inr, p.net_amount_inr
+            FROM payment_orders p
+            INNER JOIN registrations r ON p.registration_id = r.id
+            WHERE r.deleted_at IS NULL
+        ");
+        $payRows = $stmtPay ? $stmtPay->fetchAll(PDO::FETCH_ASSOC) : [];
+        foreach ($payRows as $pr) {
+            $st = strtoupper(trim((string)($pr['status'] ?? 'PENDING')));
+            $amt = (int)($pr['amount_inr'] ?? 0);
+            $disc = (int)($pr['discount_inr'] ?? 0);
+            $net = (int)($pr['net_amount_inr'] ?? 0);
 
-        if (!isset($statusAgg[$st])) {
-            $statusAgg[$st] = [
-                'status'      => $st,
-                'count'       => 0,
-                'grossInr'    => 0,
-                'discountInr' => 0,
-                'netInr'      => 0,
-            ];
+            if (!isset($statusAgg[$st])) {
+                $statusAgg[$st] = [
+                    'status'      => $st,
+                    'count'       => 0,
+                    'grossInr'    => 0,
+                    'discountInr' => 0,
+                    'netInr'      => 0,
+                ];
+            }
+            $statusAgg[$st]['count']++;
+            $statusAgg[$st]['grossInr'] += $amt;
+            $statusAgg[$st]['discountInr'] += $disc;
+            $statusAgg[$st]['netInr'] += $net;
+
+            $paymentReconciliation['totalDiscountInr'] += $disc;
+            if ($st === 'CAPTURED' || $st === 'PAID' || $st === 'COMPLETED') {
+                $paymentReconciliation['capturedOrders']++;
+                $paymentReconciliation['capturedRevenueInr'] += $net;
+            } elseif ($st === 'PENDING' || $st === 'AUTHORIZED') {
+                $paymentReconciliation['pendingOrders']++;
+                $paymentReconciliation['pendingAmountInr'] += $net;
+            } elseif ($st === 'REFUNDED' || $st === 'PARTIALLY_REFUNDED') {
+                $paymentReconciliation['refundedOrders']++;
+                $paymentReconciliation['refundedAmountInr'] += $net;
+            }
         }
-        $statusAgg[$st]['count']++;
-        $statusAgg[$st]['grossInr'] += $amt;
-        $statusAgg[$st]['discountInr'] += $disc;
-        $statusAgg[$st]['netInr'] += $net;
+        $paymentReconciliation['byStatus'] = array_values($statusAgg);
+    }
 
-        $paymentReconciliation['totalDiscountInr'] += $disc;
-        if ($st === 'CAPTURED' || $st === 'PAID' || $st === 'COMPLETED') {
-            $paymentReconciliation['capturedOrders']++;
-            $paymentReconciliation['capturedRevenueInr'] += $net;
-        } elseif ($st === 'PENDING' || $st === 'AUTHORIZED') {
-            $paymentReconciliation['pendingOrders']++;
-            $paymentReconciliation['pendingAmountInr'] += $net;
-        } elseif ($st === 'REFUNDED' || $st === 'PARTIALLY_REFUNDED') {
-            $paymentReconciliation['refundedOrders']++;
-            $paymentReconciliation['refundedAmountInr'] += $net;
+    // 5. Operations: approved Volunteers / SLIs without any active duty assignment, and failed notifications
+    $unassignedVolunteers = 0;
+    $unassignedSli = 0;
+    $hasDutyTable = pfgAdminTableExists($pdo, 'duty_assignments');
+    $stmtUn = $pdo->query($hasDutyTable
+        ? "
+            SELECT r.category_code, COUNT(*) AS c
+            FROM registrations r
+            WHERE r.deleted_at IS NULL
+              AND r.category_code IN ('VOLUNTEER', 'SLI')
+              AND r.status IN ('APPROVED', 'CONFIRMED')
+              AND NOT EXISTS (SELECT 1 FROM duty_assignments d WHERE d.registration_id = r.id AND d.status = 'ASSIGNED')
+            GROUP BY r.category_code
+        "
+        : "
+            SELECT r.category_code, COUNT(*) AS c
+            FROM registrations r
+            WHERE r.deleted_at IS NULL
+              AND r.category_code IN ('VOLUNTEER', 'SLI')
+              AND r.status IN ('APPROVED', 'CONFIRMED')
+            GROUP BY r.category_code
+        ");
+    foreach (($stmtUn ? $stmtUn->fetchAll(PDO::FETCH_ASSOC) : []) as $u) {
+        if ($u['category_code'] === 'VOLUNTEER') {
+            $unassignedVolunteers = (int)$u['c'];
+        } else {
+            $unassignedSli = (int)$u['c'];
         }
     }
-    $paymentReconciliation['byStatus'] = array_values($statusAgg);
+
+    $failedNotifications = null;
+    if ($canReadRegistrations && pfgAdminTableExists($pdo, 'notification_queue')) {
+        $failedNotifications = (int)$pdo->query("SELECT COUNT(*) FROM notification_queue WHERE status IN ('FAILED', 'BOUNCED')")->fetchColumn();
+    }
 
     ksort($dailyTrendMap);
     $dailyRegistrationTrends = [];
@@ -378,20 +419,35 @@ try {
         return ($b['total'] ?? 0) <=> ($a['total'] ?? 0);
     });
 
-    ksort($attendanceByDayMap);
+    ksort($dayMarks);
     $attendanceByDay = [];
-    foreach ($attendanceByDayMap as $date => $count) {
+    $attendanceByDayDetailed = [];
+    foreach ($dayMarks as $date => $count) {
         $attendanceByDay[] = ['date' => (string)$date, 'count' => (int)$count];
+        $attendanceByDayDetailed[] = [
+            'date'         => (string)$date,
+            'uniquePeople' => count($dayPeople[$date] ?? []),
+            'marks'        => (int)$count,
+        ];
     }
 
-    arsort($attendanceByVenueMap);
+    arsort($venueMarks);
     $attendanceByVenue = [];
-    foreach ($attendanceByVenueMap as $venueLabel => $count) {
+    foreach ($venueMarks as $venueLabel => $count) {
         $attendanceByVenue[] = ['venueLabel' => (string)$venueLabel, 'count' => (int)$count];
     }
 
-    $uniqueCheckedInParticipants = count($uniqueCheckedInRegIds);
-    $notYetArrived = max(0, $confirmedRegistrations - $uniqueCheckedInParticipants);
+    $attendanceByCategory = [];
+    foreach ($presentByCategorySet as $cat => $regSet) {
+        $attendanceByCategory[] = ['categoryCode' => (string)$cat, 'uniquePeople' => count($regSet)];
+    }
+    usort($attendanceByCategory, static function (array $a, array $b): int {
+        return $b['uniquePeople'] <=> $a['uniquePeople'];
+    });
+
+    $uniquePresent = count($uniquePresentRegIds);
+    $eligiblePresent = count(array_intersect_key($uniquePresentRegIds, $eligibleRegIds));
+    $notYetArrived = max(0, count($eligibleRegIds) - $eligiblePresent);
     $volunteerPendingCount = $volunteerPipeline['submitted'] + $volunteerPipeline['underReview'];
     $sliPendingCount = $sliPipeline['submitted'] + $sliPipeline['underReview'];
 
@@ -405,6 +461,7 @@ try {
             'confirmedRegistrations'               => $confirmedRegistrations,
             'approvedRegistrations'                => $approvedRegistrations,
             'pendingApprovals'                     => $pendingApprovals,
+            'attendees'                            => $attendees,
             'delegates'                            => $delegates,
             'volunteerApplications'                => $volunteerApplications,
             'approvedVolunteers'                   => $approvedVolunteers,
@@ -413,12 +470,23 @@ try {
             'approvedSli'                          => $approvedSli,
             'pendingSli'                           => $sliPendingCount,
             'alliesSupporters'                     => $alliesSupporters,
+            'unassignedApprovedVolunteers'         => $unassignedVolunteers,
+            'unassignedApprovedSli'                => $unassignedSli,
+            'failedNotifications'                  => $failedNotifications,
             'participantsRequestingAccommodations' => $canReadAccomm ? count($accommByReg) : null,
-            'totalCheckins'                        => $canReadAttendance ? count($allCheckins) : null,
-            'uniqueCheckedInParticipants'          => $canReadAttendance ? $uniqueCheckedInParticipants : null,
+            'totalCheckins'                        => $canReadAttendance ? $attendanceMarks : null,
+            'uniqueCheckedInParticipants'          => $canReadAttendance ? $uniquePresent : null,
             'notYetArrived'                        => $canReadAttendance ? $notYetArrived : null,
-            'todayCheckins'                        => $canReadAttendance ? $todayCheckins : null,
+            'todayCheckins'                        => $canReadAttendance ? $todayMarks : null,
         ],
+        'attendance'                  => $canReadAttendance ? [
+            'uniquePeoplePresent' => $uniquePresent,
+            'totalMarks'          => $attendanceMarks,
+            'todayMarks'          => $todayMarks,
+            'byDay'               => $attendanceByDayDetailed,
+            'byCategory'          => $attendanceByCategory,
+            'source'              => 'attendance_records',
+        ] : null,
         'accommodationSummary'        => $canReadAccomm ? $accommodationSummary : null,
         'paymentReconciliation'       => $canReadPayments ? $paymentReconciliation : null,
         'dailyRegistrationTrends'     => $dailyRegistrationTrends,

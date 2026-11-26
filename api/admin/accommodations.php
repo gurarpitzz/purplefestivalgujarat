@@ -5,12 +5,18 @@ declare(strict_types=1);
  * Purple Festival Gujarat 2027 — Admin Accessibility & Accommodation Coordination API
  * Endpoint: GET / PATCH / POST /api/admin/accommodations (or /api/admin/accommodations.php)
  * Restricted to authorized ADMIN / SUPERADMIN coordinators with accommodations.read / accommodations.manage.
+ *
+ * FND-40: submitting an empty / omitted `coordinatorNotes` PRESERVES the existing (encrypted) notes. Notes are only
+ *         cleared when `clearCoordinatorNotes: true` is sent explicitly.
+ * Grouping: requests are grouped per registration for display but every individual request keeps its own id/status
+ *         (`requests[]`); a PATCH by request id updates exactly that request.
  */
 
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/database.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/notification-service.php';
+require_once __DIR__ . '/../../includes/admin-common.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
@@ -18,6 +24,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
 }
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+/**
+ * Most-urgent-first status roll-up for a registration that has several accommodation requests.
+ */
+function pfgAccommRollupStatus(array $statuses): string
+{
+    $priority = ['REQUESTED', 'PENDING', 'IN_PROGRESS', 'ASSIGNED', 'ARRANGED', 'COMPLETED', 'APPROVED', 'DECLINED', 'REJECTED'];
+    foreach ($priority as $p) {
+        if (in_array($p, $statuses, true)) {
+            return $p === 'PENDING' ? 'REQUESTED' : $p;
+        }
+    }
+    return $statuses[0] ?? 'REQUESTED';
+}
 
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
@@ -62,9 +82,6 @@ try {
         } catch (Throwable $e) {
         }
 
-        // Gather accommodation requests strictly from canonical `accommodation_requests` table
-        $groupedByReg = [];
-
         $stmt = $pdo->query("
             SELECT
                 a.id,
@@ -89,10 +106,11 @@ try {
             FROM accommodation_requests a
             INNER JOIN registrations r ON a.registration_id = r.id
             WHERE r.deleted_at IS NULL
-            ORDER BY a.updated_at DESC
+            ORDER BY a.updated_at DESC, a.id ASC
         ");
         $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
+        $groupedByReg = [];
         foreach ($rows as $row) {
             $regId = (string)$row['registration_id'];
             $rowId = (string)$row['id'];
@@ -104,15 +122,26 @@ try {
                 $types[] = (string)$row['accommodation_code'];
             }
 
-            $assign = $assignmentsByReq[$rowId] ?? $assignmentsByReq[$regId] ?? null;
-            $rawCoordNotes = $assign['coordinatorNotes']
-                ?? $row['coordinator_notes']
-                ?? '';
-            $coordNotes = pfgDecryptValue($rawCoordNotes !== '' ? (string)$rawCoordNotes : null, 'data') ?? '';
-            $assignedUser = $assign['assignedToUserId']
-                ?? $row['assigned_to_user_id']
-                ?? null;
+            $assign = $assignmentsByReq[$rowId] ?? null;
+            $rawCoordNotes = $row['coordinator_notes'] ?? null;
+            if (($rawCoordNotes === null || $rawCoordNotes === '') && $assign && $assign['coordinatorNotes'] !== '') {
+                $rawCoordNotes = $assign['coordinatorNotes'];
+            }
+            $coordNotes = pfgDecryptValue($rawCoordNotes !== null && $rawCoordNotes !== '' ? (string)$rawCoordNotes : null, 'data') ?? '';
+            $assignedUser = $row['assigned_to_user_id'] ?? ($assign['assignedToUserId'] ?? null);
             $freeText = pfgDecryptValue($row['free_text_details'] ?? $row['notes'] ?? null, 'data');
+            $reqStatus = strtoupper(trim((string)($row['status'] ?? 'REQUESTED')));
+
+            $requestItem = [
+                'id'               => $rowId,
+                'status'           => $reqStatus,
+                'selectedTypes'    => array_values($types),
+                'freeTextDetails'  => $freeText,
+                'coordinatorNotes' => (string)$coordNotes,
+                'assignedToUserId' => $assignedUser,
+                'createdAt'        => (string)($row['created_at'] ?? ''),
+                'updatedAt'        => (string)($row['updated_at'] ?? ''),
+            ];
 
             if (!isset($groupedByReg[$regId])) {
                 $groupedByReg[$regId] = [
@@ -126,38 +155,45 @@ try {
                     'categoryCode'       => (string)$row['category_code'],
                     'registrationStatus' => (string)$row['registration_status'],
                     'attendingDays'      => jsonDecode($row['attending_days'] ?? '[]', []),
-                    'selectedTypes'      => $types,
+                    'selectedTypes'      => array_values($types),
                     'freeTextDetails'    => $freeText,
-                    'status'             => strtoupper(trim((string)($row['status'] ?? 'REQUESTED'))),
+                    'status'             => $reqStatus,
                     'coordinatorNotes'   => (string)$coordNotes,
                     'assignedToUserId'   => $assignedUser,
                     'createdAt'          => (string)($row['created_at'] ?? ''),
                     'updatedAt'          => (string)($row['updated_at'] ?? ''),
+                    'requests'           => [$requestItem],
                 ];
             } else {
-                $groupedByReg[$regId]['selectedTypes'] = array_values(array_unique(array_merge(
-                    $groupedByReg[$regId]['selectedTypes'],
-                    $types
-                )));
-                if (($groupedByReg[$regId]['freeTextDetails'] === null || $groupedByReg[$regId]['freeTextDetails'] === '') && $freeText) {
-                    $groupedByReg[$regId]['freeTextDetails'] = $freeText;
+                $g = &$groupedByReg[$regId];
+                $g['requests'][] = $requestItem;
+                $g['selectedTypes'] = array_values(array_unique(array_merge($g['selectedTypes'], $types)));
+                if (($g['freeTextDetails'] === null || $g['freeTextDetails'] === '') && $freeText) {
+                    $g['freeTextDetails'] = $freeText;
                 }
-                if ($groupedByReg[$regId]['coordinatorNotes'] === '' && $coordNotes !== '') {
-                    $groupedByReg[$regId]['coordinatorNotes'] = (string)$coordNotes;
+                if ($g['coordinatorNotes'] === '' && $coordNotes !== '') {
+                    $g['coordinatorNotes'] = (string)$coordNotes;
                 }
+                if (strcmp((string)($row['created_at'] ?? ''), $g['createdAt']) < 0) {
+                    $g['createdAt'] = (string)($row['created_at'] ?? '');
+                }
+                unset($g);
             }
         }
 
         $items = [];
         foreach ($groupedByReg as $item) {
-            $codes = $item['selectedTypes'];
+            $statuses = array_map(static fn(array $r): string => $r['status'], $item['requests']);
+            $item['status'] = pfgAccommRollupStatus($statuses);
+            $item['requestCount'] = count($item['requests']);
+
             $labels = [];
-            foreach ($codes as $code) {
+            foreach ($item['selectedTypes'] as $code) {
                 $labels[] = $typeLabelMap[$code] ?? $code;
             }
             $item['selectedTypeLabels'] = $labels;
 
-            if ($statusFilter !== '' && $item['status'] !== $statusFilter) {
+            if ($statusFilter !== '' && !in_array($statusFilter, $statuses, true) && $item['status'] !== $statusFilter) {
                 continue;
             }
 
@@ -177,6 +213,16 @@ try {
             $items[] = $item;
         }
 
+        $total = count($items);
+        $paged = isset($_GET['page']) || isset($_GET['pageSize']);
+        if ($paged) {
+            [$page, $pageSize, $offset] = pfgAdminPageParams(25, 200);
+            $items = array_slice($items, $offset, $pageSize);
+        } else {
+            $page = 1;
+            $pageSize = max(1, $total);
+        }
+
         logAudit([
             'actorUserId'  => $user['id'],
             'action'       => 'SENSITIVE_DATA_READ',
@@ -190,8 +236,9 @@ try {
         ]);
 
         jsonResponse([
-            'items' => $items,
-            'total' => count($items),
+            'items'      => $items,
+            'total'      => $total,
+            'pagination' => pfgAdminPaginationMeta($page, $pageSize, $total),
         ]);
     }
 
@@ -205,92 +252,95 @@ try {
         $input = readRequestInput();
         $requestId = trim((string)($input['requestId'] ?? $input['id'] ?? $input['registrationId'] ?? ''));
         $status = strtoupper(trim((string)($input['status'] ?? '')));
-        $coordinatorNotes = isset($input['coordinatorNotes']) ? trim((string)$input['coordinatorNotes']) : null;
+        // FND-40: empty / whitespace-only / omitted notes mean "leave existing notes untouched".
+        $coordinatorNotes = isset($input['coordinatorNotes']) ? trim((string)$input['coordinatorNotes']) : '';
+        $notesProvided = $coordinatorNotes !== '';
+        $clearNotes = !empty($input['clearCoordinatorNotes']);
 
         $allowedStatuses = ['REQUESTED', 'IN_PROGRESS', 'ARRANGED', 'DECLINED', 'ASSIGNED', 'COMPLETED'];
         if ($requestId === '' || !in_array($status, $allowedStatuses, true)) {
             jsonResponse(['error' => 'Valid requestId and status (REQUESTED, IN_PROGRESS, ARRANGED, ASSIGNED, COMPLETED, DECLINED) are required.'], 400);
         }
+        if (strlen($coordinatorNotes) > 4000) {
+            jsonResponse(['error' => 'Coordinator notes are limited to 4000 characters.'], 400);
+        }
 
-        // Locate existing request in canonical `accommodation_requests` table
-        $st = $pdo->prepare('SELECT * FROM accommodation_requests WHERE id = :id OR registration_id = :rid LIMIT 1');
-        $st->execute([':id' => $requestId, ':rid' => $requestId]);
-        $existing = $st->fetch(PDO::FETCH_ASSOC) ?: null;
-
-        if (!$existing) {
+        // Exact request id -> that single request; otherwise a registration id -> every request of that registration.
+        $st = $pdo->prepare('SELECT * FROM accommodation_requests WHERE id = :id LIMIT 1');
+        $st->execute([':id' => $requestId]);
+        $targets = [];
+        $first = $st->fetch(PDO::FETCH_ASSOC);
+        if ($first) {
+            $targets = [$first];
+        } else {
+            $stReg = $pdo->prepare('SELECT * FROM accommodation_requests WHERE registration_id = :rid ORDER BY created_at ASC');
+            $stReg->execute([':rid' => $requestId]);
+            $targets = $stReg->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        }
+        if (!$targets) {
             jsonResponse(['error' => 'Accommodation request not found.'], 404);
         }
 
-        $targetRegId = (string)$existing['registration_id'];
-        $targetReqId = (string)$existing['id'];
+        $targetRegId = (string)$targets[0]['registration_id'];
         $now = nowSql();
-        $encryptedNotes = ($coordinatorNotes !== null && $coordinatorNotes !== '')
-            ? pfgEncryptValue($coordinatorNotes, 'data')
-            : $coordinatorNotes;
 
-        // Update canonical `accommodation_requests` table ONLY (no dual-write to legacy registration_accommodations)
-        $up = $pdo->prepare("
-            UPDATE accommodation_requests
-            SET status = :status,
-                coordinator_notes = COALESCE(:notes, coordinator_notes),
-                assigned_to_user_id = :uid,
-                updated_at = :now
-            WHERE id = :id OR registration_id = :rid
-        ");
-        $up->execute([
-            ':status' => $status,
-            ':notes'  => $encryptedNotes,
-            ':uid'    => $user['id'],
-            ':now'    => $now,
-            ':id'     => $targetReqId,
-            ':rid'    => $targetRegId,
-        ]);
+        $encryptedNotes = null; // null => preserve
+        if ($notesProvided) {
+            $encryptedNotes = pfgEncryptValue($coordinatorNotes, 'data');
+        }
 
-        // Upsert into accommodation_assignments
+        $pdo->beginTransaction();
         try {
-            $stAs = $pdo->prepare('SELECT * FROM accommodation_assignments WHERE request_id = :rid LIMIT 1');
-            $stAs->execute([':rid' => $targetReqId]);
-            $existingAssign = $stAs->fetch(PDO::FETCH_ASSOC);
+            foreach ($targets as $existing) {
+                $reqId = (string)$existing['id'];
 
-            if ($existingAssign) {
-                $upAs = $pdo->prepare("
-                    UPDATE accommodation_assignments
-                    SET assigned_to_user_id = :uid,
-                        coordinator_notes = :notes,
-                        status = :status,
-                        updated_at = :now
-                    WHERE id = :id
-                ");
-                $upAs->execute([
-                    ':uid'    => $user['id'],
-                    ':notes'  => $encryptedNotes ?? $existingAssign['coordinator_notes'],
-                    ':status' => $status,
-                    ':now'    => $now,
-                    ':id'     => $existingAssign['id'],
-                ]);
-            } else {
-                $insAs = $pdo->prepare("
-                    INSERT INTO accommodation_assignments (id, request_id, assigned_to_user_id, coordinator_notes, status, created_at, updated_at)
-                    VALUES (:id, :req_id, :uid, :notes, :status, :now, :now)
-                ");
-                $insAs->execute([
-                    ':id'     => uuid4(),
-                    ':req_id' => $targetReqId,
-                    ':uid'    => $user['id'],
-                    ':notes'  => $encryptedNotes,
-                    ':status' => $status,
-                    ':now'    => $now,
-                ]);
+                if ($clearNotes && !$notesProvided) {
+                    $up = $pdo->prepare('UPDATE accommodation_requests SET status = :status, coordinator_notes = NULL, assigned_to_user_id = :uid, updated_at = :now WHERE id = :id');
+                    $up->execute([':status' => $status, ':uid' => $user['id'], ':now' => $now, ':id' => $reqId]);
+                } else {
+                    $up = $pdo->prepare('UPDATE accommodation_requests SET status = :status, coordinator_notes = COALESCE(:notes, coordinator_notes), assigned_to_user_id = :uid, updated_at = :now WHERE id = :id');
+                    $up->execute([':status' => $status, ':notes' => $encryptedNotes, ':uid' => $user['id'], ':now' => $now, ':id' => $reqId]);
+                }
+
+                // Upsert into accommodation_assignments (notes preserved when not provided)
+                try {
+                    $stAs = $pdo->prepare('SELECT * FROM accommodation_assignments WHERE request_id = :rid LIMIT 1');
+                    $stAs->execute([':rid' => $reqId]);
+                    $existingAssign = $stAs->fetch(PDO::FETCH_ASSOC);
+                    if ($existingAssign) {
+                        $notesForAssign = ($clearNotes && !$notesProvided) ? null : ($encryptedNotes ?? $existingAssign['coordinator_notes']);
+                        $pdo->prepare('UPDATE accommodation_assignments SET assigned_to_user_id = :uid, coordinator_notes = :notes, status = :status, updated_at = :now WHERE id = :id')
+                            ->execute([':uid' => $user['id'], ':notes' => $notesForAssign, ':status' => $status, ':now' => $now, ':id' => $existingAssign['id']]);
+                    } else {
+                        $pdo->prepare('INSERT INTO accommodation_assignments (id, request_id, assigned_to_user_id, coordinator_notes, status, created_at, updated_at) VALUES (:id, :req_id, :uid, :notes, :status, :now, :now)')
+                            ->execute([':id' => uuid4(), ':req_id' => $reqId, ':uid' => $user['id'], ':notes' => $encryptedNotes ?? $existing['coordinator_notes'], ':status' => $status, ':now' => $now]);
+                    }
+                } catch (Throwable $e) {
+                    error_log('/api/admin/accommodations.php assignment upsert warning: ' . $e->getMessage());
+                }
             }
-        } catch (Throwable $e) {
+            $pdo->commit();
+        } catch (Throwable $txe) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $txe;
         }
 
         // Privacy-safe participant update notification (status only; NEVER includes coordinator notes or diagnoses in email)
-        if ($status !== (string)$existing['status']) {
+        $statusChanged = false;
+        foreach ($targets as $t) {
+            if ($status !== strtoupper((string)$t['status'])) {
+                $statusChanged = true;
+                break;
+            }
+        }
+        if ($statusChanged) {
             try {
                 $rSt = $pdo->prepare('SELECT full_name, email, registration_code, user_id FROM registrations WHERE id = :rid LIMIT 1');
                 $rSt->execute([':rid' => $targetRegId]);
                 $regInfo = $rSt->fetch(PDO::FETCH_ASSOC);
+                $notifyEntityId = (string)$targets[0]['id'];
                 if ($regInfo && !empty($regInfo['email'])) {
                     pfgEnqueueNotification($pdo, [
                         'to'              => (string)$regInfo['email'],
@@ -302,8 +352,8 @@ try {
                         ],
                         'recipientUserId' => $regInfo['user_id'] ?? null,
                         'entityType'      => 'accommodation_request',
-                        'entityId'        => $targetReqId,
-                        'idempotencyKey'  => 'accomm-upd:' . $targetReqId . ':' . $status . ':' . substr(md5($now), 0, 8),
+                        'entityId'        => $notifyEntityId,
+                        'idempotencyKey'  => 'accomm-upd:' . $notifyEntityId . ':' . $status . ':' . substr(md5($now), 0, 8),
                         'createInApp'     => true,
                         'inAppTitle'      => 'Accessibility Arrangement Updated',
                         'inAppMessage'    => "Your accessibility request for {$regInfo['registration_code']} is now {$status}.",
@@ -314,46 +364,56 @@ try {
             }
         }
 
-        // Record admin action & audit log
-        try {
-            $actStmt = $pdo->prepare("
-                INSERT INTO admin_actions (id, admin_user_id, target_user_id, action_type, reason, before_state, after_state, created_at)
-                VALUES (:id, :admin_id, :target_id, :action_type, :reason, :before_state, :after_state, :now)
-            ");
-            $actStmt->execute([
-                ':id'           => uuid4(),
-                ':admin_id'     => $user['id'],
-                ':target_id'    => $existing['user_id'] ?? null,
-                ':action_type'  => "ACCOMMODATION_{$status}",
-                ':reason'       => $coordinatorNotes,
-                ':before_state' => jsonEncode(['status' => $existing['status']]),
-                ':after_state'  => jsonEncode(['status' => $status, 'coordinatorNotes' => $coordinatorNotes]),
-                ':now'          => $now,
-            ]);
-        } catch (Throwable $e) {
+        // Record admin action & audit log (coordinator note CONTENT is never written to logs)
+        foreach ($targets as $existing) {
+            try {
+                $actStmt = $pdo->prepare("
+                    INSERT INTO admin_actions (id, admin_user_id, target_user_id, action_type, reason, before_state, after_state, created_at)
+                    VALUES (:id, :admin_id, :target_id, :action_type, NULL, :before_state, :after_state, :now)
+                ");
+                $actStmt->execute([
+                    ':id'           => uuid4(),
+                    ':admin_id'     => $user['id'],
+                    ':target_id'    => $existing['user_id'] ?? null,
+                    ':action_type'  => "ACCOMMODATION_{$status}",
+                    ':before_state' => jsonEncode(['status' => $existing['status']]),
+                    ':after_state'  => jsonEncode(['status' => $status, 'coordinatorNotesUpdated' => $notesProvided || $clearNotes]),
+                    ':now'          => $now,
+                ]);
+            } catch (Throwable $e) {
+            }
         }
 
         logAudit([
             'actorUserId'  => $user['id'],
             'action'       => 'ACCOMMODATION_UPDATED',
             'resourceType' => 'accommodation_request',
-            'resourceId'   => $targetReqId,
+            'resourceId'   => (string)$targets[0]['id'],
             'metadata'     => [
-                'registrationId' => $targetRegId,
-                'previousStatus' => $existing['status'],
-                'newStatus'      => $status,
+                'registrationId'          => $targetRegId,
+                'requestIds'              => array_map(static fn(array $t): string => (string)$t['id'], $targets),
+                'previousStatus'          => $targets[0]['status'],
+                'newStatus'               => $status,
+                'coordinatorNotesUpdated' => $notesProvided || $clearNotes,
             ],
         ]);
 
+        // Return the EFFECTIVE (decrypted) notes so the UI reflects what is actually stored.
+        $stNow = $pdo->prepare('SELECT coordinator_notes FROM accommodation_requests WHERE id = :id LIMIT 1');
+        $stNow->execute([':id' => (string)$targets[0]['id']]);
+        $storedNotes = $stNow->fetchColumn();
+        $effectiveNotes = pfgDecryptValue(($storedNotes !== false && $storedNotes !== null && $storedNotes !== '') ? (string)$storedNotes : null, 'data') ?? '';
+
         jsonResponse([
             'request' => [
-                'id'               => $targetReqId,
+                'id'               => (string)$targets[0]['id'],
                 'registrationId'   => $targetRegId,
                 'status'           => $status,
-                'coordinatorNotes' => $coordinatorNotes ?? ($existing['coordinator_notes'] ?? ''),
+                'coordinatorNotes' => $effectiveNotes,
                 'updatedAt'        => $now,
+                'updatedCount'     => count($targets),
             ],
-            'coordinatorNotes' => $coordinatorNotes ?? ($existing['coordinator_notes'] ?? ''),
+            'coordinatorNotes' => $effectiveNotes,
         ]);
     }
 
