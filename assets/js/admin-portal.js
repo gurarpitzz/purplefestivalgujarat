@@ -148,6 +148,15 @@
   function canAnnounce() {
     return can("cms.manage") || can("communications.manage");
   }
+  function canReadNotifications() {
+    return can("notifications.read");
+  }
+  function canRetryNotifications() {
+    return can("notifications.retry");
+  }
+  function canResendNotifications() {
+    return can("notifications.resend");
+  }
 
   const NAV_ITEMS = [
     { id: "OVERVIEW", label: "Overview & Analytics", visible: true },
@@ -158,7 +167,7 @@
     { id: "ATTENDANCE", label: "Attendance / Check-In", visible: can("attendance.read.full") },
     { id: "PROGRAMME", label: "Programme & Venues", visible: canProgramme() },
     { id: "ASSIGNMENTS", label: "Duty Assignments", visible: canAssignDuty() },
-    { id: "COMMS", label: "Communications Center", visible: can("registrations.read.all") },
+    { id: "COMMS", label: "Communications Center", visible: canReadNotifications() || canAnnounce() },
     { id: "COUPONS", label: "Coupons", visible: can("coupons.manage") },
     { id: "CMS", label: "Website CMS", visible: can("cms.manage") },
     { id: "USERS", label: "Staff & Permission Profiles", visible: isSuperadmin },
@@ -486,7 +495,11 @@
     else if (tabId === "ACCOMMODATIONS") fetchAccommodations();
     else if (tabId === "PROGRAMME") { fetchProgramme(); fetchVenues(); }
     else if (tabId === "ASSIGNMENTS") { fetchAssignments(); ensureProgrammeRefs(); }
-    else if (tabId === "COMMS") { if (state.comms.sub === "announcements" && canAnnounce()) fetchAnnouncements(); else fetchNotifications(); }
+    else if (tabId === "COMMS") {
+      if (!canReadNotifications() && canAnnounce()) state.comms.sub = "announcements";
+      if (state.comms.sub === "announcements" && canAnnounce()) fetchAnnouncements();
+      else if (canReadNotifications()) fetchNotifications();
+    }
     else if (tabId === "COUPONS") fetchCoupons();
     else if (tabId === "CMS") fetchCms();
     else if (tabId === "USERS") fetchStaffTab();
@@ -2613,19 +2626,22 @@
 
   function renderCommsTab() {
     const cm = state.comms;
-    const tabs = [["queue", "Notification queue"]];
+    const tabs = [];
+    if (canReadNotifications()) tabs.push(["queue", "Notification queue"]);
     if (canAnnounce()) tabs.push(["announcements", "Announcements"]);
+    if (cm.sub === "queue" && !canReadNotifications() && canAnnounce()) cm.sub = "announcements";
     let html = '<div class="space-y-4">';
     html += pageHeader("Communications Center", "Monitor outgoing email, retry failures and publish festival announcements. Retrying or resending never changes an application's approval status.");
     html += subTabs("comms", cm.sub, tabs);
-    html += cm.sub === "announcements" && canAnnounce() ? renderAnnouncementsPane() : renderQueuePane();
+    html += cm.sub === "announcements" && canAnnounce() ? renderAnnouncementsPane() : (canReadNotifications() ? renderQueuePane() : '<div class="' + C.card + ' p-6 text-sm text-[#6E6580]">You do not have permission to inspect the notification queue.</div>');
     html += "</div>";
     return html;
   }
 
   function renderQueuePane() {
     const cm = state.comms;
-    const canWrite = can("registrations.write");
+    const canRetry = canRetryNotifications();
+    const canResend = canResendNotifications();
     let html =
       '<div class="' + C.card + ' p-4 space-y-3">' +
       '<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by delivery status">' +
@@ -2658,14 +2674,14 @@
           '<td class="' + C.td + ' tabular-nums">' + esc(g(n, "attempts") || 0) + " / " + esc(g(n, "maxAttempts") || "—") + "</td>" +
           '<td class="' + C.td + ' max-w-xs text-rose-800">' + esc(g(n, "lastError") || "") + "</td>" +
           '<td class="' + C.td + ' text-right whitespace-nowrap"><button type="button" data-act="notif-detail" data-id="' + id + '" class="' + C.btn2 + '">Details</button>' +
-          (canWrite && failed ? ' <button type="button" data-act="notif-action" data-do="retry" data-id="' + id + '" class="' + C.ok + '">Retry</button>' : "") +
-          (canWrite && !failed && !inFlight ? ' <button type="button" data-act="notif-action" data-do="resend" data-id="' + id + '" class="' + C.btn2 + '">Resend</button>' : "") +
+          (canRetry && (failed || st === "RETRY_PENDING" || st === "DELIVERY_UNKNOWN") ? ' <button type="button" data-act="notif-action" data-do="retry" data-id="' + id + '" class="' + C.ok + '">Retry</button>' : "") +
+          (canResend && !failed && !inFlight ? ' <button type="button" data-act="notif-action" data-do="resend" data-id="' + id + '" class="' + C.btn2 + '">Resend</button>' : "") +
           "</td></tr>"
         );
       }).join("");
     }
     html += "</tbody></table></div>" + renderPager("notif", state.comms.pagination, "Notification queue pagination") + "</div>";
-    if (!canWrite) html += '<p class="' + C.muted + '">Retry and resend require the <code>registrations.write</code> permission.</p>';
+    if (!canRetry && !canResend) html += '<p class="' + C.muted + '">Retry requires <code>notifications.retry</code> and resend requires <code>notifications.resend</code>.</p>';
     return html;
   }
 

@@ -175,6 +175,7 @@ if ($method === 'GET') {
         }
 
         $user = getCurrentUser($pdo);
+        $registrationOpen = pfgIsPublicRegistrationOpen($pdo);
         if (!$user || empty($user['id'])) {
             pfgRegApiJson([
                 'edition'              => $edition,
@@ -182,6 +183,7 @@ if ($method === 'GET') {
                 'disabilityCategories' => $disabilityCategories,
                 'accommodationTypes'   => $accommodationTypes,
                 'allowMultiCategory'   => pfgIsMultiCategoryAllowed($pdo),
+                'registrationOpen'     => $registrationOpen,
                 'user'                 => null,
                 'registrations'        => [],
             ]);
@@ -294,6 +296,7 @@ if ($method === 'GET') {
             'disabilityCategories' => $disabilityCategories,
             'accommodationTypes'   => $accommodationTypes,
             'allowMultiCategory'   => pfgIsMultiCategoryAllowed($pdo),
+            'registrationOpen'     => $registrationOpen,
             'user'                 => $userPayload,
             'registrations'        => $enrichedRegistrations,
         ]);
@@ -314,6 +317,14 @@ try {
     $pdo = getDb();
     $clientIp = getClientIp() ?: 'unknown';
     pfgRequireRateLimit($pdo, 'registration_submit_ip', $clientIp, 30, 900, 900);
+
+    // §6 Centralized Registration Launch Activation Gate (blocks BEFORE any mutation)
+    if (!pfgIsPublicRegistrationOpen($pdo)) {
+        pfgRegApiJson([
+            'error'              => 'Festival registration is not currently open.',
+            'registrationClosed' => true,
+        ], 503);
+    }
 
     // 1. Authenticated participant session strictly required (Phase 5 + CAD-03)
     $currentUser = getCurrentUser($pdo);

@@ -15,6 +15,7 @@ declare(strict_types=1);
  * Usage:
  *   php scripts/build-release-package.php
  *   php scripts/build-release-package.php --out=tests/tmp/release-package --json
+ *   php scripts/build-release-package.php --out=tests/tmp/release-package --zip=tests/tmp/pfg2027-release.zip --json
  *   php scripts/build-release-package.php --verify-only --json
  */
 
@@ -34,6 +35,7 @@ $repoRoot = str_replace('\\', '/', $repoRoot);
 
 // Parse CLI options
 $outDirArg = 'tests/tmp/release-package';
+$zipPathArg = null;
 $verifyOnly = false;
 $jsonOutput = false;
 $skipLint = false;
@@ -44,6 +46,13 @@ foreach (array_slice($argv ?? [], 1) as $arg) {
         if ($val !== '') {
             $outDirArg = $val;
         }
+    } elseif (str_starts_with($arg, '--zip=')) {
+        $val = trim(substr($arg, strlen('--zip=')));
+        if ($val !== '') {
+            $zipPathArg = $val;
+        }
+    } elseif ($arg === '--zip') {
+        $zipPathArg = '__DEFAULT__';
     } elseif ($arg === '--verify-only') {
         $verifyOnly = true;
     } elseif ($arg === '--json') {
@@ -52,7 +61,7 @@ foreach (array_slice($argv ?? [], 1) as $arg) {
         $skipLint = true;
     } elseif ($arg === '--help' || $arg === '-h') {
         echo "Purple Festival Gujarat 2027 — Clean Bluehost Release Packager\n";
-        echo "Usage: php scripts/build-release-package.php [--out=<dir>] [--verify-only] [--json] [--skip-lint]\n";
+        echo "Usage: php scripts/build-release-package.php [--out=<dir>] [--zip=<path>] [--verify-only] [--json] [--skip-lint]\n";
         exit(0);
     }
 }
@@ -73,6 +82,25 @@ if ($outDir === $repoRoot || str_starts_with($repoRoot . '/', $outDir . '/')) {
 }
 
 $manifestPath = dirname($outDir) . '/RELEASE_MANIFEST.json';
+
+$zipPath = null;
+if ($zipPathArg !== null) {
+    if ($zipPathArg === '__DEFAULT__') {
+        $zipPath = dirname($outDir) . '/pfg2027-bluehost-release.zip';
+    } else {
+        $zipPath = $isAbsPath($zipPathArg)
+            ? str_replace('\\', '/', $zipPathArg)
+            : $repoRoot . '/' . ltrim(str_replace('\\', '/', $zipPathArg), '/');
+    }
+    if (!str_ends_with(strtolower($zipPath), '.zip')) {
+        $zipPath .= '.zip';
+    }
+    // Safety guard: never write zip archive inside $outDir webroot
+    if (str_starts_with($zipPath, $outDir . '/')) {
+        fwrite(STDERR, "SAFETY ABORT: --zip path must be outside the --out webroot directory.\n");
+        exit(2);
+    }
+}
 
 /**
  * Authoritative Allowlist & Exclusion Rules (Phase 18 / §40.7)
@@ -169,7 +197,11 @@ $classifyExclusion = static function (string $relPath) use (
     if (str_starts_with($lowerBase, '.env') || str_starts_with($lowerBase, '.pfg27_env')) {
         return 'environment_secret_file';
     }
-    if (preg_match('/\.(md|docx|pdf|pptx|xlsx)$/i', $base)) {
+    // §11 Preserve legitimate public PDFs, images, and fonts inside assets/; exclude source docs elsewhere
+    if (preg_match('/\.(md|docx|pptx|xlsx)$/i', $base)) {
+        return 'documentation_or_source_doc';
+    }
+    if ($top !== 'assets' && preg_match('/\.pdf$/i', $base)) {
         return 'documentation_or_source_doc';
     }
     if (preg_match('/^(package(-lock)?\.json|tsconfig\.json|next\.config\..*)$/i', $base)) {
@@ -283,6 +315,9 @@ $outDirRelPrefix = str_starts_with($outDir . '/', $repoRoot . '/')
 $manifestRelPath = str_starts_with($manifestPath, $repoRoot . '/')
     ? substr($manifestPath, strlen($repoRoot) + 1)
     : null;
+$zipRelPath = ($zipPath !== null && str_starts_with($zipPath, $repoRoot . '/'))
+    ? substr($zipPath, strlen($repoRoot) + 1)
+    : null;
 
 $totalExcludedFiles = 0;
 $repoIterator = new RecursiveIteratorIterator(
@@ -314,6 +349,9 @@ foreach ($repoIterator as $info) {
     $abs = str_replace('\\', '/', $info->getPathname());
     $rel = substr($abs, strlen($repoRoot) + 1);
     if ($manifestRelPath !== null && $rel === $manifestRelPath) {
+        continue;
+    }
+    if ($zipRelPath !== null && $rel === $zipRelPath) {
         continue;
     }
     if (isset($candidateIncludeSet[$rel])) {
@@ -425,7 +463,115 @@ if (!$verifyOnly && is_dir($outDir)) {
 $gitBranch = trim((string)@shell_exec('git -C ' . escapeshellarg($repoRoot) . ' branch --show-current 2>' . (DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null')));
 $gitCommit = trim((string)@shell_exec('git -C ' . escapeshellarg($repoRoot) . ' rev-parse --short HEAD 2>' . (DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null')));
 
-$statusOk = ($phpLintFail === 0 && count($leakedFiles) === 0 && count($manifestFiles) > 0);
+// 4b. Optional §11 verifiable .zip release archive creation (--zip=<path>)
+$zipReport = null;
+$zipOk = true;
+if ($zipPath !== null && !$verifyOnly && $phpLintFail === 0 && count($leakedFiles) === 0 && count($manifestFiles) > 0) {
+    $zipParent = dirname($zipPath);
+    if (!is_dir($zipParent)) {
+        @mkdir($zipParent, 0755, true);
+    }
+    if (is_file($zipPath)) {
+        @unlink($zipPath);
+    }
+
+    $zipMethod = null;
+    $zipError = null;
+    $zipEntryCount = 0;
+
+    if (class_exists('ZipArchive')) {
+        $zip = new ZipArchive();
+        $openRes = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        if ($openRes === true) {
+            foreach ($manifestFiles as $mf) {
+                $rel = (string)$mf['path'];
+                $src = $outDir . '/' . $rel;
+                if (is_file($src)) {
+                    $zip->addFile($src, $rel);
+                }
+            }
+            $zip->close();
+
+            $verifyZip = new ZipArchive();
+            if ($verifyZip->open($zipPath) === true) {
+                $zipEntryCount = (int)$verifyZip->numFiles;
+                $verifyZip->close();
+                $zipMethod = 'ZipArchive';
+            } else {
+                $zipError = 'ZipArchive verification open failed.';
+            }
+        } else {
+            $zipError = 'ZipArchive open failed with code ' . (string)$openRes;
+        }
+    } elseif (class_exists('PharData')) {
+        try {
+            $phar = new PharData($zipPath, 0, null, Phar::ZIP);
+            foreach ($manifestFiles as $mf) {
+                $rel = (string)$mf['path'];
+                $src = $outDir . '/' . $rel;
+                if (is_file($src)) {
+                    $phar->addFile($src, $rel);
+                    $zipEntryCount++;
+                }
+            }
+            $zipMethod = 'PharData';
+        } catch (Throwable $pe) {
+            $zipError = 'PharData fallback failed: ' . $pe->getMessage();
+        }
+    } else {
+        // OS fallback: `zip` on Linux/macOS or PowerShell Compress-Archive on Windows
+        $cmdOut = [];
+        $cmdCode = 1;
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $psCmd = sprintf(
+                'powershell -NoProfile -Command "Compress-Archive -Path %s -DestinationPath %s -Force"',
+                escapeshellarg($outDir . '/*'),
+                escapeshellarg($zipPath)
+            );
+            exec($psCmd . ' 2>&1', $cmdOut, $cmdCode);
+            $zipMethod = 'PowerShell-Compress-Archive';
+        } else {
+            $shCmd = sprintf(
+                'cd %s && zip -qr %s .',
+                escapeshellarg($outDir),
+                escapeshellarg($zipPath)
+            );
+            exec($shCmd . ' 2>&1', $cmdOut, $cmdCode);
+            $zipMethod = 'cli-zip';
+        }
+        if ($cmdCode === 0 && is_file($zipPath)) {
+            $zipEntryCount = count($manifestFiles);
+        } else {
+            $zipError = 'No zip library available and OS fallback failed: ' . implode(' ', $cmdOut);
+        }
+    }
+
+    if ($zipError === null && is_file($zipPath) && (int)filesize($zipPath) > 0) {
+        $zipReport = [
+            'status'         => 'CREATED',
+            'method'         => $zipMethod,
+            'path'           => str_starts_with($zipPath, $repoRoot . '/')
+                ? substr($zipPath, strlen($repoRoot) + 1)
+                : $zipPath,
+            'sizeBytes'      => (int)filesize($zipPath),
+            'sha256'         => (string)hash_file('sha256', $zipPath),
+            'entryCount'     => $zipEntryCount,
+            'outsideWebroot' => !str_starts_with($zipPath, $outDir . '/'),
+        ];
+    } else {
+        $zipOk = false;
+        $zipReport = [
+            'status' => 'FAILED',
+            'method' => $zipMethod ?? 'none',
+            'path'   => str_starts_with($zipPath, $repoRoot . '/')
+                ? substr($zipPath, strlen($repoRoot) + 1)
+                : $zipPath,
+            'error'  => $zipError ?? 'Zip archive could not be created.',
+        ];
+    }
+}
+
+$statusOk = ($phpLintFail === 0 && count($leakedFiles) === 0 && count($manifestFiles) > 0 && $zipOk);
 
 $manifestData = [
     'project'      => 'Purple Festival Gujarat 2027',
@@ -439,6 +585,7 @@ $manifestData = [
     'manifestPath' => str_starts_with($manifestPath, $repoRoot . '/')
         ? substr($manifestPath, strlen($repoRoot) + 1)
         : $manifestPath,
+    'zipArchive'   => $zipReport,
     'summary'      => [
         'includedFileCount'        => count($manifestFiles),
         'includedTotalBytes'       => $totalBytes,
@@ -472,6 +619,7 @@ if ($jsonOutput) {
         'gitCommit'            => $manifestData['gitCommit'],
         'outputDir'            => $manifestData['outputDir'],
         'manifestPath'         => $manifestData['manifestPath'],
+        'zipArchive'           => $manifestData['zipArchive'],
         'summary'              => $manifestData['summary'],
         'exclusionAuditCounts' => $manifestData['exclusionAuditCounts'],
         'leakedFiles'          => $manifestData['leakedFiles'],
@@ -483,6 +631,9 @@ if ($jsonOutput) {
     echo "Git Branch / Commit:   {$manifestData['gitBranch']} @ {$manifestData['gitCommit']}\n";
     echo "Output Directory:      {$manifestData['outputDir']}\n";
     echo "Manifest Path:         {$manifestData['manifestPath']} (outside webroot: " . ($manifestData['summary']['manifestOutsideWebroot'] ? 'YES' : 'NO') . ")\n";
+    if (is_array($zipReport)) {
+        echo "Zip Archive:           {$zipReport['path']} ({$zipReport['status']}" . (isset($zipReport['sizeBytes']) ? ", {$zipReport['sizeBytes']} bytes, {$zipReport['entryCount']} entries, sha256={$zipReport['sha256']}" : '') . ")\n";
+    }
     echo "Included Files:        {$manifestData['summary']['includedFileCount']} ({$manifestData['summary']['includedTotalBytes']} bytes)\n";
     echo "Excluded Files:        {$manifestData['summary']['excludedFileCount']}\n";
     echo "Excluded Leaks Found:  {$manifestData['summary']['excludedLeakCount']}\n";

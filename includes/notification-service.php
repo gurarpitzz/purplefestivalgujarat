@@ -40,6 +40,141 @@ if (!defined('PFG_NOTIFICATION_STATUS_PRECEDENCE')) {
     ]);
 }
 
+if (!defined('PFG_AUTH_TOKEN_TEMPLATES')) {
+    define('PFG_AUTH_TOKEN_TEMPLATES', [
+        'ACCOUNT_VERIFICATION',
+        'EMAIL_VERIFICATION_RESEND',
+        'EMAIL_CHANGE_VERIFICATION',
+        'PASSWORD_RECOVERY',
+    ]);
+}
+
+if (!function_exists('pfgExtractAuthTokenFromActionUrl')) {
+    /**
+     * Extracts raw single-use `token` or `resetToken` query parameter from an ephemeral actionUrl.
+     */
+    function pfgExtractAuthTokenFromActionUrl(?string $actionUrl): ?string
+    {
+        if (!is_string($actionUrl) || trim($actionUrl) === '') {
+            return null;
+        }
+        $query = parse_url(trim($actionUrl), PHP_URL_QUERY);
+        if (!is_string($query) || $query === '') {
+            return null;
+        }
+        $params = [];
+        parse_str($query, $params);
+        foreach (['token', 'resetToken'] as $key) {
+            if (isset($params[$key]) && is_string($params[$key]) && trim($params[$key]) !== '') {
+                return trim($params[$key]);
+            }
+        }
+        return null;
+    }
+}
+
+if (!function_exists('pfgValidateAuthNotificationTokenFreshness')) {
+    /**
+     * §9 Stale / Expired / Used / Superseded Authentication Token Guard.
+     * Verifies before provider handoff that an authentication email's single-use token is still
+     * active (`used_at IS NULL AND expires_at > NOW()`) in its backing database table.
+     */
+    function pfgValidateAuthNotificationTokenFreshness(PDO $pdo, array $job, array $ephemeralVars, string $now): array
+    {
+        $tplUpper = strtoupper(trim((string)($job['template_code'] ?? '')));
+        if (!in_array($tplUpper, PFG_AUTH_TOKEN_TEMPLATES, true)) {
+            return ['fresh' => true, 'reason' => null];
+        }
+
+        $actionUrl = isset($ephemeralVars['actionUrl']) && is_string($ephemeralVars['actionUrl'])
+            ? trim($ephemeralVars['actionUrl'])
+            : '';
+        $rawToken = pfgExtractAuthTokenFromActionUrl($actionUrl);
+        if ($actionUrl === '' || $rawToken === null) {
+            return ['fresh' => false, 'reason' => 'Missing ephemeral authentication token URL prior to delivery'];
+        }
+
+        $tokenHash = function_exists('hashToken')
+            ? hashToken($rawToken)
+            : hash_hmac('sha256', $rawToken, (string)AUTH_SECRET);
+
+        $recipientUserId = !empty($job['recipient_user_id']) ? trim((string)$job['recipient_user_id']) : '';
+        $entityId = !empty($job['entity_id']) ? trim((string)$job['entity_id']) : '';
+        $recipientEmail = strtolower(trim((string)($job['recipient_email'] ?? '')));
+
+        $hasUserContext = ($recipientUserId !== '' || $entityId !== '');
+        if (!$hasUserContext && $recipientEmail !== '') {
+            try {
+                $uStmt = $pdo->prepare('SELECT id FROM users WHERE LOWER(email) = :em LIMIT 1');
+                $uStmt->execute([':em' => $recipientEmail]);
+                if ($uStmt->fetchColumn()) {
+                    $hasUserContext = true;
+                }
+            } catch (Throwable $e) {
+                // Fail-closed outside local dev
+            }
+        }
+
+        $isLocalDev = defined('IS_LOCAL_DEV_ENV') && IS_LOCAL_DEV_ENV;
+
+        if ($tplUpper === 'PASSWORD_RECOVERY') {
+            try {
+                $stmt = $pdo->prepare('SELECT id, user_id, used_at, expires_at FROM password_reset_tokens WHERE token_hash = :th LIMIT 1');
+                $stmt->execute([':th' => $tokenHash]);
+                $tokRow = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($tokRow) {
+                    $isUnused = ($tokRow['used_at'] === null || $tokRow['used_at'] === '');
+                    $isUnexpired = ((string)$tokRow['expires_at'] > $now);
+                    if ($isUnused && $isUnexpired) {
+                        return ['fresh' => true, 'reason' => null];
+                    }
+                    return [
+                        'fresh'  => false,
+                        'reason' => !$isUnused
+                            ? 'Password reset token was already used prior to delivery'
+                            : 'Password reset token expired prior to delivery',
+                    ];
+                }
+            } catch (Throwable $e) {
+                return ['fresh' => false, 'reason' => 'Unable to verify password reset token freshness'];
+            }
+
+            if (!$isLocalDev || $hasUserContext) {
+                return ['fresh' => false, 'reason' => 'Password reset token is missing or superseded prior to delivery'];
+            }
+            // Isolated local dev/test synthetic queue row with no user or DB token record (e.g. T4-06 unit fixture)
+            return ['fresh' => true, 'reason' => null];
+        }
+
+        // Email verification templates: ACCOUNT_VERIFICATION, EMAIL_VERIFICATION_RESEND, EMAIL_CHANGE_VERIFICATION
+        try {
+            $stmt = $pdo->prepare('SELECT id, user_id, used_at, expires_at FROM email_verification_tokens WHERE token_hash = :th LIMIT 1');
+            $stmt->execute([':th' => $tokenHash]);
+            $tokRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($tokRow) {
+                $isUnused = ($tokRow['used_at'] === null || $tokRow['used_at'] === '');
+                $isUnexpired = ((string)$tokRow['expires_at'] > $now);
+                if ($isUnused && $isUnexpired) {
+                    return ['fresh' => true, 'reason' => null];
+                }
+                return [
+                    'fresh'  => false,
+                    'reason' => !$isUnused
+                        ? 'Email verification token was already used or superseded prior to delivery'
+                        : 'Email verification token expired prior to delivery',
+                ];
+            }
+        } catch (Throwable $e) {
+            return ['fresh' => false, 'reason' => 'Unable to verify email verification token freshness'];
+        }
+
+        if (!$isLocalDev || $hasUserContext) {
+            return ['fresh' => false, 'reason' => 'Email verification token is missing or superseded prior to delivery'];
+        }
+        return ['fresh' => true, 'reason' => null];
+    }
+}
+
 if (!function_exists('pfgComputeRetryBackoffSeconds')) {
     /**
      * Exponential backoff schedule for transient failures: 60s, 300s, 900s, 3600s.
@@ -333,8 +468,9 @@ if (!function_exists('pfgRecoverAbandonedNotifications')) {
             $maxAttempts = max(1, (int)$row['max_attempts']);
             $nextStatus = $attempts < $maxAttempts ? 'RETRY_PENDING' : 'DELIVERY_UNKNOWN';
             $nextRetryAt = $attempts < $maxAttempts ? nowSql(time() + pfgComputeRetryBackoffSeconds($attempts)) : null;
+            $wipeEphemeral = ($attempts >= $maxAttempts) || in_array($nextStatus, ['FAILED', 'DELIVERY_UNKNOWN'], true);
 
-            $upd = $pdo->prepare("
+            $updSql = "
                 UPDATE notification_queue
                 SET status = :st,
                     locked_by = NULL,
@@ -342,9 +478,10 @@ if (!function_exists('pfgRecoverAbandonedNotifications')) {
                     next_retry_at = :nra,
                     error_category = 'ABANDONED_LEASE_RECOVERED',
                     last_error = 'Worker lease expired before completion; recovered automatically.',
-                    updated_at = :now
-                WHERE id = :id AND status = 'PROCESSING'
-            ");
+                    updated_at = :now"
+                . ($wipeEphemeral ? ", ephemeral_secret_enc = NULL" : "")
+                . " WHERE id = :id AND status = 'PROCESSING'";
+            $upd = $pdo->prepare($updSql);
             $upd->execute([
                 ':st'  => $nextStatus,
                 ':nra' => $nextRetryAt,
@@ -812,6 +949,52 @@ if (!function_exists('pfgDispatchClaimedNotification')) {
             }
         }
 
+        // 1b. §9 Stale / Expired / Used / Superseded Authentication Token Guard (before provider handoff)
+        $freshCheck = pfgValidateAuthNotificationTokenFreshness($pdo, $job, $ephemeralVars, $now);
+        if (empty($freshCheck['fresh'])) {
+            $cancelError = 'Authentication token expired, used, or superseded prior to delivery';
+            $pdo->prepare("
+                UPDATE notification_queue
+                SET status = 'CANCELLED',
+                    locked_by = NULL,
+                    locked_until = NULL,
+                    next_retry_at = NULL,
+                    ephemeral_secret_enc = NULL,
+                    error_category = 'TOKEN_EXPIRED_OR_SUPERSEDED',
+                    last_error = :err,
+                    updated_at = :now
+                WHERE id = :id
+            ")->execute([
+                ':err' => $cancelError,
+                ':now' => $now,
+                ':id'  => $jobId,
+            ]);
+
+            pfgLogDeliveryAttempt($pdo, [
+                'jobId'           => $jobId,
+                'attemptNumber'   => $attempts,
+                'provider'        => (string)($options['driver'] ?? MAIL_DRIVER),
+                'eventType'       => 'STALE_AUTH_CANCELLED',
+                'status'          => 'CANCELLED',
+                'errorCategory'   => 'TOKEN_EXPIRED_OR_SUPERSEDED',
+                'responseDetails' => [
+                    'templateCode' => $templateCode,
+                    'reason'       => $freshCheck['reason'] ?? $cancelError,
+                ],
+            ]);
+
+            return [
+                'jobId'             => $jobId,
+                'status'            => 'CANCELLED',
+                'provider'          => (string)($options['driver'] ?? MAIL_DRIVER),
+                'providerMessageId' => null,
+                'errorCategory'     => 'TOKEN_EXPIRED_OR_SUPERSEDED',
+                'error'             => $cancelError,
+                'nextRetryAt'       => null,
+                'capturePath'       => null,
+            ];
+        }
+
         // 2. Render template (or use pre-rendered custom body for CUSTOM_EMAIL)
         try {
             if ($templateCode === 'CUSTOM_EMAIL') {
@@ -1043,6 +1226,7 @@ if (!function_exists('pfgProcessNotificationQueueBatch')) {
                 'capturedLocal'  => 0,
                 'retryScheduled' => 0,
                 'failed'         => 0,
+                'cancelled'      => 0,
                 'unknown'        => 0,
                 'stoppedByTime'  => false,
                 'durationMs'     => (int)round((microtime(true) - $t0) * 1000),
@@ -1063,6 +1247,7 @@ if (!function_exists('pfgProcessNotificationQueueBatch')) {
             'capturedLocal'  => 0,
             'retryScheduled' => 0,
             'failed'         => 0,
+            'cancelled'      => 0,
             'unknown'        => 0,
             'stoppedByTime'  => false,
             'durationMs'     => 0,
@@ -1098,6 +1283,9 @@ if (!function_exists('pfgProcessNotificationQueueBatch')) {
                     break;
                 case 'FAILED':
                     $stats['failed']++;
+                    break;
+                case 'CANCELLED':
+                    $stats['cancelled']++;
                     break;
             }
         }

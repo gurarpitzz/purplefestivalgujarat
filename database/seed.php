@@ -516,13 +516,13 @@ if (!function_exists('pfgRunSafeReferenceSeed')) {
         //      organizer edits to name/description/permissions are never overwritten).
         if (pfgDbTableExists($pdo, 'admin_permission_profiles')) {
             $profileSeed = [
-                ['90000000-0000-4000-8000-000000000001', 'registration_manager', 'Registration Manager', 'Reviews, edits and exports registrations across all three categories.', ['account.read.own', 'registrations.read.all', 'registrations.write', 'registrations.export', 'attendance.read.full']],
+                ['90000000-0000-4000-8000-000000000001', 'registration_manager', 'Registration Manager', 'Reviews, edits and exports registrations across all three categories, inspects notification status, and performs attendance overrides.', ['account.read.own', 'registrations.read.all', 'registrations.write', 'registrations.export', 'attendance.read.full', 'attendance.override', 'notifications.read']],
                 ['90000000-0000-4000-8000-000000000002', 'volunteer_coordinator', 'Volunteer Coordinator', 'Reviews volunteer applications and manages volunteer duty assignments.', ['account.read.own', 'registrations.read.all', 'volunteers.review', 'attendance.read.full']],
                 ['90000000-0000-4000-8000-000000000003', 'sli_coordinator', 'SLI Coordinator', 'Reviews Indian Sign Language interpreter applications and session pairings.', ['account.read.own', 'registrations.read.all', 'sli.review', 'accommodations.read']],
                 ['90000000-0000-4000-8000-000000000004', 'accessibility_coordinator', 'Accessibility Coordinator', 'Reads and manages accommodation requests and accessibility logistics.', ['account.read.own', 'registrations.read.all', 'accommodations.read', 'accommodations.manage']],
                 ['90000000-0000-4000-8000-000000000005', 'programme_coordinator', 'Programme Coordinator', 'Plans programme sessions, venues and volunteer / SLI duty rosters.', ['account.read.own', 'programme.manage', 'registrations.read.all', 'volunteers.review', 'sli.review', 'attendance.read.full']],
                 ['90000000-0000-4000-8000-000000000006', 'content_manager', 'Content Manager', 'Manages public website content, programme copy, FAQs and partners.', ['account.read.own', 'cms.manage']],
-                ['90000000-0000-4000-8000-000000000007', 'communications_manager', 'Communications Manager', 'Handles participant communications and registration exports for outreach.', ['account.read.own', 'communications.manage', 'registrations.read.all', 'registrations.export']],
+                ['90000000-0000-4000-8000-000000000007', 'communications_manager', 'Communications Manager', 'Handles participant communications, notification queue recovery, and registration exports for outreach.', ['account.read.own', 'communications.manage', 'notifications.read', 'notifications.retry', 'notifications.resend', 'registrations.read.all', 'registrations.export']],
             ];
             $profStmt = $pdo->prepare('
                 INSERT IGNORE INTO admin_permission_profiles

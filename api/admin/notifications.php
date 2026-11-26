@@ -3,20 +3,34 @@ declare(strict_types=1);
 
 /**
  * GET & POST /api/admin/notifications
- * Phase 4E / 4N Backend Notification Inspection, Retry & Intentional Resend API.
+ * Phase 4E / 4N + Final Release §5.1 Backend Notification Inspection, Retry & Intentional Resend API.
  *
  * Security Guarantees:
  * - Strictly restricted to authenticated ADMIN / SUPERADMIN with mandatory MFA verified (D-20).
- * - GET requires `registrations.read.all` (returns redacted queue metadata & delivery attempt logs;
+ * - GET requires `notifications.read` (returns redacted queue metadata & delivery attempt logs;
  *   never exposes `ephemeral_secret_enc`, API keys, or raw tokens).
- * - POST (`action=retry` or `action=resend`) requires `registrations.write` + session-bound CSRF token,
- *   records immutable `audit_logs` + `admin_actions`, and NEVER alters application approval status.
+ * - Non-SUPERADMIN callers (without `notifications.auth.manage`) are strictly blocked from viewing,
+ *   retrying, or resending authentication/security templates (filtered out of list/count; 403 on direct GET/POST).
+ * - POST `action=retry` requires `notifications.retry` + session-bound CSRF token.
+ * - POST `action=resend` requires `notifications.resend` + session-bound CSRF token.
+ * - Records immutable `audit_logs` and NEVER alters application approval status.
  */
 
 require_once dirname(__DIR__, 2) . '/includes/config.php';
 require_once dirname(__DIR__, 2) . '/includes/database.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
 require_once dirname(__DIR__, 2) . '/includes/notification-service.php';
+
+if (!defined('PFG_ADMIN_AUTH_SECURITY_TEMPLATES')) {
+    define('PFG_ADMIN_AUTH_SECURITY_TEMPLATES', [
+        'ACCOUNT_VERIFICATION',
+        'EMAIL_VERIFICATION_RESEND',
+        'EMAIL_CHANGE_VERIFICATION',
+        'PASSWORD_RECOVERY',
+        'PASSWORD_RESET_CONFIRMATION',
+        'SECURITY_ALERT',
+    ]);
+}
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 if ($method === 'OPTIONS') {
@@ -27,9 +41,11 @@ if ($method === 'OPTIONS') {
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
     $pdo = getDb();
+    $canManageAuthTemplates = hasRole($user, ['SUPERADMIN'])
+        || hasPermission($user, PERMISSIONS['NOTIFICATIONS_AUTH_MANAGE']);
 
     if ($method === 'GET') {
-        requirePermission(PERMISSIONS['REGISTRATIONS_READ_ALL'], $user);
+        requirePermission(PERMISSIONS['NOTIFICATIONS_READ'], $user);
 
         $statusFilter = strtoupper(trim((string)($_GET['status'] ?? '')));
         $eventFilter = trim((string)($_GET['eventType'] ?? ''));
@@ -58,6 +74,21 @@ try {
                 jsonResponse(['error' => 'Notification record not found.'], 404);
             }
 
+            $tplUpper = strtoupper((string)($item['template_code'] ?? ''));
+            if (!$canManageAuthTemplates && in_array($tplUpper, PFG_ADMIN_AUTH_SECURITY_TEMPLATES, true)) {
+                logAudit([
+                    'actorUserId'  => $user['id'] ?? null,
+                    'action'       => 'ACCESS_DENIED',
+                    'resourceType' => 'notification_queue',
+                    'resourceId'   => $queueId,
+                    'metadata'     => [
+                        'reason'       => 'AUTH_SECURITY_NOTIFICATION_RESTRICTED',
+                        'templateCode' => $tplUpper,
+                    ],
+                ]);
+                jsonResponse(['error' => 'Forbidden: authentication and security notification records are restricted to Superadmin.'], 403);
+            }
+
             $logStmt = $pdo->prepare('
                 SELECT id, attempt_number, provider, provider_message_id, event_type,
                        provider_event_id, status, http_status, error_category, response_details, created_at
@@ -73,6 +104,15 @@ try {
 
         $where = ['1 = 1'];
         $params = [];
+        if (!$canManageAuthTemplates) {
+            $exclPh = [];
+            foreach (PFG_ADMIN_AUTH_SECURITY_TEMPLATES as $idx => $authTpl) {
+                $phKey = ':auth_excl_' . $idx;
+                $exclPh[] = $phKey;
+                $params[$phKey] = $authTpl;
+            }
+            $where[] = 'UPPER(template_code) NOT IN (' . implode(', ', $exclPh) . ')';
+        }
         if ($statusFilter !== '') {
             $where[] = 'status = :status';
             $params[':status'] = $statusFilter;
@@ -118,16 +158,45 @@ try {
     }
 
     if ($method === 'POST') {
-        requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
-        requireCsrfToken($user);
-
         $input = readRequestInput();
         $action = strtolower(trim((string)($input['action'] ?? '')));
         $queueId = trim((string)($input['queueId'] ?? $input['id'] ?? ''));
         $reason = trim((string)($input['reason'] ?? 'Authorized administrative notification recovery'));
 
+        if ($action === 'retry') {
+            requirePermission(PERMISSIONS['NOTIFICATIONS_RETRY'], $user);
+        } elseif ($action === 'resend') {
+            requirePermission(PERMISSIONS['NOTIFICATIONS_RESEND'], $user);
+        } elseif (!hasPermission($user, PERMISSIONS['NOTIFICATIONS_RETRY']) && !hasPermission($user, PERMISSIONS['NOTIFICATIONS_RESEND'])) {
+            requirePermission(PERMISSIONS['NOTIFICATIONS_RETRY'], $user);
+        }
+        requireCsrfToken($user);
+
         if ($queueId === '' || !in_array($action, ['retry', 'resend'], true)) {
             jsonResponse(['error' => 'Valid queueId and action (retry or resend) are required.'], 400);
+        }
+
+        // Enforce Superadmin-only restriction on authentication/security notification templates BEFORE mutation
+        $chkStmt = $pdo->prepare('SELECT id, template_code FROM notification_queue WHERE id = :id LIMIT 1');
+        $chkStmt->execute([':id' => $queueId]);
+        $targetJob = $chkStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$targetJob) {
+            jsonResponse(['error' => 'Notification record not found.'], 404);
+        }
+        $targetTplUpper = strtoupper((string)($targetJob['template_code'] ?? ''));
+        if (!$canManageAuthTemplates && in_array($targetTplUpper, PFG_ADMIN_AUTH_SECURITY_TEMPLATES, true)) {
+            logAudit([
+                'actorUserId'  => $user['id'] ?? null,
+                'action'       => 'ACCESS_DENIED',
+                'resourceType' => 'notification_queue',
+                'resourceId'   => $queueId,
+                'metadata'     => [
+                    'reason'       => 'AUTH_SECURITY_NOTIFICATION_RESTRICTED',
+                    'action'       => $action,
+                    'templateCode' => $targetTplUpper,
+                ],
+            ]);
+            jsonResponse(['error' => 'Forbidden: authentication and security notification records are restricted to Superadmin.'], 403);
         }
 
         try {

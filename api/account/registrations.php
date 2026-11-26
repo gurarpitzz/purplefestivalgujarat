@@ -1155,10 +1155,121 @@ try {
             jsonResponse(['error' => $e->getMessage()], 400);
         }
 
+        // §7 Assigned-Participant Withdrawal Duty Cancellation & Coordinator Alert
+        $dutiesCancelled = 0;
+        $coordinatorAlertsSent = 0;
+        $assignedConflictFlagged = !empty($result['assignedConflictFlagged']);
+        $nowWithdraw = nowSql();
+
+        try {
+            $dutyUpd = $pdo->prepare("
+                UPDATE duty_assignments
+                SET status = 'CANCELLED',
+                    override_reason = 'Participant withdrew registration',
+                    updated_at = :now
+                WHERE registration_id = :rid
+                  AND status = 'ASSIGNED'
+            ");
+            $dutyUpd->execute([
+                ':now' => $nowWithdraw,
+                ':rid' => $regId,
+            ]);
+            $dutiesCancelled = $dutyUpd->rowCount();
+        } catch (Throwable $dutyErr) {
+            error_log('[/api/account/registrations] duty_assignments withdrawal sync warning: ' . $dutyErr->getMessage());
+        }
+
+        if ($dutiesCancelled > 0 && !$assignedConflictFlagged) {
+            $assignedConflictFlagged = true;
+            if (function_exists('logAudit')) {
+                logAudit($pdo, [
+                    'actorUserId'  => $userId,
+                    'action'       => 'ASSIGNED_PARTICIPANT_WITHDRAWN_ALERT',
+                    'resourceType' => 'duty_assignment',
+                    'resourceId'   => $regId,
+                    'metadata'     => [
+                        'registrationCode' => (string)$reg['registration_code'],
+                        'categoryCode'     => $catCode,
+                        'newStatus'        => $targetStatus,
+                        'dutiesCancelled'  => $dutiesCancelled,
+                        'notice'           => 'Participant had active ASSIGNED duty rows; marked CANCELLED and coordinator alerted (history preserved).',
+                    ],
+                ]);
+            }
+        }
+
+        if ($assignedConflictFlagged || $dutiesCancelled > 0) {
+            try {
+                $pdo->prepare("UPDATE registrations SET assignment_status = 'UNASSIGNED', updated_at = :now WHERE id = :id")
+                    ->execute([':now' => $nowWithdraw, ':id' => $regId]);
+            } catch (Throwable $syncErr) {
+                error_log('[/api/account/registrations] assignment_status sync warning: ' . $syncErr->getMessage());
+            }
+
+            // Alert all active SUPERADMIN and matching coordinator (volunteers.review / sli.review) accounts
+            try {
+                $staffStmt = $pdo->query("
+                    SELECT DISTINCT u.id
+                    FROM users u
+                    INNER JOIN user_roles ur ON ur.user_id = u.id
+                    INNER JOIN roles r ON r.id = ur.role_id
+                    WHERE u.is_active = 1
+                      AND u.deleted_at IS NULL
+                      AND r.code IN ('SUPERADMIN', 'ADMIN')
+                ");
+                $staffIds = $staffStmt ? ($staffStmt->fetchAll(PDO::FETCH_COLUMN) ?: []) : [];
+                $regCodeStr = (string)$reg['registration_code'];
+                $partNameStr = (string)($reg['full_name'] ?? 'Participant');
+                $historyKey = (string)($result['historyId'] ?? md5($nowWithdraw));
+                $dutySummary = $dutiesCancelled > 0
+                    ? "{$dutiesCancelled} active duty assignment(s) were automatically marked CANCELLED."
+                    : 'Registration was flagged ASSIGNED and requires roster review.';
+
+                foreach ($staffIds as $staffUidRaw) {
+                    $staffUid = (string)$staffUidRaw;
+                    if ($staffUid === '') {
+                        continue;
+                    }
+                    $rp = getUserRolesAndPermissions($staffUid, $pdo);
+                    $staffRoles = $rp['roles'] ?? [];
+                    $staffPerms = $rp['permissions'] ?? [];
+                    $isSuper = in_array('SUPERADMIN', $staffRoles, true);
+                    $isMatchingCoord = ($catCode === 'VOLUNTEER' && in_array(PERMISSIONS['VOLUNTEERS_REVIEW'], $staffPerms, true))
+                        || ($catCode === 'SLI' && in_array(PERMISSIONS['SLI_REVIEW'], $staffPerms, true))
+                        || (!in_array($catCode, ['VOLUNTEER', 'SLI'], true) && (
+                            in_array(PERMISSIONS['VOLUNTEERS_REVIEW'], $staffPerms, true)
+                            || in_array(PERMISSIONS['SLI_REVIEW'], $staffPerms, true)
+                        ));
+
+                    if (!$isSuper && !$isMatchingCoord) {
+                        continue;
+                    }
+
+                    $notifId = pfgCreateInAppNotification($pdo, [
+                        'userId'         => $staffUid,
+                        'eventType'      => 'assigned_participant_withdrawn',
+                        'title'          => "Assigned {$catCode} Withdrawn ({$regCodeStr})",
+                        'message'        => "{$partNameStr} ({$regCodeStr}) changed registration status to {$targetStatus}. {$dutySummary} Please review replacement coverage.",
+                        'actionUrl'      => '/admin',
+                        'entityType'     => 'duty_assignment',
+                        'entityId'       => $regId,
+                        'idempotencyKey' => 'coord-withdraw:' . $regId . ':' . $historyKey . ':' . $staffUid,
+                    ]);
+                    if ($notifId !== null) {
+                        $coordinatorAlertsSent++;
+                    }
+                }
+            } catch (Throwable $alertErr) {
+                error_log('[/api/account/registrations] coordinator alert warning: ' . $alertErr->getMessage());
+            }
+        }
+
         jsonResponse([
             'success'                 => true,
             'transition'              => $result,
-            'assignedConflictFlagged' => $result['assignedConflictFlagged'],
+            'assignedConflictFlagged' => $assignedConflictFlagged,
+            'dutiesCancelled'         => $dutiesCancelled,
+            'coordinatorAlertsSent'   => $coordinatorAlertsSent,
             'message'                 => $targetStatus === 'WITHDRAWN'
                 ? "Your application ({$reg['registration_code']}) has been withdrawn."
                 : "Your registration ({$reg['registration_code']}) has been cancelled.",

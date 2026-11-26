@@ -939,7 +939,7 @@ if (!function_exists('getUserRolesAndPermissions')) {
 
 if (!function_exists('pfgProfileForbiddenPermissions')) {
     /**
-     * Permission codes that can NEVER be conferred through an operational permission profile (CAD-04 / MED-05).
+     * Permission codes that can NEVER be conferred through an operational permission profile (CAD-04 / MED-05 / §5.1).
      */
     function pfgProfileForbiddenPermissions(): array
     {
@@ -947,7 +947,24 @@ if (!function_exists('pfgProfileForbiddenPermissions')) {
             PERMISSIONS['ADMIN_ACCOUNTS_MANAGE'],
             PERMISSIONS['SETTINGS_MANAGE'],
             PERMISSIONS['AUDIT_LOGS_READ'],
+            PERMISSIONS['NOTIFICATIONS_AUTH_MANAGE'],
         ];
+    }
+}
+
+if (!function_exists('pfgIsLegacyUnprofiledAdmin')) {
+    /**
+     * §5.2 Returns true when a staff account holds the ADMIN role (not SUPERADMIN)
+     * without an assigned operational permission profile (`permission_profile_id IS NULL`).
+     */
+    function pfgIsLegacyUnprofiledAdmin(array $user): bool
+    {
+        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
+        if (!in_array('ADMIN', $roles, true) || in_array('SUPERADMIN', $roles, true)) {
+            return false;
+        }
+        $profileId = $user['permissionProfileId'] ?? $user['permission_profile_id'] ?? null;
+        return $profileId === null || (is_string($profileId) && trim($profileId) === '');
     }
 }
 
@@ -1044,7 +1061,7 @@ if (!function_exists('getCurrentUser')) {
         $mfaEnabled = (bool)$row['mfa_enabled'];
         $mfaVerified = (bool)$row['mfa_verified'];
 
-        return [
+        $currentUserPayload = [
             'id'                    => (string)$row['user_id'],
             'email'                 => (string)$row['email'],
             'fullName'              => (string)$row['full_name'],
@@ -1064,6 +1081,8 @@ if (!function_exists('getCurrentUser')) {
             'sessionId'             => (string)$row['session_id'],
             'session_id'            => (string)$row['session_id'],
         ];
+        $currentUserPayload['isLegacyUnprofiledAdmin'] = pfgIsLegacyUnprofiledAdmin($currentUserPayload);
+        return $currentUserPayload;
     }
 }
 
