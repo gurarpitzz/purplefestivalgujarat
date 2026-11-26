@@ -90,14 +90,72 @@ $pageDescription = 'Choose your registration category — Attendee, Sign Languag
 $extraHeadHtml = <<<'HTML'
 <style>
   .pfg-apply-main {
+    position: relative;
+    isolation: isolate;
     min-height: calc(100vh - 76px);
-    background-color: #ffffff;
+    background-color: #FBF8F1;
     color: #202D59;
-    padding: 52px 20px 72px;
+    padding: 52px clamp(20px, 5vw, 112px) 72px clamp(20px, 4vw, 48px);
     overflow-x: clip;
   }
 
+  /* Right-edge seamless Gujarati folk-art ornamental border matching Festival Grounds */
+  .pfg-apply-ornament {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: clamp(68px, 6.8vw, 98px);
+    pointer-events: none;
+    z-index: 1;
+    background-image: url('/assets/editorial/gujarati-border-right.svg?v=2');
+    background-repeat: repeat-y;
+    background-position: right top;
+    background-size: 100% auto;
+  }
+
+  @media (max-width: 1024px) {
+    .pfg-apply-ornament {
+      width: clamp(46px, 6.2vw, 68px);
+    }
+
+    .pfg-apply-main {
+      padding-right: clamp(60px, 9vw, 88px);
+    }
+  }
+
+  @media (max-width: 540px) {
+    .pfg-apply-ornament {
+      width: 18px;
+    }
+
+    .pfg-apply-main {
+      padding: 40px 28px 56px 16px;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .pfg-apply-ornament {
+      display: none;
+    }
+
+    .pfg-apply-main {
+      padding: 36px 16px 52px 16px;
+    }
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-ornament {
+    filter: brightness(0) invert(1);
+    opacity: 0.35;
+  }
+
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-ornament {
+    display: none !important;
+  }
+
   .pfg-apply-wrap {
+    position: relative;
+    z-index: 2;
     width: 100%;
     max-width: 580px;
     margin: 0 auto;
@@ -685,6 +743,7 @@ HTML;
 require_once __DIR__ . '/../includes/header.php';
 ?>
 <main id="main-content" tabindex="-1" class="pfg-apply-main focus:outline-none">
+  <div class="pfg-apply-ornament" aria-hidden="true"></div>
   <div class="pfg-apply-wrap">
     <h1 class="pfg-apply-heading">
       What type of registration are you interested in for Purple Fest Gujarat?

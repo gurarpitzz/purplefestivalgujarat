@@ -60,7 +60,7 @@ $pageDescription = 'Apply as an Indian Sign Language Interpreter (SLI) for Purpl
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
-<main id="main-content" tabindex="-1" class="min-h-[calc(100vh-76px)] bg-[#FAF9FF] text-[#202D59] focus:outline-none">
+<main id="main-content" tabindex="-1" class="min-h-[calc(100vh-76px)] pfg-ivory-surface text-[#202D59] focus:outline-none">
   <div class="mx-auto max-w-[900px] px-5 py-10 sm:px-8 sm:py-14">
     <nav aria-label="Breadcrumb" class="mb-5 text-sm text-[#46537C]">
       <a href="/apply" class="font-semibold text-[#5B2A86] underline hover:text-[#202D59]">&larr; All Registration Categories</a>

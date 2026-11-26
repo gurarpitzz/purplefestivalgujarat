@@ -234,7 +234,7 @@ $officialEmail = defined('OFFICIAL_FESTIVAL_EMAIL') && is_string(OFFICIAL_FESTIV
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..800;1,8..60,400..700&display=swap" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/accessibility-page.css?v=2" />';
+    . '  <link rel="stylesheet" href="/assets/css/accessibility-page.css?v=3" />';
 
 require_once __DIR__ . '/includes/header.php';
 ?>

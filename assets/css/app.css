@@ -930,3 +930,16 @@ fieldset {
   min-width: 0;
   max-width: 100%;
 }
+
+/* Unified Warm Editorial Off-White Backdrop (#FBF8F1 — matching What's On) */
+body.pfg-ivory-body,
+.pfg-ivory-surface {
+  background-color: #FBF8F1;
+}
+
+:is(html[data-contrast="high"], html.high-contrast) body.pfg-ivory-body,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-ivory-surface,
+:is(html[data-contrast="yellow-black"], html.yellow-black) body.pfg-ivory-body,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-ivory-surface {
+  background-color: #000000 !important;
+}

@@ -193,7 +193,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
   </script>
 
   <!-- Compiled Tailwind & Design System CSS -->
-  <link rel="stylesheet" href="/assets/css/app.css" />
+  <link rel="stylesheet" href="/assets/css/app.css?v=2" />
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json"><?= $schemaJsonOutput ?></script>
@@ -201,7 +201,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
     <?= $extraHeadHtml ?>
   <?php endif; ?>
 </head>
-<body class="min-h-screen bg-white text-[#202D59] antialiased selection:bg-[#A459FF]/25 selection:text-[#202D59]">
+<body class="min-h-screen pfg-ivory-body text-[#202D59] antialiased selection:bg-[#A459FF]/25 selection:text-[#202D59]">
   <a href="#main-content" class="skip-link">
     Skip to main content
   </a>

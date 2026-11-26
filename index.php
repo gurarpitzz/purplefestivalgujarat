@@ -1063,7 +1063,7 @@ function renderHighlightIconSvg(string $iconName): string
   <section
     id="about"
     aria-labelledby="about-heading"
-    class="border-b border-[#202D59]/10 bg-white py-20 sm:py-24"
+    class="border-b border-[#202D59]/10 pfg-ivory-surface py-20 sm:py-24"
   >
     <div class="mx-auto max-w-7xl px-5 sm:px-8">
       <div class="grid gap-12 lg:grid-cols-12 lg:items-start">
@@ -1487,7 +1487,7 @@ function renderHighlightIconSvg(string $iconName): string
   <section
     id="contact"
     aria-labelledby="faq-contact-heading"
-    class="bg-white py-20 sm:py-24"
+    class="pfg-ivory-surface py-20 sm:py-24"
   >
     <div class="mx-auto grid max-w-7xl gap-12 px-5 sm:px-8 lg:grid-cols-12">
       <div class="space-y-6 lg:col-span-7">

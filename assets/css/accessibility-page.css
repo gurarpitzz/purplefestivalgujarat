@@ -6,7 +6,7 @@
    ========================================================================== */
 
 :root {
-  --pfg-a11y-ivory: #fbf7ee;
+  --pfg-a11y-ivory: #fbf8f1;
   --pfg-a11y-ivory-deep: #f3ecde;
   --pfg-a11y-plum: #330c47;
   --pfg-a11y-plum-deep: #260836;
@@ -29,7 +29,7 @@
    Preserves all semantic navigation, Staff Login, Apply Now & A11y button.
    ========================================================================== */
 body > header {
-  background-color: rgba(251, 247, 238, 0.97) !important;
+  background-color: rgba(251, 248, 241, 0.97) !important;
   border-bottom: 1px solid rgba(43, 10, 61, 0.14);
   color: var(--pfg-a11y-plum-ink) !important;
 }
