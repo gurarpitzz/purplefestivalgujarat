@@ -891,9 +891,81 @@ if (!function_exists('getUserRolesAndPermissions')) {
             }
         }
 
+        // Phase 8: reusable operational permission profile (ADMIN tier ONLY — never RGST / PARTICIPANT / SUPERADMIN).
+        $profileId = null;
+        $profileSlug = null;
+        if (in_array('ADMIN', $roles, true) && !in_array('SUPERADMIN', $roles, true)) {
+            $profile = pfgResolvePermissionProfile($userId, $pdo);
+            if ($profile !== null) {
+                $profileId = $profile['id'];
+                $profileSlug = $profile['slug'];
+                foreach ($profile['permissions'] as $pp) {
+                    $permMap[$pp] = true;
+                }
+            }
+        }
+
         return [
-            'roles'       => $roles,
-            'permissions' => array_keys($permMap),
+            'roles'                 => $roles,
+            'permissions'           => array_keys($permMap),
+            'permissionProfileId'   => $profileId,
+            'permissionProfileSlug' => $profileSlug,
+        ];
+    }
+}
+
+if (!function_exists('pfgProfileForbiddenPermissions')) {
+    /**
+     * Permission codes that can NEVER be conferred through an operational permission profile (CAD-04).
+     */
+    function pfgProfileForbiddenPermissions(): array
+    {
+        return [
+            PERMISSIONS['ADMIN_ACCOUNTS_MANAGE'],
+            PERMISSIONS['SETTINGS_MANAGE'],
+        ];
+    }
+}
+
+if (!function_exists('pfgResolvePermissionProfile')) {
+    /**
+     * Resolves the active operational permission profile assigned to an ADMIN user.
+     * Returns ['id','slug','permissions'=>[valid, non-forbidden codes]] or null when none / table not migrated.
+     * Fails closed (null => no extra permissions) on any database error.
+     */
+    function pfgResolvePermissionProfile(string $userId, PDO $pdo): ?array
+    {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT p.id, p.slug, p.permissions_json
+                FROM users u
+                INNER JOIN admin_permission_profiles p ON p.id = u.permission_profile_id
+                WHERE u.id = :uid AND p.is_active = 1
+                LIMIT 1
+            ");
+            $stmt->execute([':uid' => $userId]);
+            $row = $stmt->fetch();
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (!$row) {
+            return null;
+        }
+        $decoded = jsonDecode($row['permissions_json'] ?? '[]', []);
+        $valid = array_values(PERMISSIONS);
+        $forbidden = pfgProfileForbiddenPermissions();
+        $perms = [];
+        if (is_array($decoded)) {
+            foreach ($decoded as $code) {
+                if (is_string($code) && in_array($code, $valid, true) && !in_array($code, $forbidden, true) && !in_array($code, $perms, true)) {
+                    $perms[] = $code;
+                }
+            }
+        }
+        return [
+            'id'          => (string)$row['id'],
+            'slug'        => (string)$row['slug'],
+            'permissions' => $perms,
         ];
     }
 }
@@ -957,6 +1029,8 @@ if (!function_exists('getCurrentUser')) {
             'country'               => (string)($row['country'] ?? 'India'),
             'roles'                 => $rp['roles'],
             'permissions'           => $rp['permissions'],
+            'permissionProfileId'   => $rp['permissionProfileId'] ?? null,
+            'permissionProfileSlug' => $rp['permissionProfileSlug'] ?? null,
             'mfaEnabled'            => $mfaEnabled,
             'mfa_enabled'           => $mfaEnabled,
             'mfaVerified'           => $mfaVerified,
