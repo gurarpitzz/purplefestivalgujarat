@@ -208,11 +208,12 @@ pfgTest('T2-01', 'Login anti-enumeration returns byte-identical generic 401 with
     $rUnknown = p2Http('POST', '/api/auth/login', ['username' => 'does_not_exist_999', 'password' => 'WrongPass#1']);
     $rWrongPw = p2Http('POST', '/api/auth/login', ['username' => 'p2_rgst', 'password' => 'WrongPass#1']);
     $rPartWrong = p2Http('POST', '/api/auth/login', ['username' => 'p2_participant', 'password' => 'WrongPass#1']);
+    $rBotTrap = p2Http('POST', '/api/auth/login', ['username' => 'p2_rgst', 'password' => 'RgstPass#2027', 'websiteHp' => 'https://bot.example']);
 
-    pfgAssert($rUnknown['status'] === 401 && $rWrongPw['status'] === 401 && $rPartWrong['status'] === 401, 'All invalid logins must return 401');
-    pfgAssert($rUnknown['body'] === $rWrongPw['body'] && $rWrongPw['body'] === $rPartWrong['body'], 'Error responses must be byte-identical to prevent enumeration');
+    pfgAssert($rUnknown['status'] === 401 && $rWrongPw['status'] === 401 && $rPartWrong['status'] === 401 && $rBotTrap['status'] === 401, 'All invalid/bot logins must return 401');
+    pfgAssert($rUnknown['body'] === $rWrongPw['body'] && $rWrongPw['body'] === $rPartWrong['body'] && $rWrongPw['body'] === $rBotTrap['body'], 'Error responses must be byte-identical to prevent enumeration');
     pfgAssert(!str_contains($rWrongPw['body'], 'lockedUntil'), 'Must not leak lockedUntil');
-    return 'Unknown user, wrong password, and participant wrong password all returned identical generic 401 JSON';
+    return 'Unknown user, wrong password, participant wrong password & bot honeypot all returned identical generic 401 JSON';
 });
 
 // =========================================================================

@@ -179,7 +179,8 @@
         return;
       }
 
-      var payload = { username: username, password: password, portal: "staff", next: nextPath };
+      var hpVal = form.elements.websiteHp ? String(form.elements.websiteHp.value || "").trim() : "";
+      var payload = { username: username, password: password, portal: "staff", next: nextPath, websiteHp: hpVal };
 
       setBusy(submit, true, "Signing in…");
       request("/api/auth/login", "POST", payload)

@@ -36,12 +36,28 @@ try {
 
     $identifier = strtolower(trim((string)($input['username'] ?? $input['identifier'] ?? $input['email'] ?? '')));
     $password = (string)($input['password'] ?? '');
+    $honeypot = trim((string)($input['websiteHp'] ?? ''));
 
     // Optional portal hint ('staff' | 'participant') and validated post-login destination.
     $portal = strtolower(trim((string)($input['portal'] ?? '')));
     $nextRedirect = isset($input['next']) && is_string($input['next'])
         ? pfgValidateSafeRedirect($input['next'], '')
         : '';
+
+    // Anti-script honeypot trap: automated bots filling hidden inputs are rate-limited, audited & rejected uniformly
+    if ($honeypot !== '') {
+        $clientIp = getClientIp() ?: 'unknown';
+        pfgCheckRateLimit($pdo, 'auth_login_ip', $clientIp, 30, 900, 900, true);
+        pfgDummyPasswordVerify($password !== '' ? $password : 'bot-trap');
+        logAudit([
+            'actorUserId'  => null,
+            'action'       => 'LOGIN_HONEYPOT_TRIGGERED',
+            'resourceType' => 'security',
+            'resourceId'   => null,
+            'metadata'     => ['ip' => $clientIp],
+        ]);
+        jsonResponse(['error' => GENERIC_AUTH_ERROR], 401);
+    }
 
     if ($identifier === '' || $password === '') {
         jsonResponse(['error' => 'Username and password are required.'], 400);
