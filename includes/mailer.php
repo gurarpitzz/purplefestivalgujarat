@@ -50,6 +50,7 @@ if (!function_exists('sendFestivalEmail')) {
             ];
         }
 
+        $mailDriver = defined('MAIL_DRIVER') ? strtolower(trim((string)MAIL_DRIVER)) : 'resend';
         $apiKey = defined('RESEND_API_KEY') ? trim((string)RESEND_API_KEY) : '';
         $fromAddress = defined('EMAIL_FROM') && EMAIL_FROM !== ''
             ? (string)EMAIL_FROM
@@ -61,7 +62,44 @@ if (!function_exists('sendFestivalEmail')) {
         $status = 'QUEUED';
         $errMsg = null;
 
-        if ($apiKey !== '' && function_exists('curl_init')) {
+        // Safe local email capture sink for development/testing — never sends outbound emails
+        if ($mailDriver === 'file') {
+            $provider = 'file_sink';
+            $sinkDir = defined('MAIL_SINK_DIR') && MAIL_SINK_DIR !== ''
+                ? (string)MAIL_SINK_DIR
+                : dirname(__DIR__) . '/tests/tmp/mail-sink';
+            if (!is_dir($sinkDir)) {
+                @mkdir($sinkDir, 0775, true);
+            }
+            $captureId = 'local-' . uuid4();
+            $safeMetadata = $metadata;
+            unset($safeMetadata['rawToken'], $safeMetadata['resetUrl']);
+            $envelope = [
+                'captureId'    => $captureId,
+                'capturedAt'   => nowIso(),
+                'to'           => $to,
+                'from'         => $fromAddress,
+                'subject'      => $subject,
+                'templateCode' => $templateCode,
+                'html'         => $html,
+                'text'         => $text,
+                'metadata'     => $safeMetadata,
+            ];
+            $filePath = rtrim($sinkDir, '/\\') . DIRECTORY_SEPARATOR . date('Ymd_His') . '_' . $captureId . '.json';
+            $written = @file_put_contents($filePath, json_encode($envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            if ($written !== false) {
+                $sent = true;
+                $status = 'CAPTURED_LOCAL';
+                $messageId = $captureId;
+            } else {
+                $errMsg = 'Failed to write local email capture file.';
+                $status = 'FAILED';
+            }
+        } elseif ($mailDriver === 'disabled') {
+            $provider = 'disabled';
+            $status = 'QUEUED';
+            $errMsg = 'Email delivery is disabled in this environment.';
+        } elseif ($apiKey !== '' && function_exists('curl_init')) {
             $provider = 'resend';
             $payload = json_encode([
                 'from'    => $fromAddress,
@@ -100,7 +138,7 @@ if (!function_exists('sendFestivalEmail')) {
             }
         }
 
-        if (!$sent && $apiKey === '' && function_exists('mail')) {
+        if (!$sent && $mailDriver === 'resend' && $apiKey === '' && function_exists('mail')) {
             $headers = [
                 'MIME-Version: 1.0',
                 'Content-type: text/html; charset=UTF-8',
@@ -323,3 +361,4 @@ if (!function_exists('sendApplicationReceivedEmail')) {
         ]);
     }
 }
+

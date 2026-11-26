@@ -33,7 +33,11 @@ if (!function_exists('getQrSigningSecret')) {
         if (defined('QR_SIGNING_SECRET') && (string)QR_SIGNING_SECRET !== '') {
             return (string)QR_SIGNING_SECRET;
         }
-        return pfgEnv('QR_SIGNING_SECRET', 'dev-qr-secret-change-in-production');
+        $secret = trim(pfgEnv('QR_SIGNING_SECRET', ''));
+        if ($secret === '' || strlen($secret) < 16) {
+            throw new RuntimeException('QR_SIGNING_SECRET is not configured.');
+        }
+        return $secret;
     }
 }
 

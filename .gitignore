@@ -7,7 +7,12 @@ uploads/
 .env.local
 .env.*.local
 .env.php
+.env.local.php
+.env.test.php
 *.log
+*.bak
+*.orig
+tests/tmp/
 *.tsbuildinfo
 next-env.d.ts
 playwright-report/

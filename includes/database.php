@@ -63,11 +63,15 @@ class PfgPdo extends PDO
 
 if (!function_exists('getDb')) {
     /**
-     * Returns the singleton PDO connection (MySQL 8.0 / MariaDB when configured, SQLite fallback otherwise).
+     * Returns the singleton PDO connection.
+     * Enforces MySQL/MariaDB in staging/production (fails closed if DB credentials are missing — no silent SQLite fallback).
      */
-    function getDb(): PDO
+    function getDb(bool $reset = false): PDO
     {
         static $pdo = null;
+        if ($reset) {
+            $pdo = null;
+        }
         if ($pdo instanceof PDO) {
             return $pdo;
         }
@@ -78,18 +82,14 @@ if (!function_exists('getDb')) {
             PDO::ATTR_EMULATE_PREPARES   => true,
         ];
 
-        $useMysql = (DB_NAME !== '' && DB_USER !== '');
+        $isLocalDev = defined('IS_LOCAL_DEV_ENV') && IS_LOCAL_DEV_ENV;
+        $driver = defined('DB_DRIVER') ? strtolower((string)DB_DRIVER) : 'mysql';
+        $hasMysqlCreds = (DB_NAME !== '' && DB_USER !== '');
 
-        if ($useMysql) {
-            if (DB_SOCKET !== '') {
-                $dsn = sprintf('mysql:unix_socket=%s;dbname=%s;charset=utf8mb4', DB_SOCKET, DB_NAME);
-            } else {
-                $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', DB_HOST, DB_PORT, DB_NAME);
+        if ($driver === 'sqlite') {
+            if (!$isLocalDev) {
+                throw new RuntimeException('SQLite database driver is prohibited in staging and production environments.');
             }
-            $pdo = new PfgPdo($dsn, DB_USER, DB_PASS, $options);
-            $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
-            $pdo->exec("SET time_zone = '+05:30'");
-        } else {
             $sqlitePath = SQLITE_FALLBACK_PATH;
             $dir = dirname($sqlitePath);
             if (!is_dir($dir)) {
@@ -100,6 +100,18 @@ if (!function_exists('getDb')) {
             $pdo->exec('PRAGMA foreign_keys = ON');
             $pdo->exec('PRAGMA busy_timeout = 5000');
             $pdo->exec('PRAGMA journal_mode = WAL');
+        } else {
+            if (!$hasMysqlCreds) {
+                throw new RuntimeException('Database credentials (DB_NAME and DB_USER) are not configured. Silent SQLite fallback is disabled.');
+            }
+            if (DB_SOCKET !== '') {
+                $dsn = sprintf('mysql:unix_socket=%s;dbname=%s;charset=utf8mb4', DB_SOCKET, DB_NAME);
+            } else {
+                $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4', DB_HOST, DB_PORT, DB_NAME);
+            }
+            $pdo = new PfgPdo($dsn, DB_USER, DB_PASS, $options);
+            $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $pdo->exec("SET time_zone = '+05:30'");
         }
 
         ensureDatabaseInitialized($pdo);

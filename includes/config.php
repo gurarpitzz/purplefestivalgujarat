@@ -8,23 +8,34 @@ declare(strict_types=1);
 
 date_default_timezone_set('Asia/Kolkata');
 
+// Enforce safe error handling across all Bluehost PHP handlers (FPM, LSAPI, CGI, mod_php)
+@ini_set('display_errors', '0');
+@ini_set('display_startup_errors', '0');
+@ini_set('log_errors', '1');
+
 // ============================================================================
-// 1. ENVIRONMENT & SECRETS LOADING (Bluehost / Local / Env Vars)
+// 1. ENVIRONMENT & SECRETS LOADING (Bluehost / Local / Isolated Test Env)
 // ============================================================================
 
-$pfgLoadedEnv = [];
+$GLOBALS['pfgLoadedEnv'] = [];
 
-$candidateEnvFiles = [
-    '/home1/tstpllmy/.pfg27_env.php',
-    dirname(__DIR__, 2) . '/.pfg27_env.php',
-    dirname(__DIR__) . '/.env.php',
-];
+$explicitEnvFile = getenv('PFG_ENV_FILE');
+$candidateEnvFiles = [];
+if (is_string($explicitEnvFile) && trim($explicitEnvFile) !== '') {
+    $candidateEnvFiles[] = trim($explicitEnvFile);
+} else {
+    $candidateEnvFiles = [
+        '/home1/tstpllmy/.pfg27_env.php',
+        dirname(__DIR__, 2) . '/.pfg27_env.php',
+        dirname(__DIR__) . '/.env.php',
+    ];
+}
 
 foreach ($candidateEnvFiles as $envFile) {
     if (is_string($envFile) && is_file($envFile) && is_readable($envFile)) {
         $loaded = include $envFile;
         if (is_array($loaded)) {
-            $pfgLoadedEnv = array_merge($pfgLoadedEnv, $loaded);
+            $GLOBALS['pfgLoadedEnv'] = array_merge($GLOBALS['pfgLoadedEnv'], $loaded);
         }
         break;
     }
@@ -33,14 +44,14 @@ foreach ($candidateEnvFiles as $envFile) {
 if (!function_exists('pfgEnv')) {
     /**
      * Reads an environment setting from loaded .pfg27_env.php / .env.php array,
-     * defined PHP constant, $_ENV, $_SERVER, or getenv().
+     * $_ENV, $_SERVER, or getenv().
      */
     function pfgEnv(string $key, string $default = ''): string
     {
-        global $pfgLoadedEnv;
+        $loadedEnv = $GLOBALS['pfgLoadedEnv'] ?? [];
 
-        if (is_array($pfgLoadedEnv) && array_key_exists($key, $pfgLoadedEnv) && $pfgLoadedEnv[$key] !== null && $pfgLoadedEnv[$key] !== '') {
-            return (string)$pfgLoadedEnv[$key];
+        if (is_array($loadedEnv) && array_key_exists($key, $loadedEnv) && $loadedEnv[$key] !== null && $loadedEnv[$key] !== '') {
+            return (string)$loadedEnv[$key];
         }
         if (isset($_ENV[$key]) && $_ENV[$key] !== '') {
             return (string)$_ENV[$key];
@@ -56,6 +67,51 @@ if (!function_exists('pfgEnv')) {
     }
 }
 
+if (!defined('APP_ENV')) {
+    $envRaw = strtolower(trim(pfgEnv('APP_ENV', '')));
+    if ($envRaw === '') {
+        $hostCheck = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+        $isLocalHost = PHP_SAPI === 'cli'
+            || str_starts_with($hostCheck, 'localhost')
+            || str_starts_with($hostCheck, '127.0.0.1');
+        $envRaw = $isLocalHost ? 'development' : 'production';
+    }
+    define('APP_ENV', $envRaw);
+}
+
+if (!defined('IS_LOCAL_DEV_ENV')) {
+    define('IS_LOCAL_DEV_ENV', in_array(APP_ENV, ['development', 'testing'], true));
+}
+
+if (!function_exists('pfgValidateSecret')) {
+    /**
+     * Enforces fail-closed secret validation: rejects empty, short, or known placeholder secrets.
+     */
+    function pfgValidateSecret(string $name, string $value): string
+    {
+        $trimmed = trim($value);
+        $blockedPlaceholders = [
+            'pfg2027-prod-auth-secret-change-in-env',
+            'pfg2027-prod-qr-signing-secret-change-in-env',
+            'dev-qr-secret-change-in-production',
+            'changeme',
+            'secret',
+            'replace-me',
+            'your_existing_auth_secret',
+            'your_existing_qr_secret',
+        ];
+        if ($trimmed === '' || strlen($trimmed) < 16 || in_array(strtolower($trimmed), $blockedPlaceholders, true)) {
+            throw new RuntimeException(
+                sprintf('Critical security misconfiguration: %s must be configured with a strong secret (>= 16 chars) outside public_html.', $name)
+            );
+        }
+        return $trimmed;
+    }
+}
+
+if (!defined('DB_DRIVER')) {
+    define('DB_DRIVER', strtolower(trim(pfgEnv('DB_DRIVER', 'mysql'))));
+}
 if (!defined('DB_HOST')) {
     define('DB_HOST', pfgEnv('DB_HOST', 'localhost'));
 }
@@ -75,21 +131,27 @@ if (!defined('DB_SOCKET')) {
     define('DB_SOCKET', pfgEnv('DB_SOCKET', ''));
 }
 if (!defined('SQLITE_FALLBACK_PATH')) {
-    define('SQLITE_FALLBACK_PATH', pfgEnv('SQLITE_FALLBACK_PATH', dirname(__DIR__) . '/database/pfg27.sqlite'));
+    define('SQLITE_FALLBACK_PATH', pfgEnv('SQLITE_FALLBACK_PATH', dirname(__DIR__) . '/tests/tmp/pfg27_test.sqlite'));
 }
 if (!defined('AUTH_SECRET')) {
-    define('AUTH_SECRET', pfgEnv('AUTH_SECRET', 'pfg2027-prod-auth-secret-change-in-env'));
+    define('AUTH_SECRET', pfgValidateSecret('AUTH_SECRET', pfgEnv('AUTH_SECRET', '')));
 }
 if (!defined('QR_SIGNING_SECRET')) {
-    define('QR_SIGNING_SECRET', pfgEnv('QR_SIGNING_SECRET', 'pfg2027-prod-qr-signing-secret-change-in-env'));
+    define('QR_SIGNING_SECRET', pfgValidateSecret('QR_SIGNING_SECRET', pfgEnv('QR_SIGNING_SECRET', '')));
 }
 if (!defined('APP_URL')) {
-    $detectedScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-        ? 'https'
-        : 'http';
-    $detectedHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    define('APP_URL', rtrim(pfgEnv('APP_URL', pfgEnv('NEXT_PUBLIC_APP_URL', $detectedScheme . '://' . $detectedHost)), '/'));
+    $configuredUrl = trim(pfgEnv('APP_URL', pfgEnv('NEXT_PUBLIC_APP_URL', '')));
+    if ($configuredUrl === '') {
+        if (!IS_LOCAL_DEV_ENV) {
+            throw new RuntimeException('Critical configuration error: APP_URL must be explicitly set in .pfg27_env.php (Host header fallback is disabled in staging/production).');
+        }
+        $detectedHost = (string)($_SERVER['HTTP_HOST'] ?? '127.0.0.1:8080');
+        if (!preg_match('/^(localhost|127\.0\.0\.1)(:\d{1,5})?$/i', $detectedHost)) {
+            $detectedHost = '127.0.0.1:8080';
+        }
+        $configuredUrl = 'http://' . $detectedHost;
+    }
+    define('APP_URL', rtrim($configuredUrl, '/'));
 }
 
 if (!defined('SESSION_COOKIE_NAME')) {
@@ -97,6 +159,13 @@ if (!defined('SESSION_COOKIE_NAME')) {
 }
 if (!defined('SESSION_DURATION_SECONDS')) {
     define('SESSION_DURATION_SECONDS', 60 * 60 * 24 * 7); // 7 days
+}
+if (!defined('MAIL_DRIVER')) {
+    // In development/testing default to safe local file sink; never contact Resend or PHP mail()
+    define('MAIL_DRIVER', strtolower(trim(pfgEnv('MAIL_DRIVER', IS_LOCAL_DEV_ENV ? 'file' : 'resend'))));
+}
+if (!defined('MAIL_SINK_DIR')) {
+    define('MAIL_SINK_DIR', pfgEnv('MAIL_SINK_DIR', dirname(__DIR__) . '/tests/tmp/mail-sink'));
 }
 if (!defined('RESEND_API_KEY')) {
     define('RESEND_API_KEY', pfgEnv('RESEND_API_KEY', ''));

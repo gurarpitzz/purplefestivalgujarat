@@ -34,6 +34,7 @@ jobs:
           rm -f database/*.sqlite*
           tar -czf bluehost-php-site.tar.gz \
             .htaccess \
+            .user.ini \
             .cpanel.yml \
             index.php \
             login.php \
