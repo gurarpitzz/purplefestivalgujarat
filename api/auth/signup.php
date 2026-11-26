@@ -185,7 +185,8 @@ try {
         'metadata'     => ['accountStatus' => 'PENDING_VERIFICATION'],
     ]);
 
-    jsonResponse($genericBody, 201);
+    // Uniform HTTP 202 across new, existing, and concurrent duplicate signups (MED-01 anti-enumeration)
+    jsonResponse($genericBody, 202);
 } catch (Throwable $e) {
     error_log('POST /api/auth/signup error: ' . $e->getMessage());
     jsonResponse(['error' => 'Unable to process request right now.'], 500);

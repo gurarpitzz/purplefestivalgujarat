@@ -19,7 +19,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 
 if (!defined('PFG_REQUIRED_SCHEMA_VERSION')) {
-    define('PFG_REQUIRED_SCHEMA_VERSION', '010_phase12_programme_venues_and_duty_assignments');
+    define('PFG_REQUIRED_SCHEMA_VERSION', '011_phase8_profile_permissions_alignment');
 }
 
 if (!function_exists('pfgCreateDirectPdo')) {

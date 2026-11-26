@@ -23,6 +23,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     exit;
 }
 
+const PFG_CMS_ALLOWED_STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED'];
+const PFG_CMS_ALLOWED_SEVERITIES = ['INFO', 'WARNING', 'CRITICAL'];
+
+function pfgCmsValidateStatus(string $status): string
+{
+    $normalized = strtoupper(trim($status));
+    if (!in_array($normalized, PFG_CMS_ALLOWED_STATUSES, true)) {
+        jsonResponse(['error' => 'Invalid status. Allowed: ' . implode(', ', PFG_CMS_ALLOWED_STATUSES) . '.'], 400);
+    }
+    return $normalized;
+}
+
+function pfgCmsValidateSeverity(string $severity): string
+{
+    $normalized = strtoupper(trim($severity));
+    if (!in_array($normalized, PFG_CMS_ALLOWED_SEVERITIES, true)) {
+        jsonResponse(['error' => 'Invalid severity. Allowed: ' . implode(', ', PFG_CMS_ALLOWED_SEVERITIES) . '.'], 400);
+    }
+    return $normalized;
+}
+
 function pfgCmsGetActiveEdition(PDO $pdo): ?array
 {
     $stmt = $pdo->prepare('SELECT * FROM festival_editions WHERE slug = :slug LIMIT 1');
@@ -195,8 +216,9 @@ try {
         // Gallery / Media Assets
         $mediaAssets = [];
         try {
-            $stMedia = $pdo->query('SELECT * FROM media_assets ORDER BY created_at DESC');
-            foreach (($stMedia ? $stMedia->fetchAll(PDO::FETCH_ASSOC) : []) as $m) {
+            $stMedia = $pdo->prepare('SELECT * FROM media_assets WHERE edition_id = :eid OR edition_id IS NULL ORDER BY created_at DESC');
+            $stMedia->execute([':eid' => $editionId]);
+            foreach (($stMedia->fetchAll(PDO::FETCH_ASSOC) ?: []) as $m) {
                 $mediaAssets[] = [
                     'id'                => (string)$m['id'],
                     'editionId'         => $m['edition_id'] ?? $editionId,
@@ -305,7 +327,7 @@ try {
                 ? $payload['accessibilityServices']
                 : [];
             $displayOrder = (int)($payload['displayOrder'] ?? 0);
-            $status = strtoupper(trim((string)($payload['status'] ?? 'PUBLISHED')));
+            $status = pfgCmsValidateStatus((string)($payload['status'] ?? 'PUBLISHED'));
 
             if ($title === '' || $timeSlot === '') {
                 jsonResponse(['error' => 'Programme title and timeSlot are required.'], 400);
@@ -365,7 +387,7 @@ try {
             $category = trim((string)($payload['category'] ?? 'Knowledge Partners'));
             $consentVerified = !empty($payload['consentVerified']);
             $displayOrder = (int)($payload['displayOrder'] ?? 0);
-            $status = strtoupper(trim((string)($payload['status'] ?? 'DRAFT')));
+            $status = pfgCmsValidateStatus((string)($payload['status'] ?? 'DRAFT'));
 
             if ($orgName === '') {
                 jsonResponse(['error' => 'Organization name is required.'], 400);
@@ -444,7 +466,7 @@ try {
             $question = trim((string)($payload['question'] ?? ''));
             $answer = trim((string)($payload['answer'] ?? ''));
             $displayOrder = (int)($payload['displayOrder'] ?? 0);
-            $status = strtoupper(trim((string)($payload['status'] ?? 'PUBLISHED')));
+            $status = pfgCmsValidateStatus((string)($payload['status'] ?? 'PUBLISHED'));
 
             if ($question === '' || $answer === '') {
                 jsonResponse(['error' => 'FAQ question and answer are required.'], 400);
@@ -533,8 +555,8 @@ try {
         if ($entityType === 'announcement') {
             $title = trim((string)($payload['title'] ?? ''));
             $message = trim((string)($payload['message'] ?? ''));
-            $severity = strtoupper(trim((string)($payload['severity'] ?? 'INFO')));
-            $status = strtoupper(trim((string)($payload['status'] ?? 'PUBLISHED')));
+            $severity = pfgCmsValidateSeverity((string)($payload['severity'] ?? 'INFO'));
+            $status = pfgCmsValidateStatus((string)($payload['status'] ?? 'PUBLISHED'));
 
             if ($title === '' || $message === '') {
                 jsonResponse(['error' => 'Announcement title and message are required.'], 400);
@@ -590,8 +612,14 @@ try {
         }
 
         if ($entityType === 'section') {
-            $st = $pdo->prepare('SELECT * FROM cms_sections WHERE id = :id LIMIT 1');
-            $st->execute([':id' => $id]);
+            $st = $pdo->prepare('
+                SELECT s.*
+                FROM cms_sections s
+                INNER JOIN cms_pages p ON p.id = s.page_id
+                WHERE s.id = :id AND p.edition_id = :eid
+                LIMIT 1
+            ');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
             $existing = $st->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 jsonResponse(['error' => 'Section not found.'], 404);
@@ -600,7 +628,7 @@ try {
             $title = array_key_exists('title', $payload) ? (string)$payload['title'] : $existing['title'];
             $subtitle = array_key_exists('subtitle', $payload) ? (string)$payload['subtitle'] : $existing['subtitle'];
             $body = array_key_exists('body', $payload) ? (string)$payload['body'] : $existing['body'];
-            $status = isset($payload['status']) ? strtoupper(trim((string)$payload['status'])) : $existing['status'];
+            $status = isset($payload['status']) ? pfgCmsValidateStatus((string)$payload['status']) : (string)$existing['status'];
             $dataJson = array_key_exists('data', $payload) ? jsonEncode($payload['data']) : $existing['data'];
 
             $up = $pdo->prepare('
@@ -612,7 +640,7 @@ try {
                     data = :data,
                     updated_by = :uid,
                     updated_at = :now
-                WHERE id = :id
+                WHERE id = :id AND page_id = :pid
             ');
             $up->execute([
                 ':title'    => $title,
@@ -623,6 +651,7 @@ try {
                 ':uid'      => $user['id'],
                 ':now'      => $now,
                 ':id'       => $id,
+                ':pid'      => $existing['page_id'],
             ]);
 
             $updated = [
@@ -643,20 +672,20 @@ try {
         }
 
         if ($entityType === 'programme') {
-            $st = $pdo->prepare('SELECT * FROM programme_items WHERE id = :id LIMIT 1');
-            $st->execute([':id' => $id]);
+            $st = $pdo->prepare('SELECT * FROM programme_items WHERE id = :id AND edition_id = :eid LIMIT 1');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
             $existing = $st->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 jsonResponse(['error' => 'Programme item not found.'], 404);
             }
 
-            $dayNumber = isset($payload['dayNumber']) ? (int)$payload['dayNumber'] : (int)$existing['day_number'];
+            $dayNumber = isset($payload['dayNumber']) ? max(1, min(10, (int)$payload['dayNumber'])) : (int)$existing['day_number'];
             $timeSlot = isset($payload['timeSlot']) ? trim((string)$payload['timeSlot']) : $existing['time_slot'];
             $title = isset($payload['title']) ? trim((string)$payload['title']) : $existing['title'];
             $description = array_key_exists('description', $payload) ? (string)$payload['description'] : $existing['description'];
             $category = isset($payload['category']) ? trim((string)$payload['category']) : $existing['category'];
             $venueName = array_key_exists('venueName', $payload) ? (string)$payload['venueName'] : $existing['venue_name'];
-            $status = isset($payload['status']) ? strtoupper(trim((string)$payload['status'])) : $existing['status'];
+            $status = isset($payload['status']) ? pfgCmsValidateStatus((string)$payload['status']) : (string)$existing['status'];
 
             $up = $pdo->prepare('
                 UPDATE programme_items
@@ -668,7 +697,7 @@ try {
                     venue_name = :venue,
                     status = :status,
                     updated_at = :now
-                WHERE id = :id
+                WHERE id = :id AND edition_id = :eid
             ');
             $up->execute([
                 ':day'    => $dayNumber,
@@ -680,6 +709,7 @@ try {
                 ':status' => $status,
                 ':now'    => $now,
                 ':id'     => $id,
+                ':eid'    => $editionId,
             ]);
 
             $updated = [
@@ -701,8 +731,8 @@ try {
         }
 
         if ($entityType === 'partner') {
-            $st = $pdo->prepare('SELECT * FROM partners WHERE id = :id LIMIT 1');
-            $st->execute([':id' => $id]);
+            $st = $pdo->prepare('SELECT * FROM partners WHERE id = :id AND edition_id = :eid LIMIT 1');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
             $existing = $st->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 jsonResponse(['error' => 'Partner not found.'], 404);
@@ -712,7 +742,7 @@ try {
                 ? !empty($payload['consentVerified'])
                 : !empty($existing['consent_verified']);
             $nextStatus = isset($payload['status'])
-                ? strtoupper(trim((string)$payload['status']))
+                ? pfgCmsValidateStatus((string)$payload['status'])
                 : (string)$existing['status'];
 
             if ($nextStatus === 'PUBLISHED' && !$nextConsent) {
@@ -756,7 +786,7 @@ try {
                     category = :cat,
                     display_order = :ord,
                     updated_at = :now
-                WHERE id = :id
+                WHERE id = :id AND edition_id = :eid
             ');
             $up->execute([
                 ':consent' => $nextConsent ? 1 : 0,
@@ -765,6 +795,7 @@ try {
                 ':ord'     => $nextOrder,
                 ':now'     => $now,
                 ':id'      => $id,
+                ':eid'     => $editionId,
             ]);
 
             $updated = [
@@ -784,8 +815,8 @@ try {
         }
 
         if ($entityType === 'faq') {
-            $st = $pdo->prepare('SELECT * FROM faq_items WHERE id = :id LIMIT 1');
-            $st->execute([':id' => $id]);
+            $st = $pdo->prepare('SELECT * FROM faq_items WHERE id = :id AND edition_id = :eid LIMIT 1');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
             $existing = $st->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 jsonResponse(['error' => 'FAQ not found.'], 404);
@@ -794,12 +825,12 @@ try {
             $cat = isset($payload['category']) ? trim((string)$payload['category']) : $existing['category'];
             $q = isset($payload['question']) ? trim((string)$payload['question']) : $existing['question'];
             $a = isset($payload['answer']) ? trim((string)$payload['answer']) : $existing['answer'];
-            $status = isset($payload['status']) ? strtoupper(trim((string)$payload['status'])) : $existing['status'];
+            $status = isset($payload['status']) ? pfgCmsValidateStatus((string)$payload['status']) : (string)$existing['status'];
 
             $up = $pdo->prepare('
                 UPDATE faq_items
                 SET category = :cat, question = :q, answer = :a, status = :status, updated_at = :now
-                WHERE id = :id
+                WHERE id = :id AND edition_id = :eid
             ');
             $up->execute([
                 ':cat'    => $cat,
@@ -808,6 +839,7 @@ try {
                 ':status' => $status,
                 ':now'    => $now,
                 ':id'     => $id,
+                ':eid'    => $editionId,
             ]);
 
             $updated = [
@@ -825,9 +857,54 @@ try {
             jsonResponse(['item' => $updated]);
         }
 
+        if ($entityType === 'announcement') {
+            $st = $pdo->prepare('SELECT * FROM announcements WHERE id = :id AND edition_id = :eid LIMIT 1');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
+            $existing = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$existing) {
+                jsonResponse(['error' => 'Announcement not found.'], 404);
+            }
+
+            $title = isset($payload['title']) ? trim((string)$payload['title']) : (string)$existing['title'];
+            $message = isset($payload['message']) ? trim((string)$payload['message']) : (string)$existing['message'];
+            $severity = isset($payload['severity']) ? pfgCmsValidateSeverity((string)$payload['severity']) : (string)$existing['severity'];
+            $status = isset($payload['status']) ? pfgCmsValidateStatus((string)$payload['status']) : (string)$existing['status'];
+
+            if ($title === '' || $message === '') {
+                jsonResponse(['error' => 'Announcement title and message are required.'], 400);
+            }
+
+            $up = $pdo->prepare('
+                UPDATE announcements
+                SET title = :title, message = :msg, severity = :sev, status = :status
+                WHERE id = :id AND edition_id = :eid
+            ');
+            $up->execute([
+                ':title'  => $title,
+                ':msg'    => $message,
+                ':sev'    => $severity,
+                ':status' => $status,
+                ':id'     => $id,
+                ':eid'    => $editionId,
+            ]);
+
+            $updated = [
+                'id'       => $id,
+                'title'    => $title,
+                'message'  => $message,
+                'severity' => $severity,
+                'status'   => $status,
+            ];
+
+            pfgCmsRecordRevision($pdo, 'announcement', $id, $updated, (string)$user['id'], "Updated announcement \"{$title}\"");
+            logAudit(['actorUserId' => $user['id'], 'action' => 'CMS_ANNOUNCEMENT_UPDATED', 'resourceType' => 'announcement', 'resourceId' => $id]);
+
+            jsonResponse(['item' => $updated]);
+        }
+
         if ($entityType === 'category') {
-            $st = $pdo->prepare('SELECT * FROM registration_categories WHERE id = :id LIMIT 1');
-            $st->execute([':id' => $id]);
+            $st = $pdo->prepare('SELECT * FROM registration_categories WHERE id = :id AND edition_id = :eid LIMIT 1');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
             $existing = $st->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 jsonResponse(['error' => 'Registration category not found.'], 404);
@@ -844,7 +921,7 @@ try {
                     fee_amount_inr = :fee,
                     requires_payment = :rpay,
                     requires_approval = :rapp
-                WHERE id = :id
+                WHERE id = :id AND edition_id = :eid
             ');
             $up->execute([
                 ':active' => $isActive,
@@ -852,6 +929,7 @@ try {
                 ':rpay'   => $reqPay,
                 ':rapp'   => $reqApp,
                 ':id'     => $id,
+                ':eid'    => $editionId,
             ]);
 
             $updated = [
@@ -871,16 +949,16 @@ try {
         }
 
         if ($entityType === 'media' || $entityType === 'gallery') {
-            $st = $pdo->prepare('SELECT * FROM media_assets WHERE id = :id LIMIT 1');
-            $st->execute([':id' => $id]);
+            $st = $pdo->prepare('SELECT * FROM media_assets WHERE id = :id AND (edition_id = :eid OR edition_id IS NULL) LIMIT 1');
+            $st->execute([':id' => $id, ':eid' => $editionId]);
             $existing = $st->fetch(PDO::FETCH_ASSOC);
             if (!$existing) {
                 jsonResponse(['error' => 'Media asset not found.'], 404);
             }
             $altText = isset($payload['altText']) ? trim((string)$payload['altText']) : $existing['alt_text'];
             $category = isset($payload['category']) ? trim((string)$payload['category']) : $existing['category'];
-            $up = $pdo->prepare('UPDATE media_assets SET alt_text = :alt, category = :cat WHERE id = :id');
-            $up->execute([':alt' => $altText, ':cat' => $category, ':id' => $id]);
+            $up = $pdo->prepare('UPDATE media_assets SET alt_text = :alt, category = :cat WHERE id = :id AND (edition_id = :eid OR edition_id IS NULL)');
+            $up->execute([':alt' => $altText, ':cat' => $category, ':id' => $id, ':eid' => $editionId]);
             $updatedMedia = ['id' => $id, 'altText' => $altText, 'category' => $category];
             pfgCmsRecordRevision($pdo, 'media_asset', $id, $updatedMedia, (string)$user['id'], 'Updated media asset metadata');
             logAudit(['actorUserId' => $user['id'], 'action' => 'CMS_MEDIA_UPDATED', 'resourceType' => 'media_asset', 'resourceId' => $id, 'metadata' => $updatedMedia]);
@@ -903,12 +981,12 @@ try {
         }
 
         $tableMap = [
-            'programme'    => ['table' => 'programme_items', 'revType' => 'programme_item', 'auditAction' => 'CMS_PROGRAMME_DELETED'],
-            'partner'      => ['table' => 'partners',        'revType' => 'partner',        'auditAction' => 'CMS_PARTNER_DELETED'],
-            'faq'          => ['table' => 'faq_items',       'revType' => 'faq_item',       'auditAction' => 'CMS_FAQ_DELETED'],
-            'announcement' => ['table' => 'announcements',   'revType' => 'announcement',   'auditAction' => 'CMS_ANNOUNCEMENT_DELETED'],
-            'media'        => ['table' => 'media_assets',    'revType' => 'media_asset',    'auditAction' => 'CMS_MEDIA_DELETED'],
-            'gallery'      => ['table' => 'media_assets',    'revType' => 'media_asset',    'auditAction' => 'CMS_MEDIA_DELETED'],
+            'programme'    => ['table' => 'programme_items', 'revType' => 'programme_item', 'auditAction' => 'CMS_PROGRAMME_DELETED',    'nullableEdition' => false],
+            'partner'      => ['table' => 'partners',        'revType' => 'partner',        'auditAction' => 'CMS_PARTNER_DELETED',      'nullableEdition' => false],
+            'faq'          => ['table' => 'faq_items',       'revType' => 'faq_item',       'auditAction' => 'CMS_FAQ_DELETED',          'nullableEdition' => false],
+            'announcement' => ['table' => 'announcements',   'revType' => 'announcement',   'auditAction' => 'CMS_ANNOUNCEMENT_DELETED', 'nullableEdition' => false],
+            'media'        => ['table' => 'media_assets',    'revType' => 'media_asset',    'auditAction' => 'CMS_MEDIA_DELETED',        'nullableEdition' => true],
+            'gallery'      => ['table' => 'media_assets',    'revType' => 'media_asset',    'auditAction' => 'CMS_MEDIA_DELETED',        'nullableEdition' => true],
         ];
 
         if (!isset($tableMap[$entityType])) {
@@ -916,16 +994,17 @@ try {
         }
 
         $meta = $tableMap[$entityType];
-        $st = $pdo->prepare("SELECT * FROM {$meta['table']} WHERE id = :id LIMIT 1");
-        $st->execute([':id' => $id]);
+        $editionWhere = $meta['nullableEdition'] ? '(edition_id = :eid OR edition_id IS NULL)' : 'edition_id = :eid';
+        $st = $pdo->prepare("SELECT * FROM {$meta['table']} WHERE id = :id AND {$editionWhere} LIMIT 1");
+        $st->execute([':id' => $id, ':eid' => $editionId]);
         $existing = $st->fetch(PDO::FETCH_ASSOC);
 
         if (!$existing) {
             jsonResponse(['error' => 'Record not found.'], 404);
         }
 
-        $del = $pdo->prepare("DELETE FROM {$meta['table']} WHERE id = :id");
-        $del->execute([':id' => $id]);
+        $del = $pdo->prepare("DELETE FROM {$meta['table']} WHERE id = :id AND {$editionWhere}");
+        $del->execute([':id' => $id, ':eid' => $editionId]);
 
         pfgCmsRecordRevision($pdo, $meta['revType'], $id, ['deleted' => $existing], (string)$user['id'], "Deleted {$meta['revType']} {$id}");
         logAudit(['actorUserId' => $user['id'], 'action' => $meta['auditAction'], 'resourceType' => $meta['revType'], 'resourceId' => $id]);

@@ -961,6 +961,77 @@ try {
             jsonResponse(['error' => 'publicMessage is limited to 1000 characters.'], 400);
         }
 
+        // Legacy duty assignment string/array bounds validation (MED-04) BEFORE any DB write
+        $validateLegacyString = static function ($raw, string $fieldLabel, int $maxLen): ?string {
+            if ($raw === null) {
+                return null;
+            }
+            if (!is_string($raw)) {
+                jsonResponse(['error' => "{$fieldLabel} must be a string."], 400);
+            }
+            $trimmed = trim($raw);
+            if (mb_strlen($trimmed, 'UTF-8') > $maxLen) {
+                jsonResponse(['error' => "{$fieldLabel} must not exceed {$maxLen} characters."], 400);
+            }
+            return $trimmed;
+        };
+
+        $validatedVolAssign = [];
+        if ($hasVolunteerAssign) {
+            $va = $input['volunteerAssignment'];
+            $volBounds = [
+                'assignedDepartment'     => ['assignedDepartment', 120],
+                'assignedResponsibility' => ['assignedResponsibility', 2000],
+                'assignedSupervisor'     => ['assignedSupervisor', 150],
+                'assignedVenue'          => ['assignedVenue', 200],
+                'assignedShift'          => ['assignedShift', 100],
+                'reportingTime'          => ['reportingTime', 80],
+                'assignmentNotes'        => ['assignmentNotes', 2000],
+            ];
+            foreach ($volBounds as $k => [$label, $maxLen]) {
+                if (array_key_exists($k, $va)) {
+                    $validatedVolAssign[$k] = $validateLegacyString($va[$k], $label, $maxLen);
+                }
+            }
+        }
+
+        $validatedSliAssign = [];
+        if ($hasSliAssign) {
+            $sa = $input['sliAssignment'];
+            $sliBounds = [
+                'assignedVenue'   => ['assignedVenue', 200],
+                'dutyTimes'       => ['dutyTimes', 150],
+                'assignmentNotes' => ['assignmentNotes', 2000],
+            ];
+            foreach ($sliBounds as $k => [$label, $maxLen]) {
+                if (array_key_exists($k, $sa)) {
+                    $validatedSliAssign[$k] = $validateLegacyString($sa[$k], $label, $maxLen);
+                }
+            }
+            if (array_key_exists('assignedSessions', $sa) && $sa['assignedSessions'] !== null) {
+                if (!is_array($sa['assignedSessions'])) {
+                    jsonResponse(['error' => 'assignedSessions must be an array of strings.'], 400);
+                }
+                if (count($sa['assignedSessions']) > 50) {
+                    jsonResponse(['error' => 'assignedSessions cannot exceed 50 items.'], 400);
+                }
+                $cleanSessions = [];
+                foreach ($sa['assignedSessions'] as $item) {
+                    if (!is_string($item)) {
+                        jsonResponse(['error' => 'Every assignedSessions entry must be a string.'], 400);
+                    }
+                    $t = trim($item);
+                    if (mb_strlen($t, 'UTF-8') > 200) {
+                        jsonResponse(['error' => 'Each assignedSessions entry must not exceed 200 characters.'], 400);
+                    }
+                    if ($t !== '') {
+                        $cleanSessions[] = $t;
+                    }
+                }
+                $validatedSliAssign['assignedSessions'] = $cleanSessions;
+            }
+        }
+
         $beforeState = [
             'status'      => $existing['status'],
             'reviewNotes' => $existing['review_notes'],
@@ -1038,7 +1109,6 @@ try {
         $updatedVolunteer = null;
         $existingVol = null;
         if ($hasVolunteerAssign) {
-            $va = $input['volunteerAssignment'];
             $stVol = $pdo->prepare('SELECT * FROM volunteer_applications WHERE registration_id = :rid LIMIT 1');
             $stVol->execute([':rid' => $id]);
             $existingVol = $stVol->fetch(PDO::FETCH_ASSOC);
@@ -1057,13 +1127,13 @@ try {
                     WHERE id = :id
                 ");
                 $upVol->execute([
-                    ':dept'  => $va['assignedDepartment'] ?? $existingVol['assigned_department'],
-                    ':resp'  => $va['assignedResponsibility'] ?? $existingVol['assigned_responsibility'],
-                    ':sup'   => $va['assignedSupervisor'] ?? $existingVol['assigned_supervisor'],
-                    ':venue' => $va['assignedVenue'] ?? $existingVol['assigned_venue'],
-                    ':shift' => $va['assignedShift'] ?? $existingVol['assigned_shift'],
-                    ':rtime' => $va['reportingTime'] ?? $existingVol['reporting_time'],
-                    ':notes' => $va['assignmentNotes'] ?? $existingVol['assignment_notes'],
+                    ':dept'  => array_key_exists('assignedDepartment', $validatedVolAssign) ? $validatedVolAssign['assignedDepartment'] : $existingVol['assigned_department'],
+                    ':resp'  => array_key_exists('assignedResponsibility', $validatedVolAssign) ? $validatedVolAssign['assignedResponsibility'] : $existingVol['assigned_responsibility'],
+                    ':sup'   => array_key_exists('assignedSupervisor', $validatedVolAssign) ? $validatedVolAssign['assignedSupervisor'] : $existingVol['assigned_supervisor'],
+                    ':venue' => array_key_exists('assignedVenue', $validatedVolAssign) ? $validatedVolAssign['assignedVenue'] : $existingVol['assigned_venue'],
+                    ':shift' => array_key_exists('assignedShift', $validatedVolAssign) ? $validatedVolAssign['assignedShift'] : $existingVol['assigned_shift'],
+                    ':rtime' => array_key_exists('reportingTime', $validatedVolAssign) ? $validatedVolAssign['reportingTime'] : $existingVol['reporting_time'],
+                    ':notes' => array_key_exists('assignmentNotes', $validatedVolAssign) ? $validatedVolAssign['assignmentNotes'] : $existingVol['assignment_notes'],
                     ':now'   => $now,
                     ':id'    => $existingVol['id'],
                 ]);
@@ -1080,13 +1150,13 @@ try {
                 $insVol->execute([
                     ':id'    => uuid4(),
                     ':rid'   => $id,
-                    ':dept'  => $va['assignedDepartment'] ?? null,
-                    ':resp'  => $va['assignedResponsibility'] ?? null,
-                    ':sup'   => $va['assignedSupervisor'] ?? null,
-                    ':venue' => $va['assignedVenue'] ?? null,
-                    ':shift' => $va['assignedShift'] ?? null,
-                    ':rtime' => $va['reportingTime'] ?? null,
-                    ':notes' => $va['assignmentNotes'] ?? null,
+                    ':dept'  => $validatedVolAssign['assignedDepartment'] ?? null,
+                    ':resp'  => $validatedVolAssign['assignedResponsibility'] ?? null,
+                    ':sup'   => $validatedVolAssign['assignedSupervisor'] ?? null,
+                    ':venue' => $validatedVolAssign['assignedVenue'] ?? null,
+                    ':shift' => $validatedVolAssign['assignedShift'] ?? null,
+                    ':rtime' => $validatedVolAssign['reportingTime'] ?? null,
+                    ':notes' => $validatedVolAssign['assignmentNotes'] ?? null,
                     ':now'   => $now,
                 ]);
             }
@@ -1098,13 +1168,12 @@ try {
         $updatedSli = null;
         $existingSli = null;
         if ($hasSliAssign) {
-            $sa = $input['sliAssignment'];
             $stSli = $pdo->prepare('SELECT * FROM sli_applications WHERE registration_id = :rid LIMIT 1');
             $stSli->execute([':rid' => $id]);
             $existingSli = $stSli->fetch(PDO::FETCH_ASSOC);
 
-            $sessionsJson = isset($sa['assignedSessions']) && is_array($sa['assignedSessions'])
-                ? jsonEncode($sa['assignedSessions'])
+            $sessionsJson = array_key_exists('assignedSessions', $validatedSliAssign)
+                ? jsonEncode($validatedSliAssign['assignedSessions'])
                 : ($existingSli['assigned_sessions'] ?? '[]');
 
             if ($existingSli) {
@@ -1119,9 +1188,9 @@ try {
                 ");
                 $upSli->execute([
                     ':sessions' => $sessionsJson,
-                    ':venue'    => $sa['assignedVenue'] ?? $existingSli['assigned_venue'],
-                    ':duty'     => $sa['dutyTimes'] ?? $existingSli['duty_times'],
-                    ':notes'    => $sa['assignmentNotes'] ?? $existingSli['assignment_notes'],
+                    ':venue'    => array_key_exists('assignedVenue', $validatedSliAssign) ? $validatedSliAssign['assignedVenue'] : $existingSli['assigned_venue'],
+                    ':duty'     => array_key_exists('dutyTimes', $validatedSliAssign) ? $validatedSliAssign['dutyTimes'] : $existingSli['duty_times'],
+                    ':notes'    => array_key_exists('assignmentNotes', $validatedSliAssign) ? $validatedSliAssign['assignmentNotes'] : $existingSli['assignment_notes'],
                     ':now'      => $now,
                     ':id'       => $existingSli['id'],
                 ]);
@@ -1138,9 +1207,9 @@ try {
                     ':id'       => uuid4(),
                     ':rid'      => $id,
                     ':sessions' => $sessionsJson,
-                    ':venue'    => $sa['assignedVenue'] ?? null,
-                    ':duty'     => $sa['dutyTimes'] ?? null,
-                    ':notes'    => $sa['assignmentNotes'] ?? null,
+                    ':venue'    => $validatedSliAssign['assignedVenue'] ?? null,
+                    ':duty'     => $validatedSliAssign['dutyTimes'] ?? null,
+                    ':notes'    => $validatedSliAssign['assignmentNotes'] ?? null,
                     ':now'      => $now,
                 ]);
             }

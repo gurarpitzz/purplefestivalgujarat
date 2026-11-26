@@ -83,7 +83,7 @@ try {
                 ':now'        => $now,
             ]);
 
-            $resetUrl = APP_URL . '/login?resetToken=' . rawurlencode($rawToken);
+            $resetUrl = APP_URL . '/reset-password?token=' . rawurlencode($rawToken);
 
             // Phase 4L Secure Ephemeral Delivery: actionUrl encrypted in ephemeral_secret_enc & wiped immediately upon handoff;
             // NEVER persisted in notification_queue.payload or notification_delivery_logs.
@@ -128,25 +128,21 @@ try {
             jsonResponse(['error' => 'Invalid password reset token.'], 400);
         }
         if (strlen($newPassword) < 8 || strlen($newPassword) > 128) {
-            jsonResponse(['error' => 'New password must be at least 8 characters.'], 400);
+            jsonResponse(['error' => 'New password must be between 8 and 128 characters.'], 400);
+        }
+        if (!preg_match('/[A-Za-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
+            jsonResponse(['error' => 'New password must include at least one letter and one number.'], 400);
         }
 
         $tokenHash = hashToken($rawToken);
         $now = nowSql();
+        $newHash = hashPassword($newPassword);
 
-        $stmt = $pdo->prepare("
-            SELECT id, user_id
-            FROM auth_accounts
-            WHERE provider = 'password_reset'
-              AND token_hash = :token_hash
-              AND expires_at > :now
-            LIMIT 1
-        ");
-        $stmt->execute([':token_hash' => $tokenHash, ':now' => $now]);
-        $resetRecord = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$resetRecord) {
-            $stmt2 = $pdo->prepare("
+        // Atomic token lookup + single-use consumption BEFORE updating users.password_hash (MED-03)
+        $targetUserId = null;
+        $pdo->beginTransaction();
+        try {
+            $stmtPrt = $pdo->prepare("
                 SELECT id, user_id
                 FROM password_reset_tokens
                 WHERE token_hash = :token_hash
@@ -154,38 +150,90 @@ try {
                   AND expires_at > :now
                 LIMIT 1
             ");
-            $stmt2->execute([':token_hash' => $tokenHash, ':now' => $now]);
-            $resetRecord = $stmt2->fetch(PDO::FETCH_ASSOC);
+            $stmtPrt->execute([':token_hash' => $tokenHash, ':now' => $now]);
+            $prtRecord = $stmtPrt->fetch(PDO::FETCH_ASSOC);
+
+            if ($prtRecord && !empty($prtRecord['user_id'])) {
+                $consumePrt = $pdo->prepare("
+                    UPDATE password_reset_tokens
+                    SET used_at = :now
+                    WHERE id = :id
+                      AND used_at IS NULL
+                      AND expires_at > :now2
+                ");
+                $consumePrt->execute([
+                    ':now'  => $now,
+                    ':id'   => $prtRecord['id'],
+                    ':now2' => $now,
+                ]);
+                if ($consumePrt->rowCount() !== 1) {
+                    $pdo->rollBack();
+                    jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+                }
+                $targetUserId = (string)$prtRecord['user_id'];
+            } else {
+                $stmtAa = $pdo->prepare("
+                    SELECT id, user_id
+                    FROM auth_accounts
+                    WHERE provider = 'password_reset'
+                      AND token_hash = :token_hash
+                      AND expires_at > :now
+                    LIMIT 1
+                ");
+                $stmtAa->execute([':token_hash' => $tokenHash, ':now' => $now]);
+                $aaRecord = $stmtAa->fetch(PDO::FETCH_ASSOC);
+
+                if (!$aaRecord || empty($aaRecord['user_id'])) {
+                    $pdo->rollBack();
+                    jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+                }
+
+                $consumeAa = $pdo->prepare("
+                    DELETE FROM auth_accounts
+                    WHERE id = :id
+                      AND provider = 'password_reset'
+                      AND expires_at > :now
+                ");
+                $consumeAa->execute([
+                    ':id'  => $aaRecord['id'],
+                    ':now' => $now,
+                ]);
+                if ($consumeAa->rowCount() !== 1) {
+                    $pdo->rollBack();
+                    jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+                }
+                $targetUserId = (string)$aaRecord['user_id'];
+            }
+
+            $pdo->prepare("
+                UPDATE users
+                SET password_hash = :hash,
+                    failed_login_attempts = 0,
+                    locked_until = NULL,
+                    updated_at = :now
+                WHERE id = :uid
+            ")->execute([
+                ':hash' => $newHash,
+                ':now'  => $now,
+                ':uid'  => $targetUserId,
+            ]);
+
+            // Invalidate any remaining reset tokens for this user across both tables
+            $pdo->prepare("UPDATE password_reset_tokens SET used_at = :now WHERE user_id = :uid AND used_at IS NULL")
+                ->execute([':now' => $now, ':uid' => $targetUserId]);
+            $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'password_reset'")
+                ->execute([':uid' => $targetUserId]);
+
+            $pdo->commit();
+        } catch (Throwable $txErr) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $txErr;
         }
-
-        if (!$resetRecord || empty($resetRecord['user_id'])) {
-            jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
-        }
-
-        $targetUserId = (string)$resetRecord['user_id'];
-        $newHash = hashPassword($newPassword);
-
-        $pdo->prepare("
-            UPDATE users
-            SET password_hash = :hash,
-                failed_login_attempts = 0,
-                locked_until = NULL,
-                updated_at = :now
-            WHERE id = :uid
-        ")->execute([
-            ':hash' => $newHash,
-            ':now'  => $now,
-            ':uid'  => $targetUserId,
-        ]);
 
         // Revoke all active sessions for security
         revokeAllUserSessions($targetUserId, null, $pdo, $targetUserId, 'password_reset_completed');
-
-        // Consume reset token in both tables
-        $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'password_reset'")
-            ->execute([':uid' => $targetUserId]);
-        $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = :uid")
-            ->execute([':uid' => $targetUserId]);
 
         logAudit([
             'actorUserId'  => $targetUserId,

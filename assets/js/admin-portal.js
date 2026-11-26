@@ -1504,7 +1504,7 @@
     if (st.error) html += errorBox(st.error);
 
     const midHead = isAtt ? "Category" : cat === "VOLUNTEER" ? "Roles & institution" : "Credentials";
-    const lastHead = isAtt ? "QR / Check-in" : "Duty assignment";
+    const lastHead = isAtt ? "Attendance" : "Duty assignment";
     html +=
       '<div class="' + C.card + ' overflow-hidden" aria-busy="' + (st.loading ? "true" : "false") + '"><div class="overflow-x-auto"><table class="w-full text-sm text-left">' +
       '<caption class="sr-only">' + esc(meta.title) + " list, page " + esc(st.pagination.page) + " of " + esc(st.pagination.totalPages) + "</caption>" +
@@ -1534,7 +1534,7 @@
     if (cat === "ATTENDEE") {
       last = r.checkedIn
         ? '<span class="text-emerald-800 font-semibold">Checked In (' + esc(r.checkinCount) + ")</span>"
-        : r.credentialStatus === "ACTIVE" ? '<span class="text-[#5B3E87]">Pass Ready</span>' : '<span class="text-[#7C738E]">No Pass</span>';
+        : '<span class="text-[#7C738E]">Not Checked In</span>';
     } else {
       last = r.assignmentStatus ? badge(r.assignmentStatus === "UNASSIGNED" ? "PENDING" : r.assignmentStatus, r.assignmentStatus) : '<span class="text-[#7C738E]">—</span>';
     }
@@ -1640,7 +1640,7 @@
         field("Reviewer notes (internal)", "modal-reg-notes", textareaEl("modal-reg-notes", s.notes, 3, { placeholder: "Add review notes or reason…" })) +
         field("Message to participant (optional)", "modal-reg-public", textareaEl("modal-reg-public", "", 2, { placeholder: "Shown on the participant's dashboard…" }), "Visible to the participant. Leave blank to send nothing.") +
         '<div class="flex flex-wrap gap-2"><button type="button" data-act="reg-save" ' + (s.saving ? "disabled " : "") + 'class="flex-1 ' + C.btn + '">' + (s.saving ? "Saving…" : "Save Review") + "</button>" +
-        (can("credentials.revoke") && activeCred ? '<button type="button" data-act="reg-revoke" ' + (s.saving ? "disabled " : "") + 'class="' + C.danger + '">Revoke Pass</button>' : "") +
+        (can("credentials.revoke") && activeCred ? '<button type="button" data-act="reg-revoke" ' + (s.saving ? "disabled " : "") + 'class="' + C.danger + '">Revoke Legacy Credential</button>' : "") +
         "</div></div>";
     } else {
       html += '<p class="' + C.muted + '">You have read-only access to this record.</p>';
@@ -1706,15 +1706,9 @@
       html += section("Payment orders", pays.map(function (p) { return '<div class="p-3 rounded-xl bg-[#FAF8FD] border border-[#ECE7F5]">' + kvList(p) + "</div>"; }).join(""));
     }
 
-    // Credentials
-    if (activeCred && activeCred.qrPayload) {
-      html += section("Active QR credential",
-        '<div class="p-4 rounded-xl bg-[#FAF8FD] border border-[#ECE7F5] flex flex-col items-center gap-2"><p class="text-xs font-bold text-[#4A415C]">' + esc(activeCred.credentialCode) + "</p>" +
-        '<div data-qr-payload="' + esc(activeCred.qrPayload) + '" data-qr-size="160" class="bg-white p-2 rounded-lg border border-[#E5DFEF]"></div>' +
-        '<a href="/dashboard/pass-print.php?registrationId=' + encodeURIComponent(reg.id) + '" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-[#6B4E96] hover:underline">Open Printable Accessible Pass &rarr;</a></div>');
-    }
+    // Legacy credential history (D-01: participant QR entry passes are discontinued)
     if (creds.length) {
-      html += section("Credential history", creds.map(function (cr) {
+      html += section("Legacy credential history", creds.map(function (cr) {
         return '<div class="flex items-center justify-between text-xs p-2 rounded-lg bg-[#FAF8FD] border border-[#ECE7F5]"><span class="font-mono font-semibold">' + esc(cr.credentialCode) + "</span>" + badge(cr.status) + "</div>";
       }).join(""));
     }
@@ -1747,7 +1741,7 @@
       refreshModal(m);
       return;
     }
-    notify("success", r.data.credentialResult && r.data.credentialResult.credentialCode ? "Saved. QR credential " + r.data.credentialResult.credentialCode + " issued." : "Registration updated successfully.");
+    notify("success", "Registration updated successfully.");
     await loadRegistrationDetail(m);
     loadTabData(state.activeTab);
   }
@@ -1758,7 +1752,7 @@
   ACTIONS["reg-revoke"] = async function (el) {
     const m = modalOf(el);
     if (!m) return;
-    const ans = await promptDialog({ title: "Revoke QR pass", message: "The participant's active pass will stop working immediately.", label: "Reason for revocation", required: true, confirmLabel: "Revoke pass", danger: true });
+    const ans = await promptDialog({ title: "Revoke legacy credential", message: "The historical credential record will be marked REVOKED.", label: "Reason for revocation", required: true, confirmLabel: "Revoke credential", danger: true });
     if (ans) saveRegistrationReview(m, "REVOKE", ans.value);
   };
 
@@ -3102,7 +3096,7 @@
       '<h3 class="text-lg font-bold mt-0.5">Real-Time Attendance &amp; Gate Check-In Monitor</h3>' +
       '<p class="text-xs text-[#C8C0D8] mt-1">Today (IST): ' + esc((ov && ov.todayIst) || "—") + " • Duplicate entry prevented at database level</p>" +
       "</div>" +
-      '<a href="/rgst" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-[#7E61A8] hover:bg-[#6D5096] text-white">Open RGST QR Scanner</a>' +
+      '<a href="/rgst" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-[#7E61A8] hover:bg-[#6D5096] text-white">Open Registration Desk</a>' +
       "</div>" +
       '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">' +
       '<div class="bg-white border border-[#E5DFEF] rounded-xl p-4"><p class="text-xs font-semibold text-[#645C75] uppercase">Confirmed Eligible</p><p class="text-3xl font-bold mt-1 tabular-nums">' + esc(m.confirmedRegistrations || 0) + "</p></div>" +

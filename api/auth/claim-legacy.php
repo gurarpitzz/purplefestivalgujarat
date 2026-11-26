@@ -131,7 +131,8 @@ try {
                         'resourceId'   => (string)$hit['id'],
                         'metadata'     => ['reason' => 'legacy_claim_staff_owned_blocked'],
                     ]);
-                    jsonResponse(['error' => 'Registrations owned by festival staff accounts cannot be claimed.'], 403);
+                    // Uniform 404 (LOW-01): never distinguish staff-owned codes from non-claimable/nonexistent codes
+                    jsonResponse(['error' => 'No matching claimable registrations were found for your verified email.', 'claimed' => [], 'count' => 0], 404);
                 }
                 $wanted[(string)$hit['id']] = true;
             }
