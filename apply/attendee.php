@@ -78,7 +78,11 @@ $stmtAct = $pdo->prepare(
 $stmtAct->execute([':uid' => $userId]);
 $existingActive = $stmtAct->fetch(PDO::FETCH_ASSOC) ?: null;
 
-if ($editRegId !== '' && $existingActive && (string)$existingActive['id'] === $editRegId) {
+$editableStatuses = ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED', 'CONFIRMED'];
+$existingIsEditable = $existingActive
+    && in_array(strtoupper((string)$existingActive['status']), $editableStatuses, true);
+
+if ($editRegId !== '' && $existingIsEditable && (string)$existingActive['id'] === $editRegId) {
     $mode = 'edit';
     $stmtAd = $pdo->prepare('SELECT * FROM attendee_details WHERE registration_id = :rid LIMIT 1');
     $stmtAd->execute([':rid' => $editRegId]);
@@ -213,9 +217,11 @@ require_once __DIR__ . '/../includes/header.php';
           <a href="/dashboard" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#202D59] px-5 py-2.5 text-sm font-bold text-white">
             Open Participant Dashboard
           </a>
+          <?php if ($existingIsEditable): ?>
           <a href="/apply/attendee?edit=<?= rawurlencode((string)$existingActive['id']) ?>" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-2.5 text-sm font-bold text-[#202D59]">
             Edit Attendee Registration
           </a>
+          <?php endif; ?>
           <a href="/apply" class="touch-target inline-flex items-center justify-center rounded-lg border border-[#DCE5F7] bg-[#F6F5FE] px-5 py-2.5 text-sm font-semibold text-[#202D59]">
             Explore Volunteer / SLI Categories
           </a>

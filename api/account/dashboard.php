@@ -18,6 +18,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/includes/config.php';
 require_once dirname(__DIR__, 2) . '/includes/database.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
+require_once dirname(__DIR__, 2) . '/includes/application-lifecycle.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -353,10 +354,10 @@ try {
                 $dutiesByReg[$rid][] = [
                     'id'                      => (string)$dr['id'],
                     'participantCategory'     => (string)$dr['participant_category'],
-                    'sessionId'               => $dr['session_id'] !== null ? (string)$dr['session_id'] : null,
-                    'sessionTitle'            => $dr['session_title'] !== null ? (string)$dr['session_title'] : null,
-                    'sessionTrack'            => $dr['session_track'] !== null ? (string)$dr['session_track'] : null,
-                    'sessionDayNumber'        => $dr['session_day_number'] !== null ? (int)$dr['session_day_number'] : null,
+                    'sessionId'               => $sessionIsPublic && $dr['session_id'] !== null ? (string)$dr['session_id'] : null,
+                    'sessionTitle'            => $sessionIsPublic && $dr['session_title'] !== null ? (string)$dr['session_title'] : null,
+                    'sessionTrack'            => $sessionIsPublic && $dr['session_track'] !== null ? (string)$dr['session_track'] : null,
+                    'sessionDayNumber'        => $sessionIsPublic && $dr['session_day_number'] !== null ? (int)$dr['session_day_number'] : null,
                     'sessionConfirmed'        => $sessionIsPublic,
                     'venueId'                 => $dr['venue_id'] !== null ? (string)$dr['venue_id'] : null,
                     'venueName'               => $dr['venue_name'] !== null ? (string)$dr['venue_name'] : null,
@@ -436,8 +437,17 @@ try {
             $interestedTracks = [];
         }
 
-        $canEdit = !$isLegacy && in_array($status, ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true);
-        $canWithdraw = !$isLegacy && in_array($status, ['SUBMITTED', 'UNDER_REVIEW', 'CONFIRMED', 'APPROVED', 'WAITLISTED'], true);
+        $allowedNext = !$isLegacy
+            ? pfgGetAllowedStatusTransitions($catCode, $status, 'PARTICIPANT')
+            : [];
+        $canEdit = !$isLegacy && (
+            in_array($status, ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true)
+            || ($catCode === 'ATTENDEE' && $status === 'CONFIRMED')
+        );
+        $canWithdraw = !$isLegacy && (
+            in_array('WITHDRAWN', $allowedNext, true)
+            || in_array('CANCELLED', $allowedNext, true)
+        );
 
         $presentDays = $attendanceByReg[$rid] ?? [];
         $uniqueDates = [];
@@ -741,7 +751,7 @@ try {
     $announcements = [];
     try {
         $now = nowSql();
-        $annSql = "SELECT id, title, body, priority, published_at, expires_at
+        $annSql = "SELECT id, title, message AS body, severity AS priority, published_at, expires_at
                    FROM announcements
                    WHERE status = 'PUBLISHED'
                      AND (published_at IS NULL OR published_at <= :now1)
@@ -759,12 +769,12 @@ try {
                 'id'          => (string)$ann['id'],
                 'title'       => (string)$ann['title'],
                 'body'        => (string)$ann['body'],
-                'priority'    => (string)($ann['priority'] ?? 'NORMAL'),
+                'priority'    => (string)($ann['priority'] ?? 'INFO'),
                 'publishedAt' => $ann['published_at'] !== null ? (string)$ann['published_at'] : null,
             ];
         }
     } catch (Throwable $e) {
-        // Optional table
+        error_log('[dashboard] announcements query warning: ' . $e->getMessage());
     }
 
     // -------------------------------------------------------------------------

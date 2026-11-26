@@ -1649,22 +1649,33 @@
       var msgEl = document.getElementById("dash-email-message");
       var submitBtn = document.getElementById("dash-email-submit-btn");
       var newEmailInput = document.getElementById("prof-new-email");
+      var currPwInput = document.getElementById("prof-email-curr-pw");
       hideBanner(msgEl);
 
       var newEmail = newEmailInput ? newEmailInput.value.trim() : "";
+      var currentPassword = currPwInput ? currPwInput.value : "";
       if (!newEmail || newEmail.indexOf("@") === -1) {
         showBanner(msgEl, "error", "Please enter a valid new email address.");
         return;
       }
+      if (!currentPassword) {
+        showBanner(msgEl, "error", "Please enter your current password to confirm this email change.");
+        if (currPwInput) currPwInput.focus();
+        return;
+      }
 
       submitBtn.disabled = true;
-      apiFetch(endpoints.profile, { method: "PATCH", body: { email: newEmail } })
+      apiFetch(endpoints.profile, {
+        method: "PATCH",
+        body: { email: newEmail, currentPassword: currentPassword }
+      })
         .then(function (res) {
           if (!res.ok) {
             showBanner(msgEl, "error", (res.data && res.data.error) || "Unable to request email change.");
             return;
           }
           if (newEmailInput) newEmailInput.value = "";
+          if (currPwInput) currPwInput.value = "";
           showBanner(
             msgEl,
             "success",
@@ -1734,6 +1745,65 @@
   var mfaStartBtn = document.getElementById("dash-mfa-start-btn");
   var mfaEnableBtn = document.getElementById("dash-mfa-enable-btn");
   var mfaDisableBtn = document.getElementById("dash-mfa-disable-btn");
+  var mfaCopyCodesBtn = document.getElementById("dash-mfa-copy-codes-btn");
+  var mfaDismissCodesBtn = document.getElementById("dash-mfa-dismiss-codes-btn");
+  var lastDisplayedRecoveryCodes = [];
+
+  function showMfaRecoveryCodes(codes) {
+    var box = document.getElementById("dash-mfa-recovery-box");
+    var list = document.getElementById("dash-mfa-recovery-codes");
+    if (!box || !list) return;
+
+    if (!Array.isArray(codes) || codes.length === 0) {
+      lastDisplayedRecoveryCodes = [];
+      list.innerHTML = "";
+      box.classList.add("hidden");
+      return;
+    }
+
+    lastDisplayedRecoveryCodes = codes.map(function (c) {
+      return String(c);
+    });
+    list.innerHTML = lastDisplayedRecoveryCodes
+      .map(function (c) {
+        return (
+          '<li class="rounded-lg bg-white border border-[#59436D]/25 px-2.5 py-2 text-center font-semibold tracking-wider select-all">' +
+          escapeHtml(c) +
+          "</li>"
+        );
+      })
+      .join("");
+    box.classList.remove("hidden");
+    try {
+      box.focus();
+    } catch (e) {}
+  }
+
+  if (mfaCopyCodesBtn) {
+    mfaCopyCodesBtn.addEventListener("click", function () {
+      if (!lastDisplayedRecoveryCodes.length) return;
+      var text = lastDisplayedRecoveryCodes.join("\n");
+      var msgEl = document.getElementById("dash-mfa-message");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(text)
+          .then(function () {
+            showBanner(msgEl, "success", "Recovery codes copied to clipboard. Store them in a secure location.");
+          })
+          .catch(function () {
+            showBanner(msgEl, "error", "Could not copy automatically. Please select and copy the codes manually.");
+          });
+      } else {
+        showBanner(msgEl, "error", "Clipboard access unavailable. Please select and copy the codes manually.");
+      }
+    });
+  }
+
+  if (mfaDismissCodesBtn) {
+    mfaDismissCodesBtn.addEventListener("click", function () {
+      showMfaRecoveryCodes([]);
+    });
+  }
 
   if (mfaStartBtn) {
     mfaStartBtn.addEventListener("click", function () {
@@ -1764,22 +1834,40 @@
     var msgEl = document.getElementById("dash-mfa-message");
     hideBanner(msgEl);
     var inputEl = document.getElementById(action === "enable" ? "mfa-verify-code" : "mfa-disable-code");
+    var pwEl = action === "disable" ? document.getElementById("mfa-disable-password") : null;
     var code = inputEl ? inputEl.value.trim() : "";
+    var payload = { action: action, code: code };
 
-    apiFetch(endpoints.mfa, { method: "POST", body: { action: action, code: code } })
+    if (action === "disable") {
+      var currentPassword = pwEl ? pwEl.value : "";
+      if (!currentPassword) {
+        showBanner(msgEl, "error", "Please enter your current password to disable two-factor authentication.");
+        if (pwEl) pwEl.focus();
+        return;
+      }
+      payload.currentPassword = currentPassword;
+    }
+
+    apiFetch(endpoints.mfa, { method: "POST", body: payload })
       .then(function (res) {
         if (!res.ok) {
           showBanner(msgEl, "error", (res.data && res.data.error) || "Verification failed.");
           return;
         }
         if (inputEl) inputEl.value = "";
+        if (pwEl) pwEl.value = "";
         var enabled = Boolean(res.data.mfaEnabled);
         updateMfaUi(enabled);
+        if (enabled && Array.isArray(res.data.recoveryCodes) && res.data.recoveryCodes.length > 0) {
+          showMfaRecoveryCodes(res.data.recoveryCodes);
+        } else if (!enabled) {
+          showMfaRecoveryCodes([]);
+        }
         showBanner(
           msgEl,
           "success",
           enabled
-            ? "Two-factor authentication is now enabled on your account."
+            ? (res.data.message || "Two-factor authentication is now enabled. Save your single-use recovery codes below.")
             : "Two-factor authentication has been disabled."
         );
       })
