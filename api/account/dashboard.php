@@ -95,7 +95,6 @@ try {
         'emergencyContactName'         => isset($userRow['emergency_contact_name']) && $userRow['emergency_contact_name'] !== '' ? (string)$userRow['emergency_contact_name'] : null,
         'emergencyContactRelationship' => isset($userRow['emergency_contact_relationship']) && $userRow['emergency_contact_relationship'] !== '' ? (string)$userRow['emergency_contact_relationship'] : null,
         'emergencyContactPhone'        => isset($userRow['emergency_contact_phone']) && $userRow['emergency_contact_phone'] !== '' ? (string)$userRow['emergency_contact_phone'] : null,
-        'mfaEnabled'                   => (bool)($userRow['mfa_enabled'] ?? false),
         'roles'                        => is_array($authUser['roles'] ?? null) ? array_values($authUser['roles']) : ['PARTICIPANT'],
     ];
 

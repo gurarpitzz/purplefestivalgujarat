@@ -1,7 +1,7 @@
 # Final Launch Configuration & Owner Decisions Register (§17 & §54)
 
 **Purpose:** Single consolidated decision register for the Project Owner and Festival Secretariat separating (A) decisions that block public registration launch, (B) decisions that block specific operational features, and (C) optional deferred functionality that does **not** block restricted staging deployment.  
-**Baseline Note:** Confirmed Architectural Decisions (`CAD-01`–`CAD-15`, including `D-01` QR discontinuation and `D-20` mandatory Admin/Superadmin TOTP MFA) are already locked and implemented. Furthermore, public registration is guarded by the centralized `REGISTRATION_PUBLIC_OPEN` (`system_settings.registration_public_open`) activation gate (`HTTP 503` when closed in staging/production) so restricted staging deployment can proceed safely before Section A policy sign-offs are finalized.
+**Baseline Note:** Confirmed Architectural Decisions (`CAD-01`–`CAD-16`, including `D-01` QR discontinuation and **`CAD-16` superseding `D-20`** — TOTP MFA discontinued across all roles, username/password staff login, verified email/password participant login, and universal 5-attempt / exact 3-hour atomic DB account lockout with automatic unlock) are locked and implemented. Furthermore, public registration is guarded by the centralized `REGISTRATION_PUBLIC_OPEN` (`system_settings.registration_public_open`) activation gate (`HTTP 503` when closed in staging/production) so restricted staging deployment can proceed safely before Section A policy sign-offs are finalized.
 
 ---
 

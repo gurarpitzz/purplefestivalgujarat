@@ -453,11 +453,8 @@ pfgTest('T5-05', 'Phase 8 permission profiles: content_manager (403 accomm/reg/c
     }
     pfgAssert(isset($bySlug['content_manager'], $bySlug['programme_coordinator']), 'Missing seeded content_manager or programme_coordinator profile');
 
-    // 3. Create MFA-enrolled ADMIN user & assign content_manager profile
-    $admMfa = generateMfaSecret();
-    $admUser = p2CreateTestUser($p5Pdo, 't5_prof_admin', 't5.prof.admin@example.test', 'ProfAdmin#2027', 'ADMIN', [], $admMfa);
-    // Generate real HMAC-hashed single-use recovery codes so we can re-login reliably within the same 30s TOTP window
-    $recCodes = generateMfaRecoveryCodes($p5Pdo, $admUser['id'], 4);
+    // 3. Create ADMIN user & assign content_manager profile (username+password only; TOTP discontinued)
+    $admUser = p2CreateTestUser($p5Pdo, 't5_prof_admin', 't5.prof.admin@example.test', 'ProfAdmin#2027', 'ADMIN', [], null);
 
     $rAssignCm = p2Http('PATCH', '/api/admin/users', [
         'userId'              => $admUser['id'],
@@ -466,7 +463,7 @@ pfgTest('T5-05', 'Phase 8 permission profiles: content_manager (403 accomm/reg/c
     pfgAssert($rAssignCm['status'] === 200, "Assign content_manager failed: {$rAssignCm['body']}");
 
     pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
-    $cmSess = p2Login($admUser['username'], $admUser['password'], $recCodes[0]);
+    $cmSess = p2Login($admUser['username'], $admUser['password']);
     pfgAssert($cmSess['resp']['status'] === 200, 'content_manager admin login failed: ' . $cmSess['resp']['body']);
 
     // content_manager -> 200 on CMS, strictly 403 on accommodations, registrations, attendance/correct (CRIT-01)
@@ -490,7 +487,7 @@ pfgTest('T5-05', 'Phase 8 permission profiles: content_manager (403 accomm/reg/c
 
     // Re-login as programme_coordinator -> 200 on /api/admin/programme & /api/admin/venues (HIGH-01), 403 on /api/admin/accommodations
     pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
-    $pcSess = p2Login($admUser['username'], $admUser['password'], $recCodes[1]);
+    $pcSess = p2Login($admUser['username'], $admUser['password']);
     pfgAssert($pcSess['resp']['status'] === 200, 'programme_coordinator login failed');
     pfgAssert(p2Http('GET', '/api/admin/programme', null, $pcSess['cookies'])['status'] === 200, 'programme_coordinator expected 200 on /api/admin/programme');
     pfgAssert(p2Http('GET', '/api/admin/venues', null, $pcSess['cookies'])['status'] === 200, 'programme_coordinator expected 200 on /api/admin/venues');
@@ -506,7 +503,7 @@ pfgTest('T5-05', 'Phase 8 permission profiles: content_manager (403 accomm/reg/c
 
     p2Http('PATCH', '/api/admin/users', ['userId' => $admUser['id'], 'permissionProfileId' => $customProfId], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
-    $custSess = p2Login($admUser['username'], $admUser['password'], $recCodes[2]);
+    $custSess = p2Login($admUser['username'], $admUser['password']);
     pfgAssert($custSess['resp']['status'] === 200, 'Custom profile admin login failed');
 
     $rEditProf = p2Http('PATCH', '/api/admin/permission-profiles', [
@@ -1193,14 +1190,12 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
     $p5Pdo->prepare("UPDATE notification_queue SET status = 'CAPTURED_LOCAL', ephemeral_secret_enc = NULL WHERE id = :id")
         ->execute([':id' => $authVerId]);
 
-    // Helper: create an MFA-authenticated ADMIN session assigned to a specific profile slug
+    // Helper: create an authenticated ADMIN session assigned to a specific profile slug (username+password only)
     $makeProfileAdmin = static function (string $slug) use ($p5Pdo, $saSess, $profilesBySlug, $t510Tag): array {
         $uname = 't510_' . substr($slug, 0, 10) . '_' . $t510Tag;
         $email = $uname . '@example.test';
         $pw = 'RelAdmin#2027';
-        $mfa = generateMfaSecret();
-        $u = p2CreateTestUser($p5Pdo, $uname, $email, $pw, 'ADMIN', [], $mfa);
-        $codes = generateMfaRecoveryCodes($p5Pdo, $u['id'], 2);
+        $u = p2CreateTestUser($p5Pdo, $uname, $email, $pw, 'ADMIN', [], null);
 
         $rAssign = p2Http('PATCH', '/api/admin/users', [
             'userId'              => $u['id'],
@@ -1209,7 +1204,7 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
         pfgAssert($rAssign['status'] === 200, "T5-10: Assign {$slug} failed: {$rAssign['body']}");
 
         pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
-        $sess = p2Login($u['username'], $u['password'], $codes[0]);
+        $sess = p2Login($u['username'], $u['password']);
         pfgAssert($sess['resp']['status'] === 200, "T5-10: Login for {$slug} failed: {$sess['resp']['body']}");
         return ['user' => $u, 'cookies' => $sess['cookies'], 'csrf' => $sess['csrf']];
     };

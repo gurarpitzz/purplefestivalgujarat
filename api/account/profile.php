@@ -31,7 +31,7 @@ function pfgProfileLoad(PDO $pdo, string $userId, array $roles = []): ?array
     $stmt = $pdo->prepare('
         SELECT id, email, pending_email, email_verified_at, account_status, full_name, phone, country,
                city_district, state, preferred_language,
-               emergency_contact_name, emergency_contact_relationship, emergency_contact_phone, mfa_enabled
+               emergency_contact_name, emergency_contact_relationship, emergency_contact_phone
         FROM users WHERE id = :id LIMIT 1
     ');
     $stmt->execute([':id' => $userId]);
@@ -54,7 +54,6 @@ function pfgProfileLoad(PDO $pdo, string $userId, array $roles = []): ?array
         'emergencyContactName'         => $r['emergency_contact_name'] ?? null,
         'emergencyContactRelationship' => $r['emergency_contact_relationship'] ?? null,
         'emergencyContactPhone'        => $r['emergency_contact_phone'] ?? null,
-        'mfaEnabled'                   => (bool)$r['mfa_enabled'],
         'roles'                        => $roles,
     ];
 }

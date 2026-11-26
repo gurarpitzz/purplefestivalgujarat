@@ -188,9 +188,9 @@ $lockTestUser = p2CreateTestUser($pdo, 'p2_locktest', 'p2_locktest@example.test'
 // Actually DEFAULT_ROLE_PERMISSIONS for ADMIN grants those; we will test RBAC separation on CMS, AUDIT_LOGS, USERS, plus RGST vs PARTICIPANT vs ADMIN vs SUPERADMIN!
 
 // =========================================================================
-// T2-01: Login Anti-Enumeration
+// T2-01: Login Anti-Enumeration (Generic Public Auth Error)
 // =========================================================================
-pfgTest('T2-01', 'Login anti-enumeration returns uniform 401 without leaking status/role', function (): string {
+pfgTest('T2-01', 'Login anti-enumeration returns byte-identical generic 401 without leaking status/role', function (): string {
     $rUnknown = p2Http('POST', '/api/auth/login', ['username' => 'does_not_exist_999', 'password' => 'WrongPass#1']);
     $rWrongPw = p2Http('POST', '/api/auth/login', ['username' => 'p2_rgst', 'password' => 'WrongPass#1']);
     $rPartWrong = p2Http('POST', '/api/auth/login', ['username' => 'p2_participant', 'password' => 'WrongPass#1']);
@@ -198,25 +198,84 @@ pfgTest('T2-01', 'Login anti-enumeration returns uniform 401 without leaking sta
     pfgAssert($rUnknown['status'] === 401 && $rWrongPw['status'] === 401 && $rPartWrong['status'] === 401, 'All invalid logins must return 401');
     pfgAssert($rUnknown['body'] === $rWrongPw['body'] && $rWrongPw['body'] === $rPartWrong['body'], 'Error responses must be byte-identical to prevent enumeration');
     pfgAssert(!str_contains($rWrongPw['body'], 'lockedUntil'), 'Must not leak lockedUntil');
-    return 'Unknown user, wrong password, and participant wrong password all returned identical 401 JSON';
+    return 'Unknown user, wrong password, and participant wrong password all returned identical generic 401 JSON';
 });
 
 // =========================================================================
-// T2-02: Account Lockout & Sticky Lockout Expiry Reset
+// T2-02: 5-Attempt Lockout, Exact 3-Hour Duration (10,800s), Non-Bypass & Auto-Unlock
 // =========================================================================
-pfgTest('T2-02', 'Account lockout after 5 failures & clean counter reset after expiry (fixes sticky lockout)', function () use ($pdo, $lockTestUser): string {
-    for ($i = 1; $i <= 5; $i++) {
+pfgTest('T2-02', '5 consecutive failures trigger exact 3-hour (10,800s) lockout; IP/device non-bypass, non-extension & auto-unlock', function () use ($pdo, $lockTestUser): string {
+    // 1. 4 consecutive failed attempts must NOT activate lockout
+    for ($i = 1; $i <= 4; $i++) {
         $r = p2Http('POST', '/api/auth/login', ['username' => $lockTestUser['username'], 'password' => 'BadPass#' . $i]);
-        pfgAssert($r['status'] === 401, "Failed attempt {$i} must return uniform 401, got {$r['status']}");
+        pfgAssert($r['status'] === 401, "Failed attempt {$i} must return generic 401, got {$r['status']}");
     }
-    // Valid password while locked must return 423 without lockedUntil timestamp
-    $rLocked = p2Http('POST', '/api/auth/login', ['username' => $lockTestUser['username'], 'password' => $lockTestUser['password']]);
-    pfgAssert($rLocked['status'] === 423, "Locked account with valid password expected 423, got {$rLocked['status']}");
-    pfgAssert(!isset($rLocked['json']['lockedUntil']), 'Locked response must not leak lockedUntil timestamp');
+    $chk4 = $pdo->prepare('SELECT failed_login_attempts, locked_until FROM users WHERE id = :id');
+    $chk4->execute([':id' => $lockTestUser['id']]);
+    $row4 = $chk4->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((int)$row4['failed_login_attempts'] === 4 && empty($row4['locked_until']), '4 failed attempts must NOT lock account');
 
-    // Simulate expired lockout window & verify single failed attempt resets counter to 1 (NOT 6 -> immediate re-lock!)
+    // Successful login after 4 failures resets counter to 0
+    $rResetOk = p2Login($lockTestUser['username'], $lockTestUser['password']);
+    pfgAssert($rResetOk['resp']['status'] === 200, 'Valid login after 4 failed attempts must succeed');
+    $chkReset = $pdo->prepare('SELECT failed_login_attempts, locked_until FROM users WHERE id = :id');
+    $chkReset->execute([':id' => $lockTestUser['id']]);
+    $rowReset = $chkReset->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((int)$rowReset['failed_login_attempts'] === 0 && empty($rowReset['locked_until']), 'Successful login did not reset failed_login_attempts to 0');
+
+    // 2. Five fresh consecutive failures trigger immediate 3-hour (10,800s) lockout
+    pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+    pfgResetRateLimit($pdo, 'auth_login_ident', $lockTestUser['username']);
+    $before5 = time();
+    for ($i = 1; $i <= 5; $i++) {
+        $r = p2Http('POST', '/api/auth/login', ['username' => $lockTestUser['username'], 'password' => 'LockBad#' . $i]);
+        pfgAssert($r['status'] === 401, "Failure {$i} expected generic 401, got {$r['status']}");
+    }
+    $after5 = time();
+
+    $chk5 = $pdo->prepare('SELECT failed_login_attempts, locked_until FROM users WHERE id = :id');
+    $chk5->execute([':id' => $lockTestUser['id']]);
+    $row5 = $chk5->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((int)$row5['failed_login_attempts'] === 5 && !empty($row5['locked_until']), '5th failure did not activate lockout');
+    $lockedUntilStr = (string)$row5['locked_until'];
+    $lockedTs = strtotime($lockedUntilStr);
+    pfgAssert($lockedTs !== false, 'Invalid locked_until timestamp');
+    $deltaMin = $lockedTs - $after5;
+    $deltaMax = $lockedTs - $before5;
+    pfgAssert($deltaMax >= 10798 && $deltaMin <= 10802, "Expected exact 10,800s (3h) lockout window, got delta [{$deltaMin}, {$deltaMax}]");
+
+    // 3. Valid credentials during active lockout MUST be rejected with generic 401 & ZERO session created
+    $sessBefore = (int)$pdo->query('SELECT COUNT(*) FROM sessions WHERE user_id = ' . $pdo->quote($lockTestUser['id']))->fetchColumn();
+    $rLockedValid = p2Http('POST', '/api/auth/login', ['username' => $lockTestUser['username'], 'password' => $lockTestUser['password']]);
+    pfgAssert($rLockedValid['status'] === 401, "Locked account with valid password expected generic 401, got {$rLockedValid['status']}");
+    pfgAssert(empty($rLockedValid['cookies'][SESSION_COOKIE_NAME]), 'Locked login must not set session cookie');
+    pfgAssert(!isset($rLockedValid['json']['lockedUntil']), 'Locked response must not leak lockedUntil timestamp');
+    $sessAfter = (int)$pdo->query('SELECT COUNT(*) FROM sessions WHERE user_id = ' . $pdo->quote($lockTestUser['id']))->fetchColumn();
+    pfgAssert($sessAfter === $sessBefore, 'Locked login created a session row!');
+
+    // 4. Changing IP header and User-Agent (device) + clearing cookies does NOT bypass lockout
+    $rDiffIpDev = p2Http(
+        'POST',
+        '/api/auth/login',
+        ['username' => $lockTestUser['username'], 'password' => $lockTestUser['password']],
+        [],
+        ['X-Forwarded-For' => '203.0.113.77', 'User-Agent' => 'DifferentDevice/2.0 (Android 15)']
+    );
+    pfgAssert($rDiffIpDev['status'] === 401 && empty($rDiffIpDev['cookies'][SESSION_COOKIE_NAME]), 'IP/device change bypassed account lockout!');
+
+    // 5. Additional failed attempts during active lockout do NOT extend locked_until
+    sleep(1);
+    $rExtraFail = p2Http('POST', '/api/auth/login', ['username' => $lockTestUser['username'], 'password' => 'ExtraWrong#99']);
+    pfgAssert($rExtraFail['status'] === 401, 'Extra failure during lockout expected 401');
+    $chkExt = $pdo->prepare('SELECT failed_login_attempts, locked_until FROM users WHERE id = :id');
+    $chkExt->execute([':id' => $lockTestUser['id']]);
+    $rowExt = $chkExt->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((string)$rowExt['locked_until'] === $lockedUntilStr, "Additional failure extended locked_until from {$lockedUntilStr} to {$rowExt['locked_until']}!");
+    pfgAssert((int)$rowExt['failed_login_attempts'] === 5, 'failed_login_attempts changed during active lockout');
+
+    // 6. Controlled DB expiry (no Cron Job): auto-unlocks, resets counter to 1 on failed attempt (5 fresh attempts), then valid login resets to 0
     $pdo->prepare('UPDATE users SET locked_until = :past WHERE id = :id')
-        ->execute([':past' => nowSql(time() - 60), ':id' => $lockTestUser['id']]);
+        ->execute([':past' => nowSql(time() - 5), ':id' => $lockTestUser['id']]);
     pfgResetRateLimit($pdo, 'auth_login_ident', $lockTestUser['username']);
     pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
 
@@ -226,12 +285,16 @@ pfgTest('T2-02', 'Account lockout after 5 failures & clean counter reset after e
     $chk = $pdo->prepare('SELECT failed_login_attempts, locked_until FROM users WHERE id = :id');
     $chk->execute([':id' => $lockTestUser['id']]);
     $row = $chk->fetch(PDO::FETCH_ASSOC);
-    pfgAssert((int)$row['failed_login_attempts'] === 1 && empty($row['locked_until']), 'Sticky lockout bug: counter did not reset to 1 after expiry!');
+    pfgAssert((int)$row['failed_login_attempts'] === 1 && empty($row['locked_until']), 'Post-expiry counter did not reset to 1 (sticky lockout)!');
 
-    // Now valid login succeeds cleanly
     $rOk = p2Login($lockTestUser['username'], $lockTestUser['password']);
     pfgAssert($rOk['resp']['status'] === 200, 'Login after expired lockout should succeed');
-    return '5 failures locked account (423); post-expiry failure cleanly reset counter to 1 & subsequent valid login succeeded (200)';
+    $chkFinal = $pdo->prepare('SELECT failed_login_attempts, locked_until FROM users WHERE id = :id');
+    $chkFinal->execute([':id' => $lockTestUser['id']]);
+    $rowFinal = $chkFinal->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((int)$rowFinal['failed_login_attempts'] === 0 && empty($rowFinal['locked_until']), 'Successful post-expiry login did not reset counter to 0');
+
+    return '4 fails unlocked + reset on success; 5th locked exactly +10800s (3h); valid creds, IP/device change rejected; non-extending; auto-unlocked after controlled expiry';
 });
 
 // =========================================================================
@@ -353,169 +416,255 @@ pfgTest('T2-05', 'Session fixation mitigation, verified signup anti-enumeration 
 });
 
 // =========================================================================
-// T2-06: Mandatory MFA Enrollment Gate for SUPERADMIN/ADMIN (D-20)
+// T2-06: Username/Password-Only Staff Auth, Existing MFA-Enrolled Compatibility & Zero Route Gates
 // =========================================================================
-$unenrolledSession = null;
-pfgTest('T2-06', 'Un-enrolled SUPERADMIN blocked from admin APIs until mandatory MFA enrollment (D-20)', function () use ($saUnenrolled, &$unenrolledSession): string {
-    $login = p2Login($saUnenrolled['username'], $saUnenrolled['password']);
-    pfgAssert($login['resp']['status'] === 200, 'Un-enrolled SUPERADMIN login should issue enrollment-only session');
-    pfgAssert(!empty($login['resp']['json']['mfaEnrollmentRequired']), 'Expected mfaEnrollmentRequired=true');
-    $unenrolledSession = $login;
+pfgTest('T2-06', 'SUPERADMIN, ADMIN, RGST, verified PARTICIPANT & existing MFA-enrolled staff log in without TOTP; 0 MFA route gates', function () use ($pdo, $saUser, $saUnenrolled, $adminUser, $rgstUser, $partUser): string {
+    pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+
+    // 1. SUPERADMIN without MFA -> 200 directly to /admin, full API access (zero MFA enrollment gate)
+    $lSaNoMfa = p2Login($saUnenrolled['username'], $saUnenrolled['password']);
+    pfgAssert($lSaNoMfa['resp']['status'] === 200, 'Un-enrolled SUPERADMIN username+password login failed');
+    pfgAssert(empty($lSaNoMfa['resp']['json']['mfaEnrollmentRequired']) && empty($lSaNoMfa['resp']['json']['mfaRequired']), 'SUPERADMIN must not receive MFA prompt or enrollment flag');
+    pfgAssert(($lSaNoMfa['resp']['json']['redirectTo'] ?? '') === '/admin', 'SUPERADMIN must redirect directly to /admin, got: ' . ($lSaNoMfa['resp']['json']['redirectTo'] ?? ''));
 
     foreach (['/api/admin/overview', '/api/admin/registrations', '/api/admin/users', '/api/admin/cms', '/api/admin/audit-logs'] as $ep) {
-        $r = p2Http('GET', $ep, null, $login['cookies']);
-        pfgAssert($r['status'] === 403 && !empty($r['json']['mfaEnrollmentRequired']), "Un-enrolled SUPERADMIN must be blocked (403) on {$ep}, got {$r['status']}");
-    }
-    return 'Un-enrolled SUPERADMIN received mfaEnrollmentRequired=true and HTTP 403 across all 5 protected admin APIs';
-});
-
-// =========================================================================
-// T2-07: GET /api/auth/mfa Read-Only & POST Setup 160-bit Encrypted Secret
-// =========================================================================
-$enrolledSecretPlain = '';
-pfgTest('T2-07', 'GET /api/auth/mfa is read-only; POST setup creates 160-bit AES-256-GCM encrypted pending secret', function () use ($pdo, $saUnenrolled, &$unenrolledSession, &$enrolledSecretPlain): string {
-    $beforeCnt = (int)$pdo->query("SELECT COUNT(*) FROM auth_accounts WHERE user_id = " . $pdo->quote($saUnenrolled['id']) . " AND provider = 'mfa_setup'")->fetchColumn();
-    $rGet = p2Http('GET', '/api/auth/mfa', null, $unenrolledSession['cookies']);
-    $afterCnt = (int)$pdo->query("SELECT COUNT(*) FROM auth_accounts WHERE user_id = " . $pdo->quote($saUnenrolled['id']) . " AND provider = 'mfa_setup'")->fetchColumn();
-    pfgAssert($rGet['status'] === 200 && $beforeCnt === $afterCnt && !isset($rGet['json']['secret']), 'GET /api/auth/mfa must be read-only and never generate secrets!');
-
-    // POST setup without CSRF -> 403
-    $rNoCsrf = p2Http('POST', '/api/auth/mfa', ['action' => 'setup'], $unenrolledSession['cookies']);
-    pfgAssert($rNoCsrf['status'] === 403, 'POST /api/auth/mfa setup without CSRF must return 403');
-
-    // POST setup with CSRF -> 200 + 32-char Base32 (160-bit) secret encrypted in DB
-    $rSetup = p2Http('POST', '/api/auth/mfa', ['action' => 'setup'], $unenrolledSession['cookies'], ['X-CSRF-Token' => $unenrolledSession['csrf']]);
-    pfgAssert($rSetup['status'] === 200 && !empty($rSetup['json']['secret']), 'POST /api/auth/mfa setup failed');
-    $enrolledSecretPlain = (string)$rSetup['json']['secret'];
-    pfgAssert(strlen($enrolledSecretPlain) === 32, 'Expected 160-bit (32-char Base32) secret, got length ' . strlen($enrolledSecretPlain));
-
-    $storedPending = (string)$pdo->query("SELECT token_hash FROM auth_accounts WHERE user_id = " . $pdo->quote($saUnenrolled['id']) . " AND provider = 'mfa_setup' LIMIT 1")->fetchColumn();
-    pfgAssert(str_starts_with($storedPending, 'enc:v1:') && !str_contains($storedPending, $enrolledSecretPlain), 'Pending MFA secret was NOT encrypted in DB!');
-    return 'GET /api/auth/mfa verified read-only; POST setup generated 32-char (160-bit) secret stored as AES-256-GCM enc:v1:';
-});
-
-// =========================================================================
-// T2-08: MFA Enrollment Activation, Encrypted DB Storage & Recovery Codes
-// =========================================================================
-$saRecoveryCodes = [];
-pfgTest('T2-08', 'MFA activation stores AES-256-GCM ciphertext (mfa_secret=NULL), issues 8 hashed recovery codes & unlocks admin API', function () use ($pdo, $saUnenrolled, &$unenrolledSession, &$enrolledSecretPlain, &$saRecoveryCodes): string {
-    $code = computeTotpCode($enrolledSecretPlain, (int)floor(time() / 30));
-    $rEn = p2Http('POST', '/api/auth/mfa', ['action' => 'enable', 'code' => $code], $unenrolledSession['cookies'], ['X-CSRF-Token' => $unenrolledSession['csrf']]);
-    pfgAssert($rEn['status'] === 200 && !empty($rEn['json']['mfaEnabled']), 'MFA enable failed: ' . $rEn['body']);
-    $saRecoveryCodes = $rEn['json']['recoveryCodes'] ?? [];
-    pfgAssert(count($saRecoveryCodes) === 8, 'Expected 8 single-use recovery codes');
-
-    // Verify DB storage: encrypted ciphertext in mfa_secret_encrypted, NULL in mfa_secret, zero plaintext recovery codes in auth_accounts
-    $uRow = $pdo->query("SELECT mfa_enabled, mfa_secret_encrypted, mfa_secret FROM users WHERE id = " . $pdo->quote($saUnenrolled['id']))->fetch(PDO::FETCH_ASSOC);
-    pfgAssert((int)$uRow['mfa_enabled'] === 1, 'mfa_enabled not set to 1');
-    pfgAssert(str_starts_with((string)$uRow['mfa_secret_encrypted'], 'enc:v1:') && !str_contains((string)$uRow['mfa_secret_encrypted'], $enrolledSecretPlain), 'Active MFA secret is not encrypted!');
-    pfgAssert($uRow['mfa_secret'] === null, 'Legacy plaintext users.mfa_secret column MUST be NULL!');
-
-    $rcHashes = $pdo->query("SELECT token_hash FROM auth_accounts WHERE user_id = " . $pdo->quote($saUnenrolled['id']) . " AND provider = 'mfa_recovery'")->fetchAll(PDO::FETCH_COLUMN);
-    pfgAssert(count($rcHashes) === 8, 'Expected 8 hashed recovery codes in DB');
-    foreach ($rcHashes as $h) {
-        pfgAssert(!in_array($h, $saRecoveryCodes, true), 'Plaintext recovery code found in DB!');
+        $r = p2Http('GET', $ep, null, $lSaNoMfa['cookies']);
+        pfgAssert($r['status'] === 200, "SUPERADMIN expected 200 on {$ep} without MFA, got {$r['status']}");
     }
 
-    // Admin overview is now unlocked!
-    $rOv = p2Http('GET', '/api/admin/overview', null, $unenrolledSession['cookies']);
-    pfgAssert($rOv['status'] === 200, "Admin overview should now unlock (200), got {$rOv['status']}");
-    return 'mfa_secret=NULL, mfa_secret_encrypted=enc:v1:..., 8 hashed recovery codes stored, /api/admin/overview unlocked (200)';
+    // 2. Existing MFA-enrolled SUPERADMIN (mfa_enabled=1 + encrypted secret in DB) -> logs in seamlessly WITHOUT TOTP
+    $lSaLegacyMfa = p2Login($saUser['username'], $saUser['password']);
+    pfgAssert($lSaLegacyMfa['resp']['status'] === 200 && ($lSaLegacyMfa['resp']['json']['redirectTo'] ?? '') === '/admin', 'Existing MFA-enrolled SUPERADMIN failed password-only login');
+    $rOvLegacy = p2Http('GET', '/api/admin/overview', null, $lSaLegacyMfa['cookies']);
+    pfgAssert($rOvLegacy['status'] === 200, 'Existing MFA-enrolled SUPERADMIN blocked from /api/admin/overview');
+    // Historical DB columns remain preserved intact (non-destructive)
+    $histRow = $pdo->query('SELECT mfa_enabled, mfa_secret_encrypted FROM users WHERE id = ' . $pdo->quote($saUser['id']))->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((int)$histRow['mfa_enabled'] === 1 && str_starts_with((string)$histRow['mfa_secret_encrypted'], 'enc:v1:'), 'Historical MFA columns were unexpectedly altered');
+
+    // 3. Existing MFA-enrolled ADMIN -> logs in seamlessly WITHOUT TOTP
+    $lAdm = p2Login($adminUser['username'], $adminUser['password']);
+    pfgAssert($lAdm['resp']['status'] === 200 && ($lAdm['resp']['json']['redirectTo'] ?? '') === '/admin', 'ADMIN password-only login failed');
+
+    // 4. RGST -> username + password -> /rgst
+    $lRgst = p2Login($rgstUser['username'], $rgstUser['password']);
+    pfgAssert($lRgst['resp']['status'] === 200 && ($lRgst['resp']['json']['redirectTo'] ?? '') === '/rgst', 'RGST password-only login failed');
+
+    // 5. Verified PARTICIPANT -> email + password -> /dashboard
+    $lPart = p2Login($partUser['email'], $partUser['password']);
+    pfgAssert($lPart['resp']['status'] === 200 && ($lPart['resp']['json']['redirectTo'] ?? '') === '/dashboard', 'Verified PARTICIPANT email+password login failed');
+
+    return 'SUPERADMIN, legacy MFA-enrolled SUPERADMIN/ADMIN (DB cols intact), RGST & verified PARTICIPANT all authenticated without TOTP; 0 MFA gates';
 });
 
 // =========================================================================
-// T2-09: TOTP Replay Prevention, Single-Use Recovery Codes & Mandatory MFA Disable Block
+// T2-07: Atomic Concurrency Enforcement (Concurrent Requests Cannot Bypass 5-Attempt Limit)
 // =========================================================================
-pfgTest('T2-09', 'TOTP replay blocked, recovery code single-use enforced, and SUPERADMIN disable blocked (403)', function () use ($pdo, $saUnenrolled, $enrolledSecretPlain, $saRecoveryCodes, $unenrolledSession): string {
+pfgTest('T2-07', 'Concurrent login attempts enforce 5-attempt lockout atomically via SELECT ... FOR UPDATE', function () use ($pdo, $phpBin, $root): string {
+    $concUser = p2CreateTestUser($pdo, 'p2_conc_lock', 'p2_conc_lock@example.test', 'ConcPass#2027', 'ADMIN', [], null);
     pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
-    pfgResetRateLimit($pdo, 'auth_mfa_verify', $saUnenrolled['id']);
+    pfgResetRateLimit($pdo, 'auth_login_ident', $concUser['username']);
 
-    // Replay the EXACT same current TOTP code just used during enrollment -> MUST be blocked (401)!
-    $sameCode = computeTotpCode($enrolledSecretPlain, (int)floor(time() / 30));
-    $rReplay = p2Login($saUnenrolled['username'], $saUnenrolled['password'], $sameCode);
-    pfgAssert($rReplay['resp']['status'] === 401, "Replayed TOTP code must be rejected with 401, got {$rReplay['resp']['status']}");
+    // Spawn 8 parallel PHP processes sending simultaneous wrong-password POST /api/auth/login requests
+    $workerCode = <<<'PHP'
+$payload = json_encode(['username' => $argv[1], 'password' => 'ConcWrong#' . $argv[2]]);
+$ch = curl_init('http://127.0.0.1:8088/api/auth/login');
+curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 20,
+    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+    CURLOPT_POSTFIELDS     => $payload,
+]);
+$body = (string)curl_exec($ch);
+$code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+echo $code . "\n";
+PHP;
 
-    // Single-use recovery code succeeds ONCE
-    $rc1 = $saRecoveryCodes[0];
-    $rRec1 = p2Login($saUnenrolled['username'], $saUnenrolled['password'], $rc1);
-    pfgAssert($rRec1['resp']['status'] === 200 && !empty($rRec1['resp']['json']['user']['mfaVerified']), 'First use of valid recovery code should succeed (200)');
+    $procs = [];
+    $pipesList = [];
+    for ($i = 1; $i <= 8; $i++) {
+        $p = proc_open([$phpBin, '-r', $workerCode, $concUser['username'], (string)$i], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $root);
+        pfgAssert(is_resource($p), "Failed to spawn concurrent worker {$i}");
+        fclose($pipes[0]);
+        $procs[$i] = $p;
+        $pipesList[$i] = $pipes;
+    }
 
-    // Reusing the SAME recovery code MUST fail (401)
-    $rRecReuse = p2Login($saUnenrolled['username'], $saUnenrolled['password'], $rc1);
-    pfgAssert($rRecReuse['resp']['status'] === 401, "Reused recovery code must fail with 401, got {$rRecReuse['resp']['status']}");
+    $statuses = [];
+    for ($i = 1; $i <= 8; $i++) {
+        $out = trim((string)stream_get_contents($pipesList[$i][1]));
+        fclose($pipesList[$i][1]);
+        fclose($pipesList[$i][2]);
+        proc_close($procs[$i]);
+        $statuses[] = (int)$out;
+    }
 
-    // Mandatory MFA disable attempt by SUPERADMIN -> MUST return 403!
-    $rDisable = p2Http('POST', '/api/auth/mfa', [
-        'action'          => 'disable',
-        'currentPassword' => $saUnenrolled['password'],
-        'recoveryCode'    => $saRecoveryCodes[1],
-    ], $rRec1['cookies'], ['X-CSRF-Token' => $rRec1['csrf']]);
-    pfgAssert($rDisable['status'] === 403, "SUPERADMIN MFA disable must be blocked (403), got {$rDisable['status']}");
+    foreach ($statuses as $idx => $st) {
+        pfgAssert($st === 401, "Concurrent worker " . ($idx + 1) . " expected 401, got {$st}");
+    }
 
-    return 'TOTP replay rejected (401), recovery code worked once & blocked on reuse (401), mandatory MFA disable blocked (403)';
+    $row = $pdo->query('SELECT failed_login_attempts, locked_until FROM users WHERE id = ' . $pdo->quote($concUser['id']))->fetch(PDO::FETCH_ASSOC);
+    pfgAssert((int)$row['failed_login_attempts'] === 5, 'Concurrent race violated atomic 5-attempt counter: got ' . ($row['failed_login_attempts'] ?? 'null'));
+    pfgAssert(!empty($row['locked_until']) && strtotime((string)$row['locked_until']) > time() + 10700, 'Concurrent attempts failed to set 3-hour locked_until');
+
+    // Valid password immediately after concurrent burst MUST be rejected
+    pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+    $rAfter = p2Http('POST', '/api/auth/login', ['username' => $concUser['username'], 'password' => $concUser['password']]);
+    pfgAssert($rAfter['status'] === 401 && empty($rAfter['cookies'][SESSION_COOKIE_NAME]), 'Valid login succeeded despite concurrent lockout!');
+
+    return '8 parallel login requests serialized atomically: failed_login_attempts=5, locked_until=+3h, subsequent valid login rejected (401)';
 });
 
 // =========================================================================
-// T2-10: MFA Replacement Re-Auth & RGST Optional MFA Lifecycle
+// T2-08: Password Recovery Cannot Silently Bypass Active 3-Hour Lockout
 // =========================================================================
-pfgTest('T2-10', 'MFA replacement requires re-auth (active secret preserved on failure) & RGST optional MFA works', function () use ($pdo, $saUnenrolled, $saRecoveryCodes, $rgstUser): string {
+pfgTest('T2-08', 'Password recovery resets password & revokes sessions WITHOUT bypassing active 3-hour lockout', function () use ($pdo, $sinkDir): string {
+    $recUser = p2CreateTestUser($pdo, 'p2_lock_pwrec', 'p2_lock_pwrec@example.test', 'OrigLock#2027', 'PARTICIPANT', [], null);
     pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
-    $sSa = p2Login($saUnenrolled['username'], $saUnenrolled['password'], $saRecoveryCodes[2]);
-    pfgAssert($sSa['resp']['status'] === 200, 'SUPERADMIN login with recovery code failed');
+    pfgResetRateLimit($pdo, 'auth_pwreset_ip', '127.0.0.1');
+    pfgResetRateLimit($pdo, 'auth_pwreset_email', $recUser['email']);
+    pfgResetRateLimit($pdo, 'auth_pwreset_complete_ip', '127.0.0.1');
 
-    $origEnc = (string)$pdo->query("SELECT mfa_secret_encrypted FROM users WHERE id = " . $pdo->quote($saUnenrolled['id']))->fetchColumn();
+    // Lock the account with 5 failures
+    for ($i = 1; $i <= 5; $i++) {
+        $r = p2Http('POST', '/api/auth/login', ['username' => $recUser['email'], 'password' => 'WrongRec#' . $i]);
+        pfgAssert($r['status'] === 401, "Failure {$i} expected 401");
+    }
+    $lockedBefore = (string)$pdo->query('SELECT locked_until FROM users WHERE id = ' . $pdo->quote($recUser['id']))->fetchColumn();
+    pfgAssert($lockedBefore !== '' && strtotime($lockedBefore) > time() + 10700, 'Account not locked for 3h before password recovery test');
 
-    // Replacement without re-auth -> 403 and active secret untouched
-    $rBadRep = p2Http('POST', '/api/auth/mfa', ['action' => 'setup', 'currentPassword' => 'WrongPass'], $sSa['cookies'], ['X-CSRF-Token' => $sSa['csrf']]);
-    pfgAssert($rBadRep['status'] === 403, 'MFA replacement without valid re-auth must return 403');
-    $afterBadEnc = (string)$pdo->query("SELECT mfa_secret_encrypted FROM users WHERE id = " . $pdo->quote($saUnenrolled['id']))->fetchColumn();
-    pfgAssert($origEnc === $afterBadEnc, 'Active MFA secret was overwritten on failed replacement!');
+    // Clear sink, trigger password recovery, extract real single-use reset token from mail sink
+    foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $old) {
+        @unlink($old);
+    }
+    $rReq = p2Http('POST', '/api/auth/password-reset', ['email' => $recUser['email']]);
+    pfgAssert($rReq['status'] === 200, 'Password reset request failed');
 
-    // Replacement WITH valid password + recovery code succeeds and keeps active secret untouched until verified
-    $rGoodRep = p2Http('POST', '/api/auth/mfa', [
-        'action'          => 'setup',
-        'currentPassword' => $saUnenrolled['password'],
-        'recoveryCode'    => $saRecoveryCodes[3],
-    ], $sSa['cookies'], ['X-CSRF-Token' => $sSa['csrf']]);
-    pfgAssert($rGoodRep['status'] === 200 && !empty($rGoodRep['json']['secret']), 'Authenticated MFA replacement setup failed');
-    $stillOrigEnc = (string)$pdo->query("SELECT mfa_secret_encrypted FROM users WHERE id = " . $pdo->quote($saUnenrolled['id']))->fetchColumn();
-    pfgAssert($origEnc === $stillOrigEnc, 'Active MFA secret should NOT change before replacement verification!');
+    $resetToken = '';
+    foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $mf) {
+        $txt = (string)file_get_contents($mf);
+        if (str_contains(strtolower($txt), strtolower($recUser['email'])) && preg_match('/reset-password\?token=([A-Za-z0-9_\-%]+)/', $txt, $m)) {
+            $resetToken = rawurldecode($m[1]);
+            break;
+        }
+    }
+    pfgAssert($resetToken !== '', 'Could not extract password reset token from mail sink');
 
-    // RGST can enroll optional MFA and disable it with re-auth
+    // Complete password recovery
+    $newPw = 'RecoveredLock#2027';
+    $rComp = p2Http('POST', '/api/auth/password-reset', ['token' => $resetToken, 'newPassword' => $newPw]);
+    pfgAssert($rComp['status'] === 200, 'Password reset completion failed: ' . $rComp['body']);
+
+    // Verify active 3-hour lockout was strictly preserved
+    $lockedAfter = (string)$pdo->query('SELECT locked_until FROM users WHERE id = ' . $pdo->quote($recUser['id']))->fetchColumn();
+    pfgAssert($lockedAfter === $lockedBefore, "Password recovery altered/cleared active locked_until ({$lockedBefore} -> {$lockedAfter})!");
+
+    // Attempting login with NEW valid password while still locked MUST still be rejected (401)!
+    $rStillLocked = p2Http('POST', '/api/auth/login', ['username' => $recUser['email'], 'password' => $newPw]);
+    pfgAssert($rStillLocked['status'] === 401 && empty($rStillLocked['cookies'][SESSION_COOKIE_NAME]), 'Password recovery silently bypassed active 3-hour lockout!');
+
+    // After controlled expiry, login with NEW password succeeds cleanly
+    $pdo->prepare('UPDATE users SET locked_until = :past WHERE id = :id')
+        ->execute([':past' => nowSql(time() - 5), ':id' => $recUser['id']]);
+    pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+    $rUnlocked = p2Login($recUser['email'], $newPw);
+    pfgAssert($rUnlocked['resp']['status'] === 200, 'Login with recovered password failed after lockout expiry');
+
+    return 'Password reset preserved active 3-hour locked_until, rejected new password while locked (401), and permitted login after controlled expiry (200)';
+});
+
+// =========================================================================
+// T2-09: TOTP Discontinuation (410 Gone) & Zero Authenticator Instructions in Active UIs
+// =========================================================================
+pfgTest('T2-09', 'TOTP MFA endpoint returns 410 Gone; active UIs & JS contain zero authenticator instructions', function () use ($root, $pdo, $saUser, $partUser, $rgstUser): string {
+    pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+    $sSa = p2Login($saUser['username'], $saUser['password']);
+    $sPart = p2Login($partUser['email'], $partUser['password']);
     $sRgst = p2Login($rgstUser['username'], $rgstUser['password']);
-    pfgAssert($sRgst['resp']['status'] === 200 && empty($sRgst['resp']['json']['mfaEnrollmentRequired']), 'RGST login without MFA should be permitted');
-    $rRgstSetup = p2Http('POST', '/api/auth/mfa', ['action' => 'setup'], $sRgst['cookies'], ['X-CSRF-Token' => $sRgst['csrf']]);
-    $rgstSec = (string)($rRgstSetup['json']['secret'] ?? '');
-    $rRgstEn = p2Http('POST', '/api/auth/mfa', ['action' => 'enable', 'code' => computeTotpCode($rgstSec, (int)floor(time() / 30))], $sRgst['cookies'], ['X-CSRF-Token' => $sRgst['csrf']]);
-    pfgAssert($rRgstEn['status'] === 200 && !empty($rRgstEn['json']['mfaEnabled']), 'RGST optional MFA enroll failed');
-    $rgstRec = $rRgstEn['json']['recoveryCodes'][0] ?? '';
-    $rRgstDis = p2Http('POST', '/api/auth/mfa', ['action' => 'disable', 'currentPassword' => $rgstUser['password'], 'recoveryCode' => $rgstRec], $sRgst['cookies'], ['X-CSRF-Token' => $sRgst['csrf']]);
-    pfgAssert($rRgstDis['status'] === 200 && $rRgstDis['json']['mfaEnabled'] === false, 'RGST optional MFA disable failed');
 
-    return 'Failed replacement rejected (403) with active secret intact; valid re-auth setup + RGST optional MFA enroll/disable passed';
+    $rMfaGet = p2Http('GET', '/api/auth/mfa', null, $sSa['cookies']);
+    $rMfaPost = p2Http('POST', '/api/auth/mfa', ['action' => 'setup'], $sSa['cookies'], ['X-CSRF-Token' => $sSa['csrf']]);
+    pfgAssert($rMfaGet['status'] === 410 && !empty($rMfaGet['json']['deprecated']), "GET /api/auth/mfa expected 410 Gone, got {$rMfaGet['status']}");
+    pfgAssert($rMfaPost['status'] === 410 && !empty($rMfaPost['json']['deprecated']), "POST /api/auth/mfa expected 410 Gone, got {$rMfaPost['status']}");
+
+    $forbiddenNeedles = [
+        'google authenticator',
+        'microsoft authenticator',
+        'authenticator app',
+        '6-digit authenticator',
+        'mfa_setup',
+        'set up authenticator',
+        'reset mfa',
+        'qrcode-gen.js',
+    ];
+
+    $pages = [
+        ['GET', '/staff/login', []],
+        ['GET', '/login', []],
+        ['GET', '/admin', $sSa['cookies']],
+        ['GET', '/dashboard', $sPart['cookies']],
+        ['GET', '/rgst', $sRgst['cookies']],
+        ['GET', '/legal/privacy', []],
+    ];
+    foreach ($pages as [$m, $p, $ck]) {
+        $resp = p2Http($m, $p, null, $ck);
+        pfgAssert($resp['status'] === 200, "{$p} expected 200, got {$resp['status']}");
+        $low = strtolower($resp['body']);
+        foreach ($forbiddenNeedles as $needle) {
+            pfgAssert(!str_contains($low, $needle), "Active UI {$p} still contains discontinued MFA reference '{$needle}'!");
+        }
+    }
+
+    foreach (['assets/js/auth-pages.js', 'assets/js/admin-portal.js', 'assets/js/participant-dashboard.js'] as $jsRel) {
+        $lowJs = strtolower((string)file_get_contents($root . '/' . $jsRel));
+        foreach ($forbiddenNeedles as $needle) {
+            pfgAssert(!str_contains($lowJs, $needle), "Active JS {$jsRel} still contains discontinued MFA reference '{$needle}'!");
+        }
+    }
+
+    return '/api/auth/mfa returned 410 Gone; 6 active pages + 3 portal JS files verified free of authenticator/TOTP UI references';
 });
 
-// Authenticate our main test sessions (with valid MFA!) for RBAC/CSRF/Functional tests
-pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
-$saSess = p2Login($saUser['username'], $saUser['password'], computeTotpCode($saUser['mfaSecret'], (int)floor(time() / 30)));
-$adminStdSess = p2Login($adminUser['username'], $adminUser['password'], computeTotpCode($adminUser['mfaSecret'], (int)floor(time() / 30)));
-$adminCmsSess = p2Login($adminCustom['username'], $adminCustom['password'], computeTotpCode($adminCustom['mfaSecret'], (int)floor(time() / 30)));
-$rgstSess = p2Login($rgstUser['username'], $rgstUser['password']);
+// =========================================================================
+// T2-10: Universal 5-Attempt / 3-Hour Lockout Across SUPERADMIN, Custom ADMIN & PARTICIPANT
+// =========================================================================
+pfgTest('T2-10', '5-attempt 3-hour lockout applies universally to SUPERADMIN, custom-profile ADMIN, and PARTICIPANT', function () use ($pdo): string {
+    $uSa = p2CreateTestUser($pdo, 'p2_ulock_sa', 'p2_ulock_sa@example.test', 'ULockSa#2027', 'SUPERADMIN', [], null);
+    $uAdm = p2CreateTestUser($pdo, 'p2_ulock_adm', 'p2_ulock_adm@example.test', 'ULockAdm#2027', 'ADMIN', ['cms.manage'], null);
+    $uPart = p2CreateTestUser($pdo, 'p2_ulock_part', 'p2_ulock_part@example.test', 'ULockPart#2027', 'PARTICIPANT', [], null);
 
-// Create a direct valid session for PARTICIPANT (since /login is staff-only until Phase 5)
-$partRawToken = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
-$pdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 0, :exp, :now)')
-    ->execute([
-        ':id'  => uuid4(),
-        ':uid' => $partUser['id'],
-        ':th'  => hashToken($partRawToken),
-        ':exp' => nowSql(time() + 3600),
-        ':now' => nowSql(),
-    ]);
-$partSess = [
-    'cookies' => [SESSION_COOKIE_NAME => $partRawToken],
-    'csrf'    => pfgComputeSessionBoundCsrfToken($partRawToken),
-];
+    foreach ([['SUPERADMIN', $uSa['username'], $uSa['password'], $uSa['id']], ['ADMIN', $uAdm['username'], $uAdm['password'], $uAdm['id']], ['PARTICIPANT', $uPart['email'], $uPart['password'], $uPart['id']]] as [$label, $ident, $pw, $uid]) {
+        pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+        pfgResetRateLimit($pdo, 'auth_login_ident', $ident);
+        for ($i = 1; $i <= 5; $i++) {
+            $rf = p2Http('POST', '/api/auth/login', ['username' => $ident, 'password' => 'BadU#' . $i]);
+            pfgAssert($rf['status'] === 401, "{$label} fail {$i} expected 401");
+        }
+        $rv = p2Http('POST', '/api/auth/login', ['username' => $ident, 'password' => $pw]);
+        pfgAssert($rv['status'] === 401 && empty($rv['cookies'][SESSION_COOKIE_NAME]), "{$label} valid login was not blocked during 3h lockout!");
+        $lu = (string)$pdo->query('SELECT locked_until FROM users WHERE id = ' . $pdo->quote($uid))->fetchColumn();
+        pfgAssert($lu !== '' && strtotime($lu) >= time() + 10790, "{$label} locked_until not set to +3h");
+
+        // Controlled expiry -> automatic unlock
+        $pdo->prepare('UPDATE users SET locked_until = :past WHERE id = :id')->execute([':past' => nowSql(time() - 5), ':id' => $uid]);
+        pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+        $ru = p2Login($ident, $pw);
+        pfgAssert($ru['resp']['status'] === 200, "{$label} did not auto-unlock after expiry");
+    }
+
+    // Deactivate extra test SUPERADMIN so T2-13 last-superadmin count remains deterministic
+    $pdo->prepare('UPDATE users SET is_active = 0 WHERE id = :id')->execute([':id' => $uSa['id']]);
+    return '5-attempt / 3-hour lockout + automatic unlock verified identically for SUPERADMIN, custom ADMIN, and PARTICIPANT';
+});
+
+// Authenticate our main test sessions (username/email + password ONLY — no TOTP!) for RBAC/CSRF/Functional tests
+pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+$saSess = p2Login($saUser['username'], $saUser['password']);
+$adminStdSess = p2Login($adminUser['username'], $adminUser['password']);
+$adminCmsSess = p2Login($adminCustom['username'], $adminCustom['password']);
+$rgstSess = p2Login($rgstUser['username'], $rgstUser['password']);
+$partSess = p2Login($partUser['email'], $partUser['password']);
 
 // =========================================================================
 // T2-11: CSRF Negative Tests Across Mutating Endpoints (DB Unchanged!)
@@ -606,9 +755,9 @@ pfgTest('T2-13', 'SUPERADMIN self-demotion/last-superadmin guards, RGST customPe
     $rRgstPerm = p2Http('PATCH', '/api/admin/users', ['userId' => $rgstUser['id'], 'customPermissions' => ['cms.manage']], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rRgstPerm['status'] === 400, "Granting admin customPermissions to RGST expected 400, got {$rRgstPerm['status']}");
 
-    // Superadmin self-MFA-reset blocked
-    $rSelfMfa = p2Http('PATCH', '/api/admin/users', ['userId' => $saUser['id'], 'resetMfa' => true], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
-    pfgAssert($rSelfMfa['status'] === 400, "Self MFA admin reset expected 400, got {$rSelfMfa['status']}");
+    // Discontinued resetMfa returns 410 Gone
+    $rMfaReset = p2Http('PATCH', '/api/admin/users', ['userId' => $saUnenrolled['id'], 'resetMfa' => true], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rMfaReset['status'] === 410, "Discontinued resetMfa expected 410, got {$rMfaReset['status']}");
 
     // Password reset on another user revokes their active sessions!
     $tmpRgst = p2Login($rgstUser['username'], $rgstUser['password']);
@@ -618,17 +767,11 @@ pfgTest('T2-13', 'SUPERADMIN self-demotion/last-superadmin guards, RGST customPe
     $rAfter = p2Http('GET', '/api/auth/me', null, $tmpRgst['cookies']);
     pfgAssert(is_array($rAfter['json']) && array_key_exists('user', $rAfter['json']) && $rAfter['json']['user'] === null, 'Target user session was NOT revoked after admin password reset!');
 
-    // Superadmin-assisted MFA reset for another staff account (p2_sa_nomfa) clears MFA & revokes sessions
-    $rMfaReset = p2Http('PATCH', '/api/admin/users', ['userId' => $saUnenrolled['id'], 'resetMfa' => true], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
-    pfgAssert($rMfaReset['status'] === 200, 'Superadmin MFA reset for other user failed');
-    $mfaFlag = (int)$pdo->query("SELECT mfa_enabled FROM users WHERE id = " . $pdo->quote($saUnenrolled['id']))->fetchColumn();
-    pfgAssert($mfaFlag === 0, 'Target user mfa_enabled was not cleared on MFA_ADMIN_RESET');
-
     // Also test last active SUPERADMIN protection by temporarily deactivating p2_sa_nomfa
     $rDeact2 = p2Http('PATCH', '/api/admin/users', ['userId' => $saUnenrolled['id'], 'isActive' => false], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rDeact2['status'] === 200, 'Deactivating second superadmin failed');
 
-    return 'Self-demotion (400), RGST customPerms (400), self-MFA-reset (400), password-reset session revocation, and audited MFA_ADMIN_RESET verified';
+    return 'Self-demotion (400), RGST customPerms (400), discontinued resetMfa (410), password-reset session revocation & last-superadmin guard verified';
 });
 
 // =========================================================================
@@ -882,8 +1025,7 @@ pfgTest('T2-19', 'All retired QR endpoints return 410 Gone; qrcode-gen.js, histo
     $r4 = p2Http('POST', '/api/checkins/confirm.php', ['credentialId' => 'dummy', 'venueLabel' => 'Main Gate'], $freshRgst['cookies'], ['X-CSRF-Token' => $freshRgst['csrf']]);
     pfgAssert($r4['status'] === 410, "POST /api/checkins/confirm.php expected 410, got {$r4['status']}");
 
-    // Verify qrcode-gen.js preserved for MFA enrollment and historical tables exist
-    pfgAssert(is_file($root . '/assets/js/qrcode-gen.js'), 'assets/js/qrcode-gen.js must be preserved for TOTP MFA!');
+    // Verify historical tables remain preserved and /admin does NOT load qrcode-gen.js
     $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
     pfgAssert(in_array('qr_credentials', $tables, true) && in_array('checkins', $tables, true), 'Historical qr_credentials/checkins tables must be preserved!');
 
@@ -896,7 +1038,7 @@ pfgTest('T2-19', 'All retired QR endpoints return 410 Gone; qrcode-gen.js, histo
         '/rgst missing Phase 9 Manual Desk or still references html5-qrcode'
     );
 
-    return 'All 5 retired QR routes returned 410 Gone; historical tables, qrcode-gen.js & QR-free /rgst desk verified';
+    return 'All 5 retired QR routes returned 410 Gone; historical tables & QR-free /rgst desk verified';
 });
 
 // =========================================================================

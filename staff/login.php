@@ -24,14 +24,14 @@ require_once dirname(__DIR__) . '/includes/header.php';
     <div class="pfg-auth-card">
       <span class="pfg-staff-badge">Staff Portal</span>
       <h1 id="staff-heading" tabindex="-1">Staff sign in</h1>
-      <p class="pfg-auth-lead">For authorized Superadmin, Admin and Registration Desk staff only. Admin accounts require a two-step authenticator code.</p>
+      <p class="pfg-auth-lead">For authorized Superadmin, Admin and Registration Desk staff only. Sign in with your staff username and password.</p>
 
       <div id="auth-alert" class="pfg-alert pfg-alert-error" role="alert" tabindex="-1" hidden><span><strong>Error:</strong> <span data-text></span></span></div>
       <div id="auth-status" class="pfg-alert pfg-alert-info" role="status" aria-live="polite" tabindex="-1" hidden><span><strong>Notice:</strong> <span data-text></span></span></div>
 
       <form id="staff-form" data-auth-form="staff-login" novalidate>
         <div class="pfg-field">
-          <label for="staff-username">Username or email</label>
+          <label for="staff-username">Username</label>
           <input id="staff-username" name="username" type="text" class="pfg-input" autocomplete="username" autocapitalize="none" spellcheck="false" required aria-describedby="staff-username-error" />
           <p id="staff-username-error" class="pfg-field-error" hidden></p>
         </div>
@@ -43,16 +43,6 @@ require_once dirname(__DIR__) . '/includes/header.php';
             <button type="button" class="pfg-password-toggle" data-toggle-password="staff-password" aria-label="Show password">Show</button>
           </div>
           <p id="staff-password-error" class="pfg-field-error" hidden></p>
-        </div>
-
-        <div id="staff-mfa-box" class="pfg-panel" hidden>
-          <div class="pfg-field" style="margin-bottom:.5rem">
-            <label id="staff-mfa-label" for="staff-mfa">6-digit authenticator code</label>
-            <input id="staff-mfa" name="mfaCode" type="text" class="pfg-input pfg-input--code" inputmode="numeric" maxlength="7" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" aria-describedby="staff-mfa-hint staff-mfa-error" />
-            <p id="staff-mfa-hint" class="pfg-hint">Open your authenticator app and enter the current 6-digit code.</p>
-            <p id="staff-mfa-error" class="pfg-field-error" hidden></p>
-          </div>
-          <button id="staff-mfa-toggle" type="button" class="pfg-btn pfg-btn--link">Use a recovery code instead</button>
         </div>
 
         <button id="staff-submit" type="submit" class="pfg-btn">Sign in</button>

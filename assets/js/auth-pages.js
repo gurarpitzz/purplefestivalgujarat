@@ -310,48 +310,6 @@
 
   handlers["staff-login"] = function (form) {
     var submit = byId("staff-submit");
-    var mfaBox = byId("staff-mfa-box");
-    var mfaInput = byId("staff-mfa");
-    var mfaLabel = byId("staff-mfa-label");
-    var mfaHint = byId("staff-mfa-hint");
-    var mfaToggle = byId("staff-mfa-toggle");
-    var mfaNeeded = false;
-    var useRecovery = false;
-
-    function renderMfaMode() {
-      if (useRecovery) {
-        mfaLabel.textContent = "Recovery code";
-        mfaHint.textContent = "Enter one of your single-use 8-character recovery codes, for example ABCD-2345.";
-        mfaInput.setAttribute("inputmode", "text");
-        mfaInput.setAttribute("maxlength", "12");
-        mfaInput.setAttribute("autocomplete", "off");
-        mfaToggle.textContent = "Use my authenticator app code instead";
-      } else {
-        mfaLabel.textContent = "6-digit authenticator code";
-        mfaHint.textContent = "Open your authenticator app and enter the current 6-digit code.";
-        mfaInput.setAttribute("inputmode", "numeric");
-        mfaInput.setAttribute("maxlength", "7");
-        mfaInput.setAttribute("autocomplete", "one-time-code");
-        mfaToggle.textContent = "Use a recovery code instead";
-      }
-      mfaInput.value = "";
-    }
-
-    function revealMfa() {
-      mfaNeeded = true;
-      mfaBox.hidden = false;
-      mfaInput.required = true;
-      renderMfaMode();
-      mfaInput.focus();
-    }
-
-    if (mfaToggle) {
-      mfaToggle.addEventListener("click", function () {
-        useRecovery = !useRecovery;
-        renderMfaMode();
-        mfaInput.focus();
-      });
-    }
 
     form.addEventListener("submit", function (e) {
       e.preventDefault();
@@ -361,10 +319,8 @@
       var username = form.elements.username.value.trim();
       var password = form.elements.password.value;
       var errors = {};
-      if (!username) errors.username = "Enter your staff username or email.";
+      if (!username) errors.username = "Enter your staff username.";
       if (!password) errors.password = "Enter your password.";
-      var code = mfaNeeded ? mfaInput.value.trim() : "";
-      if (mfaNeeded && !code) errors.mfaCode = useRecovery ? "Enter a recovery code." : "Enter the 6-digit code.";
       if (Object.keys(errors).length) {
         var first = applyFieldErrors(form, errors);
         showError("Please complete the required fields.");
@@ -373,30 +329,12 @@
       }
 
       var payload = { username: username, password: password, portal: "staff", next: nextPath };
-      if (mfaNeeded) {
-        if (useRecovery) payload.recoveryCode = code;
-        else payload.mfaCode = code.replace(/\s+/g, "");
-      }
 
       setBusy(submit, true, "Signing in…");
       request("/api/auth/login", "POST", payload)
         .then(function (r) {
-          if (r.ok && r.data && r.data.mfaRequired && !r.data.user) {
-            revealMfa();
-            showStatus(r.data.message || "Enter the code from your authenticator app to continue.", false);
-            return;
-          }
           if (r.ok && r.data && r.data.user) {
-            if (r.data.mfaEnrollmentRequired) {
-              go(r.data.redirectTo, "/admin?mfa_setup=1");
-              return;
-            }
             go(nextPath ? nextPath : r.data.redirectTo, "/admin");
-            return;
-          }
-          if (r.data && r.data.mfaRequired) {
-            revealMfa();
-            showError(r.data.error || "Invalid authenticator code.");
             return;
           }
           showError(describeFailure(r, "Sign-in failed. Please check your credentials."));

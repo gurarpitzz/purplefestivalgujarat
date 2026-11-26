@@ -193,7 +193,7 @@ try {
 
         $profileSelect = $hasProfileColumn ? ', u.permission_profile_id' : '';
         $stUsers = $pdo->prepare("
-            SELECT u.id, u.username, u.email, u.full_name, u.phone, u.country, u.is_active, u.mfa_enabled, u.last_login_at, u.created_at{$profileSelect}
+            SELECT u.id, u.username, u.email, u.full_name, u.phone, u.country, u.is_active, u.last_login_at, u.created_at{$profileSelect}
             FROM users u
             WHERE {$whereSql}
             ORDER BY u.created_at DESC, u.id ASC
@@ -247,7 +247,6 @@ try {
                 'phone'                => $u['phone'] !== null ? (string)$u['phone'] : null,
                 'country'              => (string)($u['country'] ?? 'India'),
                 'isActive'             => !empty($u['is_active']),
-                'mfaEnabled'           => !empty($u['mfa_enabled']),
                 'roles'                => $rp['roles'],
                 'customPermissions'    => array_keys($customByUser[$uid] ?? []),
                 'permissionProfileId'  => $profileRow ? (string)$profileRow['id'] : null,
@@ -514,9 +513,8 @@ try {
             jsonResponse(['error' => 'New password must be at least 8 characters.'], 400);
         }
 
-        $resetMfa = !empty($input['resetMfa']);
-        if ($resetMfa && $isSelf) {
-            jsonResponse(['error' => 'You cannot reset your own MFA through admin recovery. Use authenticated MFA replacement instead.'], 400);
+        if (!empty($input['resetMfa'])) {
+            jsonResponse(['error' => 'MFA reset has been discontinued because authenticator-based MFA is no longer active.'], 410);
         }
 
         $roleRowId = null;
@@ -533,14 +531,6 @@ try {
         $revokeReasons = [];
         $pdo->beginTransaction();
         try {
-            if ($resetMfa) {
-                $pdo->prepare('UPDATE users SET mfa_enabled = 0, mfa_secret_encrypted = NULL, mfa_secret = NULL, updated_at = :now WHERE id = :id')
-                    ->execute([':now' => $now, ':id' => $targetUserId]);
-                $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider IN ('mfa_setup', 'mfa_recovery', 'mfa_replay')")
-                    ->execute([':uid' => $targetUserId]);
-                $revokeReasons[] = 'superadmin_mfa_reset';
-            }
-
             if (array_key_exists('isActive', $input) && $nextActive !== (int)$target['is_active']) {
                 $pdo->prepare('UPDATE users SET is_active = :active, updated_at = :now WHERE id = :id')
                     ->execute([':active' => $nextActive, ':now' => $now, ':id' => $targetUserId]);
@@ -548,8 +538,26 @@ try {
             }
 
             if ($newPassword !== '') {
-                $pdo->prepare('UPDATE users SET password_hash = :pw, failed_login_attempts = 0, locked_until = NULL, updated_at = :now WHERE id = :id')
-                    ->execute([':pw' => hashPassword($newPassword), ':now' => $now, ':id' => $targetUserId]);
+                $pdo->prepare('
+                    UPDATE users
+                    SET password_hash = :pw,
+                        failed_login_attempts = CASE
+                            WHEN locked_until IS NOT NULL AND locked_until > :now_chk1 THEN failed_login_attempts
+                            ELSE 0
+                        END,
+                        locked_until = CASE
+                            WHEN locked_until IS NOT NULL AND locked_until > :now_chk2 THEN locked_until
+                            ELSE NULL
+                        END,
+                        updated_at = :now
+                    WHERE id = :id
+                ')->execute([
+                    ':pw'       => hashPassword($newPassword),
+                    ':now_chk1' => $now,
+                    ':now_chk2' => $now,
+                    ':now'      => $now,
+                    ':id'       => $targetUserId,
+                ]);
                 $revokeReasons[] = 'admin_password_reset';
             }
 
@@ -621,15 +629,6 @@ try {
                 'metadata'     => ['customPermissions' => $cleanCustom],
             ]);
         }
-        if ($resetMfa) {
-            logAudit([
-                'actorUserId'  => $user['id'],
-                'action'       => 'MFA_ADMIN_RESET',
-                'resourceType' => 'user',
-                'resourceId'   => $targetUserId,
-                'metadata'     => ['targetEmail' => $target['email']],
-            ]);
-        }
 
         $sessionsRevoked = 0;
         if ($revokeReasons) {
@@ -677,7 +676,6 @@ try {
                 'permissionProfileChanged' => $profileChange,
                 'customPermissionsUpdated' => $cleanCustom !== null,
                 'passwordReset'            => $newPassword !== '',
-                'mfaReset'                 => $resetMfa,
                 'sessionsRevoked'          => $sessionsRevoked,
             ],
         ]);

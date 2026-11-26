@@ -7,11 +7,10 @@
 
 ## 1. Superadmin Operations Guide (`SUPERADMIN`)
 
-### 1.1 Signing In & Mandatory TOTP MFA (`D-20`)
+### 1.1 Signing In & Revised Authentication / Lockout Policy (`CAD-16`, Supersedes `D-20`)
 1. Open the dedicated Staff Portal login at **`/staff/login`** (never use the participant `/login` page for staff duty).
-2. Enter your Superadmin username/email and password.
-3. **First Login:** You will be routed to `/admin?mfa_setup=1`. Scan the TOTP QR code with an authenticator app (Google Authenticator, Authy, 1Password, Microsoft Authenticator), enter the 6-digit verification code, and **immediately store your 8 single-use recovery codes in an offline password vault**.
-4. **Subsequent Logins:** Enter your 6-digit TOTP code (or one unused recovery code if your phone is unavailable). Each 30-second TOTP slice can only be used once.
+2. Enter your Superadmin username (or email) and strong password (`>= 12` characters for bootstrapped Superadmin accounts). TOTP/authenticator MFA is discontinued under Project Owner policy `CAD-16`; existing staff accounts sign in directly with username and password and land on `/admin`.
+3. **Universal 5-Attempt / 3-Hour Account Lockout:** Five consecutive failed credential attempts on **any** account (`SUPERADMIN`, `ADMIN`, custom profile, `RGST`, or `PARTICIPANT`) automatically lock the account for **exactly 3 hours (180 minutes / 10,800 seconds)** using atomic database row locking. During lockout, even valid credentials are rejected, additional failures do not extend expiry, IP/device/cookie changes and password recovery cannot bypass lockout, and the account unlocks automatically upon expiry with no Cron Job required. Successful login resets the failed-attempt counter.
 
 ### 1.2 Managing Staff Accounts & Least-Privilege Operational Profiles
 Navigate to **`/admin` -> Staff & Profiles**:
@@ -21,9 +20,9 @@ Navigate to **`/admin` -> Staff & Profiles**:
    - Superadmin-only authorities (`admin_accounts.manage`, `settings.manage`, `audit_logs.read`) can never be added to an operational profile.
 2. **Creating Registration Desk (`RGST`) Accounts:**
    - Select role `RGST`. Desk operators cannot be assigned admin permission profiles or custom permissions and can only access `/rgst`.
-3. **Emergency Staff Account Lockout / MFA Recovery / Deactivation:**
-   - Changing a staff user's role, profile, active status, password, or resetting their MFA immediately revokes all of their active login sessions across all devices.
-   - Safety guards prevent you from deactivating or demoting your own account, resetting your own MFA from the user table, or removing the last active `SUPERADMIN`.
+3. **Emergency Staff Account Recovery & Deactivation:**
+   - Changing a staff user's role, profile, active status, or password immediately revokes all of their active login sessions across all devices.
+   - Safety guards prevent you from deactivating or demoting your own account or removing the last active `SUPERADMIN`.
 
 ### 1.3 Reviewing Security & Sensitive-Data Audit Logs
 Navigate to **`/admin` -> Audit Logs**:
@@ -69,7 +68,7 @@ Navigate to **`/admin` -> Programme & Venues** and **`/admin` -> Duty Roster**:
 ## 3. Registration Desk Operator Guide (`RGST` — `/rgst`)
 
 ### 3.1 Event-Day Check-In Workflow (Zero QR Scanning)
-1. Sign in at **`/staff/login`** with your `RGST` credentials (and TOTP MFA code if enabled on your account) to open **`/rgst`**.
+1. Sign in at **`/staff/login`** with your `RGST` username and password to open **`/rgst`**.
 2. **Search Participant:** Type the participant's Registration ID (e.g. `PFG-2027-000001` or `1`), full name, or phone digits into the search box (`Alt+S` / `/` shortcut), or filter by Category (`ATTENDEE`, `VOLUNTEER`, `SLI`) and Eligibility (`ELIGIBLE`).
 3. **Verify Eligibility Badge:**
    - Only participants with status **`CONFIRMED`** (Attendees) or **`APPROVED`** (Volunteers / SLIs) have active attendance checkboxes.

@@ -7,7 +7,6 @@ declare(strict_types=1);
  *
  * Security & Privacy Guarantees:
  * - Enforces RGST, ADMIN (with attendance/registration permission), or SUPERADMIN role.
- * - Enforces D-20 mandatory MFA for ADMIN and SUPERADMIN via enforceStaffMfaGate().
  * - Data-minimized view: NEVER displays disability disclosures, medical notes, emergency contacts, or review notes.
  * - ZERO walk-in creation buttons for RGST (Decision D-04).
  * - ZERO camera scanner library, camera preview, USB barcode input, or legacy pass dependency.
@@ -22,7 +21,6 @@ if (!$user) {
     header('Location: /login?next=/rgst');
     exit;
 }
-enforceStaffMfaGate($user);
 
 $userRoles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
 $isSuperadmin = in_array('SUPERADMIN', $userRoles, true);

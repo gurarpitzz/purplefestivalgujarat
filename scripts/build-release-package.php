@@ -157,6 +157,7 @@ $strictlyExcludedDirectories = [
 $strictlyExcludedFiles = [
     'assets/js/registration-wizard.js',
     'assets/js/html5-qrcode.min.js',
+    'assets/js/qrcode-gen.js',
     'Inclusive Viksit Bharat 2047 Vision.png',
     'Understanding Disability Access Guide.png',
     'bg1.png',
@@ -184,7 +185,7 @@ $classifyExclusion = static function (string $relPath) use (
     if (in_array($top, $strictlyExcludedDirectories, true)) {
         return 'excluded_directory:' . $top;
     }
-    if (in_array($norm, ['assets/js/registration-wizard.js', 'assets/js/html5-qrcode.min.js'], true)) {
+    if (in_array($norm, ['assets/js/registration-wizard.js', 'assets/js/html5-qrcode.min.js', 'assets/js/qrcode-gen.js'], true)) {
         return 'retired_legacy_js';
     }
     if (in_array($norm, [

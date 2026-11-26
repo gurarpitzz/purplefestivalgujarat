@@ -3,15 +3,16 @@ declare(strict_types=1);
 
 /**
  * POST /api/auth/login
- * Phase 5: also admits verified PARTICIPANT accounts (portal 'staff' stays strictly staff-only;
- * unverified participants get 403 + emailVerificationRequired ONLY after a valid password).
- * Phase 2 Hardened Staff Authentication (all invariants preserved):
- * - Persistent DB-backed rate limiting (IP + identifier)
- * - Constant-time dummy bcrypt check & uniform errors (zero account/lockout/role enumeration)
- * - Expired lockout reset (fixes sticky lockout)
- * - Mandatory TOTP MFA enforcement for SUPERADMIN & ADMIN (D-20)
- * - TOTP replay prevention + single-use recovery code verification
- * - Session fixation protection & session-bound CSRF token issuance
+ * Owner-Directed Revised Authentication Policy (supersedes D-20):
+ * - Conventional Username + Password authentication for ALL staff roles (SUPERADMIN, ADMIN, custom profiles, RGST)
+ * - Verified Email + Password authentication for PARTICIPANT accounts (email ownership verification retained)
+ * - TOTP / authenticator-based MFA discontinued for all roles; existing MFA-enrolled accounts sign in seamlessly
+ * - Persistent account-level consecutive failed-attempt tracking: max 5 failures -> exact 3-hour (10,800s) lockout
+ * - Atomic database enforcement via transaction + PK row lock (SELECT ... FOR UPDATE) preventing concurrent bypass
+ * - Lockout rejects even valid credentials, never extends on extra attempts, ignores IP/device changes,
+ *   auto-unlocks & resets counter on expiry without a Cron Job, and resets counter on successful login
+ * - Generic public authentication error (HTTP 401) preventing account & lockout enumeration
+ * - Persistent DB-backed IP & identifier rate limiting, session fixation protection, session-bound CSRF token
  */
 
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
@@ -26,7 +27,8 @@ if ($method !== 'POST') {
 }
 
 const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_SECONDS = 15 * 60; // 15 minutes
+const LOCKOUT_DURATION_SECONDS = 3 * 60 * 60; // Exactly 3 hours (180 minutes / 10,800 seconds)
+const GENERIC_AUTH_ERROR = 'Invalid credentials or account temporarily locked. Please try again later.';
 
 try {
     $pdo = getDb();
@@ -34,14 +36,8 @@ try {
 
     $identifier = strtolower(trim((string)($input['username'] ?? $input['identifier'] ?? $input['email'] ?? '')));
     $password = (string)($input['password'] ?? '');
-    $mfaCode = isset($input['mfaCode'])
-        ? (string)$input['mfaCode']
-        : (isset($input['mfa_code']) ? (string)$input['mfa_code'] : '');
-    $recoveryCode = isset($input['recoveryCode'])
-        ? (string)$input['recoveryCode']
-        : (isset($input['recovery_code']) ? (string)$input['recovery_code'] : '');
 
-    // Phase 5: optional portal hint ('staff' | 'participant') and validated post-login destination.
+    // Optional portal hint ('staff' | 'participant') and validated post-login destination.
     $portal = strtolower(trim((string)($input['portal'] ?? '')));
     $nextRedirect = isset($input['next']) && is_string($input['next'])
         ? pfgValidateSafeRedirect($input['next'], '')
@@ -54,22 +50,23 @@ try {
     // Persistent Bluehost-compatible rate limits (per IP and per identifier)
     $clientIp = getClientIp() ?: 'unknown';
     pfgRequireRateLimit($pdo, 'auth_login_ip', $clientIp, 30, 900, 900);
-    pfgRequireRateLimit($pdo, 'auth_login_ident', $identifier, 12, 900, 900);
+    pfgRequireRateLimit($pdo, 'auth_login_ident', $identifier, 25, 900, 900);
 
-    $stmt = $pdo->prepare("
-        SELECT *
+    // Lightweight PK lookup outside transaction to avoid table/gap lock contention in InnoDB
+    $findStmt = $pdo->prepare("
+        SELECT id
         FROM users
         WHERE (LOWER(username) = :ident_user OR LOWER(email) = :ident_email)
           AND deleted_at IS NULL
         LIMIT 1
     ");
-    $stmt->execute([
+    $findStmt->execute([
         ':ident_user'  => $identifier,
         ':ident_email' => $identifier,
     ]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    $userId = $findStmt->fetchColumn();
 
-    if (!$user || empty($user['is_active']) || empty($user['password_hash'])) {
+    if (!$userId) {
         pfgDummyPasswordVerify($password);
         logAudit([
             'actorUserId'  => null,
@@ -78,128 +75,215 @@ try {
             'resourceId'   => null,
             'metadata'     => ['reason' => 'invalid_credentials'],
         ]);
-        jsonResponse(['error' => 'Invalid username or password.'], 401);
+        jsonResponse(['error' => GENERIC_AUTH_ERROR], 401);
     }
 
+    $userId = (string)$userId;
+    $user = null;
     $nowTs = time();
     $nowSqlStr = nowSql($nowTs);
-    $lockedUntilTs = !empty($user['locked_until']) ? strtotime((string)$user['locked_until']) : false;
-    $isCurrentlyLocked = ($lockedUntilTs !== false && $lockedUntilTs > $nowTs);
-    $lockExpired = ($lockedUntilTs !== false && $lockedUntilTs <= $nowTs);
+    $outcome = 'invalid';
+    $auditMeta = [];
+    $roles = [];
+    $permissions = [];
+    $isStaff = false;
+    $accountStatus = 'ACTIVE';
 
-    // Always verify password BEFORE revealing lock status or role restrictions (prevents enumeration)
-    $passwordValid = verifyPassword($password, (string)$user['password_hash']);
+    // Atomic per-account enforcement using PK row lock (SELECT ... FOR UPDATE)
+    $pdo->beginTransaction();
+    try {
+        $lockStmt = $pdo->prepare("
+            SELECT *
+            FROM users
+            WHERE id = :id
+              AND deleted_at IS NULL
+            LIMIT 1
+            FOR UPDATE
+        ");
+        $lockStmt->execute([':id' => $userId]);
+        $user = $lockStmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$passwordValid) {
-        if ($isCurrentlyLocked) {
+        if (!$user || empty($user['is_active']) || empty($user['password_hash'])) {
+            $pdo->commit();
+            pfgDummyPasswordVerify($password);
             logAudit([
-                'actorUserId'  => $user['id'],
+                'actorUserId'  => $user ? $user['id'] : null,
                 'action'       => 'LOGIN_FAILED',
                 'resourceType' => 'user',
-                'resourceId'   => $user['id'],
-                'metadata'     => ['reason' => 'locked_invalid_password'],
+                'resourceId'   => $user ? $user['id'] : null,
+                'metadata'     => ['reason' => 'invalid_credentials'],
             ]);
-            jsonResponse(['error' => 'Invalid username or password.'], 401);
+            jsonResponse(['error' => GENERIC_AUTH_ERROR], 401);
         }
 
-        // Reset counter cleanly if previous lockout window has already expired (fixes sticky lockout)
-        $baseAttempts = $lockExpired ? 0 : (int)($user['failed_login_attempts'] ?? 0);
-        $nextAttempts = $baseAttempts + 1;
-        $shouldLock = $nextAttempts >= MAX_FAILED_ATTEMPTS;
-        $newLockedUntil = $shouldLock ? nowSql($nowTs + LOCKOUT_DURATION_SECONDS) : null;
+        $nowTs = time();
+        $nowSqlStr = nowSql($nowTs);
+        $lockedUntilTs = !empty($user['locked_until']) ? strtotime((string)$user['locked_until']) : false;
+        $isCurrentlyLocked = ($lockedUntilTs !== false && $lockedUntilTs > $nowTs);
+        $lockExpired = ($lockedUntilTs !== false && $lockedUntilTs <= $nowTs);
 
-        $upd = $pdo->prepare("
-            UPDATE users
-            SET failed_login_attempts = :attempts,
-                locked_until = :locked_until,
-                updated_at = :updated_at
-            WHERE id = :id
-        ");
-        $upd->execute([
-            ':attempts'     => $nextAttempts,
-            ':locked_until' => $newLockedUntil,
-            ':updated_at'   => $nowSqlStr,
-            ':id'           => $user['id'],
-        ]);
+        if ($isCurrentlyLocked) {
+            // Active lockout: NEVER modify failed_login_attempts or extend locked_until.
+            $pdo->commit();
 
-        logAudit([
-            'actorUserId'  => $user['id'],
-            'action'       => $shouldLock ? 'LOGIN_ACCOUNT_LOCKED' : 'LOGIN_FAILED',
-            'resourceType' => 'user',
-            'resourceId'   => $user['id'],
-            'metadata'     => ['failedAttempts' => $nextAttempts],
-        ]);
+            // Constant-time password check outside lock for uniform timing & accurate audit classification
+            $pwMatchedWhileLocked = verifyPassword($password, (string)$user['password_hash']);
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => $pwMatchedWhileLocked ? 'LOGIN_LOCKED_BLOCKED' : 'LOGIN_FAILED',
+                'resourceType' => 'user',
+                'resourceId'   => $user['id'],
+                'metadata'     => [
+                    'reason' => $pwMatchedWhileLocked ? 'active_lockout_valid_password_rejected' : 'locked_invalid_password',
+                ],
+            ]);
+            jsonResponse(['error' => GENERIC_AUTH_ERROR], 401);
+        }
 
-        // Uniform 401 error prevents unauthenticated callers from enumerating valid usernames
-        jsonResponse(['error' => 'Invalid username or password.'], 401);
+        // Not currently locked (either never locked or expired lockout auto-unlocking now)
+        $passwordValid = verifyPassword($password, (string)$user['password_hash']);
+
+        if (!$passwordValid) {
+            // Automatic unlock on expired lockout: reset base counter to 0, granting 5 fresh attempts
+            $baseAttempts = $lockExpired ? 0 : (int)($user['failed_login_attempts'] ?? 0);
+            $nextAttempts = $baseAttempts + 1;
+            $shouldLock = ($nextAttempts >= MAX_FAILED_ATTEMPTS);
+            $newLockedUntil = $shouldLock ? nowSql($nowTs + LOCKOUT_DURATION_SECONDS) : null;
+
+            $upd = $pdo->prepare("
+                UPDATE users
+                SET failed_login_attempts = :attempts,
+                    locked_until = :locked_until,
+                    updated_at = :updated_at
+                WHERE id = :id
+            ");
+            $upd->execute([
+                ':attempts'     => $nextAttempts,
+                ':locked_until' => $newLockedUntil,
+                ':updated_at'   => $nowSqlStr,
+                ':id'           => $user['id'],
+            ]);
+            $pdo->commit();
+
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => $shouldLock ? 'LOGIN_ACCOUNT_LOCKED' : 'LOGIN_FAILED',
+                'resourceType' => 'user',
+                'resourceId'   => $user['id'],
+                'metadata'     => $shouldLock
+                    ? [
+                        'failedAttempts'         => $nextAttempts,
+                        'lockoutDurationSeconds' => LOCKOUT_DURATION_SECONDS,
+                    ]
+                    : [
+                        'failedAttempts'   => $nextAttempts,
+                        'lockExpiredReset' => $lockExpired,
+                    ],
+            ]);
+
+            jsonResponse(['error' => GENERIC_AUTH_ERROR], 401);
+        }
+
+        // Valid credentials on an unlocked (or freshly auto-unlocked) account
+        $rp = getUserRolesAndPermissions((string)$user['id'], $pdo);
+        $roles = $rp['roles'];
+        $permissions = $rp['permissions'];
+
+        $isStaff = in_array('SUPERADMIN', $roles, true)
+            || in_array('ADMIN', $roles, true)
+            || in_array('RGST', $roles, true);
+
+        $accountStatus = strtoupper((string)($user['account_status'] ?? 'ACTIVE'));
+
+        if (!$isStaff && $portal === 'staff') {
+            $outcome = 'non_staff_on_staff_portal';
+        } elseif (!$isStaff && empty($user['email_verified_at']) && $accountStatus === 'PENDING_VERIFICATION') {
+            $outcome = 'unverified_participant';
+        } elseif (!$isStaff && in_array($accountStatus, ['SUSPENDED', 'ARCHIVED', 'DISABLED', 'DEACTIVATED'], true)) {
+            $outcome = 'account_not_active';
+        } elseif ($isStaff && $portal === 'participant') {
+            $outcome = 'staff_on_participant_portal';
+        } else {
+            $outcome = 'success';
+        }
+
+        // Always reset failed_login_attempts & clear expired lockout upon valid password
+        if ($outcome === 'success') {
+            $upd = $pdo->prepare("
+                UPDATE users
+                SET failed_login_attempts = 0,
+                    locked_until = NULL,
+                    last_login_at = :last_login_at,
+                    updated_at = :updated_at
+                WHERE id = :id
+            ");
+            $upd->execute([
+                ':last_login_at' => $nowSqlStr,
+                ':updated_at'    => $nowSqlStr,
+                ':id'            => $user['id'],
+            ]);
+        } else {
+            $upd = $pdo->prepare("
+                UPDATE users
+                SET failed_login_attempts = 0,
+                    locked_until = NULL,
+                    updated_at = :updated_at
+                WHERE id = :id
+            ");
+            $upd->execute([
+                ':updated_at' => $nowSqlStr,
+                ':id'         => $user['id'],
+            ]);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $txErr) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $txErr;
     }
 
-    // Password is valid — now enforce active lockout without disclosing exact timestamp
-    if ($isCurrentlyLocked) {
+    if ($outcome === 'non_staff_on_staff_portal') {
         logAudit([
             'actorUserId'  => $user['id'],
-            'action'       => 'LOGIN_LOCKED_BLOCKED',
+            'action'       => 'ACCESS_DENIED',
+            'resourceType' => 'auth',
+            'resourceId'   => $user['id'],
+            'metadata'     => ['reason' => 'non_staff_login_blocked'],
+        ]);
+        jsonResponse([
+            'error' => 'This portal is restricted to authorized festival staff (Superadmin, Admin, and Registration Desk).',
+        ], 403);
+    }
+
+    if ($outcome === 'unverified_participant') {
+        logAudit([
+            'actorUserId'  => $user['id'],
+            'action'       => 'LOGIN_BLOCKED_UNVERIFIED',
             'resourceType' => 'user',
             'resourceId'   => $user['id'],
         ]);
         jsonResponse([
-            'error' => 'Account temporarily locked due to repeated failed sign-in attempts. Please try again later.',
-        ], 423);
+            'error'                     => 'Please verify your email address before signing in. Check your inbox for the verification link or request a new one.',
+            'emailVerificationRequired' => true,
+        ], 403);
     }
 
-    $rp = getUserRolesAndPermissions((string)$user['id'], $pdo);
-    $roles = $rp['roles'];
-    $permissions = $rp['permissions'];
+    if ($outcome === 'account_not_active') {
+        logAudit([
+            'actorUserId'  => $user['id'],
+            'action'       => 'ACCESS_DENIED',
+            'resourceType' => 'auth',
+            'resourceId'   => $user['id'],
+            'metadata'     => ['reason' => 'account_not_active', 'accountStatus' => $accountStatus],
+        ]);
+        jsonResponse([
+            'error' => 'This account is not active. Please contact the Festival Secretariat for assistance.',
+        ], 403);
+    }
 
-    $isStaff = in_array('SUPERADMIN', $roles, true)
-        || in_array('ADMIN', $roles, true)
-        || in_array('RGST', $roles, true);
-
-    if (!$isStaff) {
-        // Phase 5: verified PARTICIPANT accounts may sign in, but never through the isolated Staff Portal.
-        if ($portal === 'staff') {
-            logAudit([
-                'actorUserId'  => $user['id'],
-                'action'       => 'ACCESS_DENIED',
-                'resourceType' => 'auth',
-                'resourceId'   => $user['id'],
-                'metadata'     => ['reason' => 'non_staff_login_blocked'],
-            ]);
-            jsonResponse([
-                'error' => 'This portal is restricted to authorized festival staff (Superadmin, Admin, and Registration Desk).',
-            ], 403);
-        }
-
-        $accountStatus = strtoupper((string)($user['account_status'] ?? 'ACTIVE'));
-
-        // Verification gate is evaluated ONLY after a valid password (zero pre-auth enumeration).
-        if (empty($user['email_verified_at']) && $accountStatus === 'PENDING_VERIFICATION') {
-            logAudit([
-                'actorUserId'  => $user['id'],
-                'action'       => 'LOGIN_BLOCKED_UNVERIFIED',
-                'resourceType' => 'user',
-                'resourceId'   => $user['id'],
-            ]);
-            jsonResponse([
-                'error'                     => 'Please verify your email address before signing in. Check your inbox for the verification link or request a new one.',
-                'emailVerificationRequired' => true,
-            ], 403);
-        }
-
-        if (in_array($accountStatus, ['SUSPENDED', 'ARCHIVED', 'DISABLED', 'DEACTIVATED'], true)) {
-            logAudit([
-                'actorUserId'  => $user['id'],
-                'action'       => 'ACCESS_DENIED',
-                'resourceType' => 'auth',
-                'resourceId'   => $user['id'],
-                'metadata'     => ['reason' => 'account_not_active', 'accountStatus' => $accountStatus],
-            ]);
-            jsonResponse([
-                'error' => 'This account is not active. Please contact the Festival Secretariat for assistance.',
-            ], 403);
-        }
-    } elseif ($portal === 'participant') {
-        // Staff accounts must use the dedicated Staff Portal (/staff/login) so MFA UX stays isolated.
+    if ($outcome === 'staff_on_participant_portal') {
         logAudit([
             'actorUserId'  => $user['id'],
             'action'       => 'ACCESS_DENIED',
@@ -213,126 +297,14 @@ try {
         ], 403);
     }
 
-    // Resolve and decrypt active MFA secret (auto-upgrading legacy plaintext storage if present)
-    $rawStoredSecret = !empty($user['mfa_secret_encrypted'])
-        ? (string)$user['mfa_secret_encrypted']
-        : (!empty($user['mfa_secret']) ? (string)$user['mfa_secret'] : '');
-    $mfaSecretPlain = decryptMfaSecret($rawStoredSecret);
-    $mfaEnabled = !empty($user['mfa_enabled']) && $mfaSecretPlain !== '';
-    $mfaVerified = false;
-    $usedRecoveryCode = false;
-
-    if ($mfaEnabled) {
-        // Transparently migrate any legacy plaintext MFA secret into authenticated AES-256-GCM storage
-        if (!empty($user['mfa_secret']) || !str_starts_with((string)($user['mfa_secret_encrypted'] ?? ''), 'enc:v1:')) {
-            try {
-                $pdo->prepare('UPDATE users SET mfa_secret_encrypted = :enc, mfa_secret = NULL, updated_at = :now WHERE id = :id')
-                    ->execute([
-                        ':enc' => encryptMfaSecret($mfaSecretPlain),
-                        ':now' => $nowSqlStr,
-                        ':id'  => $user['id'],
-                    ]);
-            } catch (Throwable $e) {
-            }
-        }
-
-        $cleanedTotp = preg_replace('/\s+/', '', $mfaCode) ?? '';
-        $cleanedRecovery = trim($recoveryCode);
-
-        // Allow passing an 8-char recovery code via mfaCode field as well (e.g. XXXX-XXXX)
-        if ($cleanedRecovery === '' && $cleanedTotp !== '' && !preg_match('/^\d{6}$/', $cleanedTotp)) {
-            $cleanedRecovery = $cleanedTotp;
-            $cleanedTotp = '';
-        }
-
-        if ($cleanedTotp === '' && $cleanedRecovery === '') {
-            jsonResponse([
-                'mfaRequired' => true,
-                'message'     => 'Multi-factor authentication is enabled. Please enter your 6-digit authenticator code or an 8-character recovery code.',
-            ], 200);
-        }
-
-        // Throttle MFA verification attempts per user
-        pfgRequireRateLimit($pdo, 'auth_mfa_verify', (string)$user['id'], 5, 900, 900, (string)$user['id']);
-
-        if ($cleanedTotp !== '') {
-            $matchedSlice = verifyMfaTokenWithSlice($mfaSecretPlain, $cleanedTotp, 1);
-            if ($matchedSlice === null || !consumeTotpSliceIfFresh($pdo, (string)$user['id'], $matchedSlice)) {
-                logAudit([
-                    'actorUserId'  => $user['id'],
-                    'action'       => 'MFA_FAILED',
-                    'resourceType' => 'user',
-                    'resourceId'   => $user['id'],
-                    'metadata'     => ['reason' => $matchedSlice === null ? 'invalid_totp' : 'totp_replay_blocked'],
-                ]);
-                jsonResponse([
-                    'error'       => 'Invalid or already used authenticator code. Please try again.',
-                    'mfaRequired' => true,
-                ], 401);
-            }
-            $mfaVerified = true;
-        } else {
-            if (!consumeMfaRecoveryCode($pdo, (string)$user['id'], $cleanedRecovery)) {
-                logAudit([
-                    'actorUserId'  => $user['id'],
-                    'action'       => 'MFA_FAILED',
-                    'resourceType' => 'user',
-                    'resourceId'   => $user['id'],
-                    'metadata'     => ['reason' => 'invalid_recovery_code'],
-                ]);
-                jsonResponse([
-                    'error'       => 'Invalid or already used recovery code.',
-                    'mfaRequired' => true,
-                ], 401);
-            }
-            $mfaVerified = true;
-            $usedRecoveryCode = true;
-            logAudit([
-                'actorUserId'  => $user['id'],
-                'action'       => 'MFA_RECOVERY_USED',
-                'resourceType' => 'user',
-                'resourceId'   => $user['id'],
-                'metadata'     => ['remainingRecoveryCodes' => countRemainingRecoveryCodes($pdo, (string)$user['id'])],
-            ]);
-        }
-
-        pfgResetRateLimit($pdo, 'auth_mfa_verify', (string)$user['id']);
-        logAudit([
-            'actorUserId'  => $user['id'],
-            'action'       => 'MFA_VERIFIED',
-            'resourceType' => 'user',
-            'resourceId'   => $user['id'],
-            'metadata'     => ['method' => $usedRecoveryCode ? 'recovery_code' : 'totp'],
-        ]);
-    }
-
-    // Clear failed attempts and login rate limits on successful authentication
-    $upd = $pdo->prepare("
-        UPDATE users
-        SET failed_login_attempts = 0,
-            locked_until = NULL,
-            last_login_at = :last_login_at,
-            updated_at = :updated_at
-        WHERE id = :id
-    ");
-    $upd->execute([
-        ':last_login_at' => $nowSqlStr,
-        ':updated_at'    => $nowSqlStr,
-        ':id'            => $user['id'],
-    ]);
     pfgResetRateLimit($pdo, 'auth_login_ident', $identifier);
 
-    $mfaRequiredForRole = isMfaRequiredForRoles($roles);
-    $mfaEnrollmentRequired = $mfaRequiredForRole && !$mfaEnabled;
-
     $session = createSession((string)$user['id'], [
-        'mfaVerified' => $mfaVerified,
+        'mfaVerified' => false,
     ], $pdo);
 
     if ($isStaff) {
-        $redirectTo = $mfaEnrollmentRequired
-            ? '/admin?mfa_setup=1'
-            : getPortalPathForRoles($roles);
+        $redirectTo = getPortalPathForRoles($roles);
     } else {
         // Participants land on /dashboard unless a safe, non-staff `next` URL was supplied.
         $nextIsStaffArea = $nextRedirect !== ''
@@ -347,10 +319,8 @@ try {
         'resourceType' => 'session',
         'resourceId'   => $session['sessionId'],
         'metadata'     => [
-            'username'              => $displayUsername,
-            'roles'                 => $roles,
-            'mfaVerified'           => $mfaVerified,
-            'mfaEnrollmentRequired' => $mfaEnrollmentRequired,
+            'username' => $displayUsername,
+            'roles'    => $roles,
         ],
     ]);
 
@@ -364,13 +334,13 @@ try {
             'country'               => (string)($user['country'] ?? 'India'),
             'roles'                 => $roles,
             'permissions'           => $permissions,
-            'mfaEnabled'            => $mfaEnabled,
-            'mfaVerified'           => $mfaVerified,
-            'mfaRequiredForRole'    => $mfaRequiredForRole,
-            'mfaEnrollmentRequired' => $mfaEnrollmentRequired,
+            'mfaEnabled'            => false,
+            'mfaVerified'           => false,
+            'mfaRequiredForRole'    => false,
+            'mfaEnrollmentRequired' => false,
             'emailVerified'         => !empty($user['email_verified_at']),
         ],
-        'mfaEnrollmentRequired' => $mfaEnrollmentRequired,
+        'mfaEnrollmentRequired' => false,
         'csrfToken'             => $session['csrfToken'],
         'redirectTo'            => $redirectTo,
     ], 200);

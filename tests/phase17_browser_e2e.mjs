@@ -261,6 +261,7 @@ $pdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expi
 
 echo json_encode([
     'rgst' => $rgst,
+    'superadmin' => $sa,
     'saCookie' => SESSION_COOKIE_NAME . '=' . $saRawTok,
     'saCsrf' => pfgComputeSessionBoundCsrfToken($saRawTok),
 ]);
@@ -390,7 +391,22 @@ try {
   const rgstContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const rgstPage = await rgstContext.newPage();
 
-  await runCheck('E2E-02', 'RGST desk journey: /staff/login -> /rgst (0 QR scanner) -> mark Attendee Day 1 -> reload & verify persisted', async () => {
+  await runCheck('E2E-02', 'Staff & RGST browser journey: /staff/login (0 MFA UI) -> SUPERADMIN /admin + RGST /rgst (0 QR) -> mark Day 1 -> persists', async () => {
+    // Verify existing MFA-enrolled SUPERADMIN signs in with username + password ONLY and lands directly on /admin with zero MFA tab/prompt
+    const saCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const saPg = await saCtx.newPage();
+    await saPg.goto(`${BASE_URL}/staff/login`, { waitUntil: 'networkidle' });
+    const staffLoginHtml = (await saPg.content()).toLowerCase();
+    assert(!staffLoginHtml.includes('authenticator') && !staffLoginHtml.includes('mfa-box') && !staffLoginHtml.includes('recovery code'), 'Discontinued authenticator UI found on /staff/login!');
+    await saPg.fill('#staff-username', staffMeta.superadmin.username);
+    await saPg.fill('#staff-password', staffMeta.superadmin.password);
+    await saPg.click('#staff-submit');
+    await saPg.waitForURL((u) => u.pathname.startsWith('/admin') && !u.search.includes('mfa_setup'), { timeout: 10000 });
+    await saPg.waitForSelector('#admin-nav-list button', { timeout: 10000 });
+    const adminHtml = (await saPg.content()).toLowerCase();
+    assert(!adminHtml.includes('security &amp; mfa') && !adminHtml.includes('google authenticator') && !adminHtml.includes('qrcode-gen.js'), 'Discontinued MFA UI found on /admin!');
+    await saCtx.close();
+
     await rgstPage.goto(`${BASE_URL}/staff/login`, { waitUntil: 'networkidle' });
     await rgstPage.fill('#staff-username', staffMeta.rgst.username);
     await rgstPage.fill('#staff-password', staffMeta.rgst.password);

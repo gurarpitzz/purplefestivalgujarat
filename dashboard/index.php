@@ -21,7 +21,6 @@ if (!$user) {
     header('Location: /login?next=' . rawurlencode('/dashboard'));
     exit;
 }
-enforceStaffMfaGate($user);
 
 $userFullName = (string)($user['fullName'] ?? $user['full_name'] ?? 'Participant');
 $userEmail = (string)($user['email'] ?? '');
@@ -706,7 +705,7 @@ require_once dirname(__DIR__) . '/includes/header.php';
         </form>
       </div>
 
-      <!-- Right Column: Email Change, Password Change & Optional MFA -->
+      <!-- Right Column: Email Change & Password Change -->
       <div class="space-y-6">
         <!-- Email & Verification Card -->
         <div class="surface-card rounded-2xl bg-white border border-[#59436D]/20 p-6 space-y-4">
@@ -826,137 +825,6 @@ require_once dirname(__DIR__) . '/includes/header.php';
               Update Password
             </button>
           </form>
-        </div>
-
-        <!-- Optional Two-Factor Authentication Card (Manual TOTP Setup Key — zero QR pass imagery) -->
-        <div class="surface-card rounded-2xl bg-white border border-[#59436D]/20 p-6 space-y-4">
-          <div class="flex items-center justify-between gap-2">
-            <h2 class="font-display text-lg font-semibold text-[#17151C]">
-              Two-Factor Authentication (Optional)
-            </h2>
-            <span id="dash-mfa-status-badge" class="px-2.5 py-1 rounded-lg text-xs font-bold border bg-[#F6F1F8] text-[#4B4257] border-[#59436D]/20">
-              Not Enabled
-            </span>
-          </div>
-          <p class="text-xs text-[#4B4257]">
-            Add a 6-digit authenticator app code (Google Authenticator, Microsoft Authenticator, Authy, or 1Password) for extra account security.
-          </p>
-
-          <div id="dash-mfa-message" class="hidden rounded-xl p-3.5 text-sm" aria-live="polite"></div>
-
-          <div id="dash-mfa-start-wrap">
-            <button
-              type="button"
-              id="dash-mfa-start-btn"
-              class="min-h-[44px] px-4 py-2 rounded-xl border border-[#59436D]/30 bg-[#F6F1F8] hover:bg-[#E8DFF0] text-[#432F56] text-xs font-bold transition-colors"
-            >
-              Set Up Authenticator App
-            </button>
-          </div>
-
-          <div id="dash-mfa-setup-box" class="hidden rounded-xl bg-[#F6F1F8] border border-[#9273B5]/40 p-4 space-y-3">
-            <p class="text-xs font-semibold text-[#17151C]">
-              1. Add this setup key manually in your authenticator app:
-            </p>
-            <code id="dash-mfa-secret-code" class="block p-2.5 rounded-lg bg-white border border-[#59436D]/20 font-mono text-xs break-all select-all text-[#17151C]"></code>
-            <div class="space-y-2">
-              <label for="mfa-verify-code" class="block text-xs font-semibold text-[#211B29]">
-                2. Enter the 6-digit verification code from your app:
-              </label>
-              <div class="flex gap-2">
-                <input
-                  id="mfa-verify-code"
-                  type="text"
-                  inputmode="numeric"
-                  maxlength="8"
-                  placeholder="000000"
-                  class="flex-1 min-h-[44px] px-3 rounded-xl border border-[#59436D]/30 bg-white font-mono text-center tracking-widest text-sm"
-                />
-                <button
-                  type="button"
-                  id="dash-mfa-enable-btn"
-                  class="min-h-[44px] px-4 rounded-xl bg-[#59436D] text-white font-bold text-xs"
-                >
-                  Verify &amp; Enable
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div
-            id="dash-mfa-recovery-box"
-            role="region"
-            aria-labelledby="dash-mfa-recovery-title"
-            tabindex="-1"
-            class="hidden rounded-xl bg-[#FFF9EB] border-2 border-[#D5B77B] p-4 space-y-3"
-          >
-            <div>
-              <h3 id="dash-mfa-recovery-title" class="text-sm font-bold text-[#5E4514]">
-                Save Your Single-Use Recovery Codes
-              </h3>
-              <p class="text-xs text-[#4B4257] mt-1">
-                These backup codes are displayed only once. Store them in a safe place &mdash; each code can be used once if you lose access to your authenticator app.
-              </p>
-            </div>
-            <ul
-              id="dash-mfa-recovery-codes"
-              aria-label="Single-use MFA recovery codes"
-              class="grid grid-cols-2 gap-2 font-mono text-xs text-[#17151C]"
-            ></ul>
-            <div class="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                id="dash-mfa-copy-codes-btn"
-                class="min-h-[40px] px-3.5 py-1.5 rounded-xl border border-[#59436D] bg-white hover:bg-[#F6F1F8] text-[#432F56] font-bold text-xs transition-colors"
-              >
-                Copy All Codes
-              </button>
-              <button
-                type="button"
-                id="dash-mfa-dismiss-codes-btn"
-                class="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#59436D] hover:bg-[#432F56] text-white font-bold text-xs transition-colors"
-              >
-                I Have Saved These Codes
-              </button>
-            </div>
-          </div>
-
-          <div id="dash-mfa-disable-box" class="hidden rounded-xl bg-[#F6F1F8] border border-[#59436D]/20 p-4 space-y-3">
-            <p class="text-xs text-[#4B4257]">
-              To disable two-factor authentication, enter your current password and a current 6-digit code from your authenticator app:
-            </p>
-            <div>
-              <label for="mfa-disable-password" class="block text-xs font-semibold text-[#211B29] mb-1">
-                Current Password
-              </label>
-              <input
-                id="mfa-disable-password"
-                name="currentPassword"
-                type="password"
-                autocomplete="current-password"
-                placeholder="Enter your current password"
-                class="w-full min-h-[44px] px-3 rounded-xl border border-[#59436D]/30 bg-white text-sm text-[#17151C]"
-              />
-            </div>
-            <div class="flex gap-2">
-              <label for="mfa-disable-code" class="sr-only">6-digit authenticator code to disable MFA</label>
-              <input
-                id="mfa-disable-code"
-                type="text"
-                inputmode="numeric"
-                maxlength="8"
-                placeholder="000000"
-                class="flex-1 min-h-[44px] px-3 rounded-xl border border-[#59436D]/30 bg-white font-mono text-center tracking-widest text-sm"
-              />
-              <button
-                type="button"
-                id="dash-mfa-disable-btn"
-                class="min-h-[44px] px-4 rounded-xl border border-[#B42332] text-[#B42332] font-bold text-xs hover:bg-[#B42332]/10"
-              >
-                Disable MFA
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </section>
@@ -1166,7 +1034,6 @@ require_once dirname(__DIR__) . '/includes/header.php';
           'accommodations'  => '/api/account/accommodations',
           'registrations'   => '/api/account/registrations',
           'claimLegacy'     => '/api/auth/claim-legacy',
-          'mfa'             => '/api/auth/mfa',
           'logout'          => '/api/auth/logout',
       ],
   ]) ?>;

@@ -162,7 +162,7 @@ try {
         ['A-04', 'GET /programme (Extensionless rewrite)', '/programme', 200],
         ['A-05', 'GET /accessibility (Extensionless rewrite)', '/accessibility', 200],
         ['A-06', 'GET /assets/css/app.css (Static CSS)', '/assets/css/app.css', 200],
-        ['A-07', 'GET /assets/js/qrcode-gen.js (MFA QR library)', '/assets/js/qrcode-gen.js', 200],
+        ['A-07', 'GET /api/auth/mfa discontinued TOTP endpoint (410 Gone)', '/api/auth/mfa', 410],
         ['A-08', 'GET /api/auth/me (API rewrite)', '/api/auth/me', 200],
         ['A-09', 'GET /api/registrations (API rewrite + MariaDB)', '/api/registrations', 200],
         ['A-10', 'GET /admin unauth redirect', '/admin', 302],

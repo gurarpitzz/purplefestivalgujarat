@@ -4,6 +4,14 @@ All notable architectural, security, database, accessibility, and operational ch
 
 ---
 
+## [v2027.0-rc2] — Owner-Directed Authentication Policy Revision (`CAD-16`, `2026-11-26`)
+
+- **TOTP MFA Discontinued (Supersedes `D-20` / `CAD-12`):** Removed all active TOTP/authenticator MFA enforcement, login challenges, enrollment redirects (`/admin?mfa_setup=1`), API gates (`enforceStaffMfaGate()` -> no-op), admin MFA reset controls, and authenticator UI across `/staff/login`, `/admin`, `/dashboard`, `/rgst`, `/legal/privacy`, `assets/js/auth-pages.js`, `assets/js/admin-portal.js`, and `assets/js/participant-dashboard.js`. Decommissioned `/api/auth/mfa` (`HTTP 410 Gone`) and excluded `assets/js/qrcode-gen.js` from the clean release package. Preserved historical MFA database columns intact and inactive with zero destructive migrations; existing MFA-enrolled staff authenticate cleanly with username and password only.
+- **Staff & Participant Auth Policies Retained:** `SUPERADMIN`, `ADMIN` (including all custom operational permission profiles), and `RGST` authenticate via conventional username + password; `PARTICIPANT` accounts continue using verified email + password with email ownership verification and password recovery intact.
+- **Universal 5-Attempt / Exact 3-Hour Atomic Account Lockout:** Implemented persistent per-account lockout across all roles in `api/auth/login.php` using PDO transaction + `SELECT ... FOR UPDATE` PK row locking: 4 consecutive failures do not lock; 5th failure activates an exact 3-hour (180-minute / 10,800-second) lockout rejecting even valid credentials with a generic public `401` error, never extending on additional failures, ignoring IP/device/cookie changes, preserved across password recovery (`api/auth/password-reset.php` & `api/admin/users.php`), and automatically unlocking and resetting upon expiry without a Cron Job. All other security controls (bcrypt cost 12, CSRF, XSS, HttpOnly/SameSite/Secure cookies, session regeneration/revocation, IP rate limiting, RBAC, custom profiles, AES-256-GCM encryption, audit logging, last-Superadmin guard, HTTPS) remain enforced.
+
+---
+
 ## [Phases 16–18] — Independent Security Remediation, Full E2E Verification, Release Engineering & Handover (`2026-11-26`)
 
 ### Security & Architecture Remediations (Independent Review `CRIT-01`, `HIGH-01`..`07`, `MED-01`..`07`, `LOW-01`..`05`)

@@ -205,17 +205,27 @@ try {
                 $targetUserId = (string)$aaRecord['user_id'];
             }
 
+            // Update password while strictly preserving any active 3-hour account lockout
+            // (password recovery must never silently bypass an active lockout window).
             $pdo->prepare("
                 UPDATE users
                 SET password_hash = :hash,
-                    failed_login_attempts = 0,
-                    locked_until = NULL,
+                    failed_login_attempts = CASE
+                        WHEN locked_until IS NOT NULL AND locked_until > :now_chk1 THEN failed_login_attempts
+                        ELSE 0
+                    END,
+                    locked_until = CASE
+                        WHEN locked_until IS NOT NULL AND locked_until > :now_chk2 THEN locked_until
+                        ELSE NULL
+                    END,
                     updated_at = :now
                 WHERE id = :uid
             ")->execute([
-                ':hash' => $newHash,
-                ':now'  => $now,
-                ':uid'  => $targetUserId,
+                ':hash'     => $newHash,
+                ':now_chk1' => $now,
+                ':now_chk2' => $now,
+                ':now'      => $now,
+                ':uid'      => $targetUserId,
             ]);
 
             // Invalidate any remaining reset tokens for this user across both tables

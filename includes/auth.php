@@ -635,40 +635,28 @@ if (!function_exists('countRemainingRecoveryCodes')) {
 
 if (!function_exists('isMfaRequiredForRoles')) {
     /**
-     * D-20 Approved MFA Policy:
-     * - SUPERADMIN: Mandatory TOTP MFA
-     * - ADMIN: Mandatory TOTP MFA
-     * - RGST: Optional MFA initially
-     * - PARTICIPANT: Optional MFA
+     * Owner-Directed Authentication Policy Revision (supersedes D-20):
+     * TOTP/authenticator MFA is discontinued for all roles.
+     * Staff authenticate via username + password; participants via verified email + password.
+     * Enforced alongside 5-attempt atomic lockout (3 hours / 10,800s) with automatic unlock.
      */
     function isMfaRequiredForRoles(array $roles): bool
     {
-        return in_array('SUPERADMIN', $roles, true) || in_array('ADMIN', $roles, true);
+        return false;
     }
 }
 
 if (!function_exists('userRequiresMfaEnrollment')) {
     function userRequiresMfaEnrollment(?array $user): bool
     {
-        if (!$user) {
-            return false;
-        }
-        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
-        return isMfaRequiredForRoles($roles) && empty($user['mfaEnabled']);
+        return false;
     }
 }
 
 if (!function_exists('userHasCompletedRequiredMfa')) {
     function userHasCompletedRequiredMfa(?array $user): bool
     {
-        if (!$user) {
-            return false;
-        }
-        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
-        if (!isMfaRequiredForRoles($roles)) {
-            return true;
-        }
-        return !empty($user['mfaEnabled']) && !empty($user['mfaVerified']);
+        return $user !== null;
     }
 }
 
@@ -1057,10 +1045,8 @@ if (!function_exists('getCurrentUser')) {
         }
 
         $rp = getUserRolesAndPermissions((string)$row['user_id'], $pdo);
-        $mfaRequired = isMfaRequiredForRoles($rp['roles']);
-        $mfaEnabled = (bool)$row['mfa_enabled'];
-        $mfaVerified = (bool)$row['mfa_verified'];
 
+        // Historical MFA columns remain intact in DB but are inactive under the revised auth policy.
         $currentUserPayload = [
             'id'                    => (string)$row['user_id'],
             'email'                 => (string)$row['email'],
@@ -1072,12 +1058,12 @@ if (!function_exists('getCurrentUser')) {
             'permissions'           => $rp['permissions'],
             'permissionProfileId'   => $rp['permissionProfileId'] ?? null,
             'permissionProfileSlug' => $rp['permissionProfileSlug'] ?? null,
-            'mfaEnabled'            => $mfaEnabled,
-            'mfa_enabled'           => $mfaEnabled,
-            'mfaVerified'           => $mfaVerified,
-            'mfa_verified'          => $mfaVerified,
-            'mfaRequiredForRole'    => $mfaRequired,
-            'mfaEnrollmentRequired' => $mfaRequired && !$mfaEnabled,
+            'mfaEnabled'            => false,
+            'mfa_enabled'           => false,
+            'mfaVerified'           => false,
+            'mfa_verified'          => false,
+            'mfaRequiredForRole'    => false,
+            'mfaEnrollmentRequired' => false,
             'sessionId'             => (string)$row['session_id'],
             'session_id'            => (string)$row['session_id'],
         ];
@@ -1166,35 +1152,12 @@ if (!function_exists('isApiRequest')) {
 
 if (!function_exists('enforceStaffMfaGate')) {
     /**
-     * Enforces D-20 mandatory MFA policy for SUPERADMIN and ADMIN accounts on protected resources.
+     * Retained as a no-op compatibility helper after owner-directed discontinuation of TOTP MFA.
+     * No protected route or API requires TOTP MFA enrollment or verification.
      */
     function enforceStaffMfaGate(array $user): void
     {
-        if (userHasCompletedRequiredMfa($user)) {
-            return;
-        }
-        $enrollmentNeeded = userRequiresMfaEnrollment($user);
-        logAudit([
-            'actorUserId'  => $user['id'] ?? null,
-            'action'       => 'ACCESS_DENIED',
-            'resourceType' => 'security',
-            'resourceId'   => parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH),
-            'metadata'     => [
-                'reason' => $enrollmentNeeded ? 'MFA_ENROLLMENT_REQUIRED' : 'MFA_VERIFICATION_REQUIRED',
-                'roles'  => $user['roles'] ?? [],
-            ],
-        ]);
-        if (isApiRequest()) {
-            jsonResponse([
-                'error'                 => $enrollmentNeeded
-                    ? 'Multi-factor authentication enrollment is mandatory for your role before accessing administrative operations.'
-                    : 'Multi-factor authentication verification is required for this session.',
-                'mfaEnrollmentRequired' => $enrollmentNeeded,
-                'mfaRequired'           => !$enrollmentNeeded,
-            ], 403);
-        }
-        header('Location: /admin?mfa_setup=1');
-        exit;
+        return;
     }
 }
 

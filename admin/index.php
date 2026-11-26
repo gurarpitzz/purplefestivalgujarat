@@ -35,10 +35,6 @@ $currentUserPayload = [
     'email'                 => (string)$user['email'],
     'roles'                 => array_values($user['roles'] ?? []),
     'permissions'           => array_values($user['permissions'] ?? []),
-    'mfaEnabled'            => !empty($user['mfaEnabled']),
-    'mfaVerified'           => !empty($user['mfaVerified']),
-    'mfaRequiredForRole'    => !empty($user['mfaRequiredForRole']),
-    'mfaEnrollmentRequired' => !empty($user['mfaEnrollmentRequired']),
     'permissionProfileId'   => isset($user['permissionProfileId']) && $user['permissionProfileId'] !== null ? (string)$user['permissionProfileId'] : null,
     'permissionProfileSlug' => isset($user['permissionProfileSlug']) && $user['permissionProfileSlug'] !== null ? (string)$user['permissionProfileSlug'] : null,
 ];
@@ -193,7 +189,6 @@ function h_admin(string $val): string
     window.PFG_ADMIN_USER = <?= pfgSafeJsonForScript($currentUserPayload) ?>;
     window.PFG_CSRF_TOKEN = <?= pfgSafeJsonForScript(getCsrfToken()) ?>;
   </script>
-  <script src="/assets/js/qrcode-gen.js" defer></script>
   <script src="/assets/js/admin-portal.js" defer></script>
 </body>
 </html>

@@ -99,10 +99,11 @@ require_once dirname(__DIR__) . '/includes/header.php';
               and moderation logs.
             </li>
             <li>
-              <strong>Session, CSRF &amp; Staff MFA Controls:</strong> Sessions use HttpOnly,
+              <strong>Session, CSRF &amp; Account Lockout Controls:</strong> Sessions use HttpOnly,
               SameSite=Lax cookies (with the <code>Secure</code> attribute over HTTPS),
-              state-changing actions require session-bound CSRF tokens, and administrative staff
-              accounts enforce RFC 6238 TOTP multi-factor authentication (MFA).
+              state-changing actions require session-bound CSRF tokens, and all accounts enforce
+              a maximum of five consecutive failed sign-in attempts followed by a three-hour
+              automatic account lockout alongside IP rate limiting and strict server-side RBAC.
             </li>
             <li>
               <strong>No Participant QR Passes or Third-Party QR Sharing:</strong> Purple

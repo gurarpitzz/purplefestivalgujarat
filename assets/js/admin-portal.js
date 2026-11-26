@@ -11,7 +11,6 @@
     email: "",
     roles: ["ADMIN"],
     permissions: [],
-    mfaEnabled: false,
   };
 
   const isSuperadmin = Array.isArray(currentUser.roles) && currentUser.roles.includes("SUPERADMIN");
@@ -171,7 +170,6 @@
     { id: "COUPONS", label: "Coupons", visible: can("coupons.manage") },
     { id: "CMS", label: "Website CMS", visible: can("cms.manage") },
     { id: "USERS", label: "Staff & Permission Profiles", visible: isSuperadmin },
-    { id: "SECURITY", label: "Security & MFA", visible: true },
     { id: "AUDIT_LOGS", label: "Audit Logs", visible: can("audit_logs.read") },
   ].filter(function (i) {
     return i.visible;
@@ -214,11 +212,8 @@
   }
 
   // Portal State
-  const mustEnrollMfa = Boolean(currentUser.mfaEnrollmentRequired);
   const state = {
-    activeTab: mustEnrollMfa ? "SECURITY" : "OVERVIEW",
-    mfaEnrollmentRequired: mustEnrollMfa,
-    mfaRecoveryCodes: null,
+    activeTab: "OVERVIEW",
     chartViewMode: "chart",
     overview: null,
     overviewLoading: false,
@@ -291,11 +286,6 @@
       profilesLoading: false,
       profilesError: "",
     },
-
-    // Security & MFA
-    mfaEnabled: Boolean(currentUser.mfaEnabled),
-    mfaSetupData: null,
-    mfaLoading: false,
 
     // Audit Logs
     auditLogs: [],
@@ -377,10 +367,6 @@
     navListEl.querySelectorAll("[data-nav-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         const tabId = btn.getAttribute("data-nav-tab");
-        if (state.mfaEnrollmentRequired && tabId !== "SECURITY") {
-          notify("error", "Mandatory MFA enrollment must be completed before accessing administrative tabs.");
-          return;
-        }
         switchTab(tabId, true);
         closeMobileSidebar();
       });
@@ -767,7 +753,6 @@
     const oldDlg = c.querySelector('[role="dialog"]');
     const scrollTop = oldDlg ? oldDlg.scrollTop : 0;
     c.innerHTML = dialogHtml(m);
-    if (window.PFGQrCode && typeof window.PFGQrCode.renderAll === "function") window.PFGQrCode.renderAll(c);
     if (typeof m.bind === "function") m.bind(c, m);
     const dlg = c.querySelector('[role="dialog"]');
     if (dlg) dlg.scrollTop = scrollTop;
@@ -2853,7 +2838,7 @@
   function renderUsersTab() {
     const sf = state.staff;
     let html = '<div class="space-y-4">';
-    html += pageHeader("Staff & Permission Profiles", "Create staff accounts, assign roles and permission profiles, and reset MFA. All changes are audit-logged; the server enforces every rule.");
+    html += pageHeader("Staff & Permission Profiles", "Create staff accounts and assign roles, permission profiles, and account status. All changes are audit-logged; the server enforces every rule.");
     html += subTabs("staff", sf.sub, [["staff", "Staff accounts"], ["profiles", "Permission profiles"]]);
     html += sf.sub === "profiles" ? renderProfilesPane() : renderStaffPane();
     html += "</div>";
@@ -2871,9 +2856,9 @@
     if (st.error) html += errorBox(st.error);
     html +=
       '<div class="' + C.card + ' overflow-hidden" aria-busy="' + (st.loading ? "true" : "false") + '"><div class="overflow-x-auto"><table class="w-full text-xs text-left"><caption class="sr-only">Staff accounts</caption>' +
-      '<thead class="' + C.thead + '"><tr><th scope="col" class="' + C.th + '">Staff member</th><th scope="col" class="' + C.th + '">Role</th><th scope="col" class="' + C.th + '">Permission profile</th><th scope="col" class="' + C.th + '">MFA</th><th scope="col" class="' + C.th + '">Status</th><th scope="col" class="' + C.th + '">Last login</th><th scope="col" class="' + C.th + ' text-right">Actions</th></tr></thead><tbody class="' + C.tbody + '">';
-    if (st.loading && !st.items.length) html += emptyRow(7, "Loading staff accounts…");
-    else if (!st.items.length) html += emptyRow(7, "No staff accounts match the filters.");
+      '<thead class="' + C.thead + '"><tr><th scope="col" class="' + C.th + '">Staff member</th><th scope="col" class="' + C.th + '">Role</th><th scope="col" class="' + C.th + '">Permission profile</th><th scope="col" class="' + C.th + '">Status</th><th scope="col" class="' + C.th + '">Last login</th><th scope="col" class="' + C.th + ' text-right">Actions</th></tr></thead><tbody class="' + C.tbody + '">';
+    if (st.loading && !st.items.length) html += emptyRow(6, "Loading staff accounts…");
+    else if (!st.items.length) html += emptyRow(6, "No staff accounts match the filters.");
     else {
       html += st.items.map(function (u) {
         const self = String(u.id) === String(currentUser.id);
@@ -2881,7 +2866,6 @@
           '<tr class="align-top"><td class="' + C.td + '"><p class="font-semibold text-[#17151C]">' + esc(u.fullName) + (self ? ' <span class="text-[#5B3E87]">(you)</span>' : "") + '</p><p class="text-[#645C75]">' + esc(u.email) + " • @" + esc(u.username) + "</p></td>" +
           '<td class="' + C.td + '">' + esc((u.roles || []).join(", ")) + "</td>" +
           '<td class="' + C.td + '">' + esc(u.permissionProfileName || "— none —") + '<p class="text-[11px] text-[#645C75]">' + esc((u.effectivePermissions || []).length) + " effective permissions" + ((u.customPermissions || []).length ? " (+" + esc(u.customPermissions.length) + " custom)" : "") + "</p></td>" +
-          '<td class="' + C.td + '">' + badge(u.mfaEnabled ? "ACTIVE" : "PENDING", u.mfaEnabled ? "Enabled" : "Not enrolled") + "</td>" +
           '<td class="' + C.td + '">' + badge(u.isActive ? "ACTIVE" : "REVOKED", u.isActive ? "Active" : "Inactive") + "</td>" +
           '<td class="' + C.td + ' whitespace-nowrap">' + esc(u.lastLoginAt ? formatDateShort(u.lastLoginAt) : "Never") + "</td>" +
           '<td class="' + C.td + ' text-right"><button type="button" data-act="staff-edit" data-id="' + esc(u.id) + '" aria-label="Edit ' + esc(u.fullName) + '" class="' + C.btn2 + '">Edit</button></td></tr>'
@@ -2934,13 +2918,12 @@
               field("Email", "su-email", inputEl("su-email", "", { type: "email", required: true, autocomplete: "off" }), "", true) +
               field("Phone", "su-phone", inputEl("su-phone", "", { type: "tel" })) +
               '<div class="sm:col-span-2">' + field("Temporary password", "su-password", inputEl("su-password", "", { type: "password", required: true, autocomplete: "new-password" }), "Share it securely. It is never displayed again.", true) + "</div></div>"
-            : '<div class="p-3 rounded-xl bg-[#F8F6FC] border border-[#E5DFEF] text-xs space-y-0.5"><p class="font-semibold text-sm">' + esc(u.fullName) + "</p><p>" + esc(u.email) + " • @" + esc(u.username) + " • " + esc(u.phone || "no phone") + "</p><p>MFA: " + (u.mfaEnabled ? "enabled" : "not enrolled") + "</p></div>") +
+            : '<div class="p-3 rounded-xl bg-[#F8F6FC] border border-[#E5DFEF] text-xs space-y-0.5"><p class="font-semibold text-sm">' + esc(u.fullName) + "</p><p>" + esc(u.email) + " • @" + esc(u.username) + " • " + esc(u.phone || "no phone") + "</p></div>") +
           field("Role", "su-role", selectEl("su-role", "Role", ["ADMIN", "RGST", "SUPERADMIN"], m.s.role, 'data-change="su-role"' + (self ? " disabled" : "")), self ? "You cannot change your own role." : "") +
           '<div id="su-role-sections" class="space-y-3">' + staffRoleSections(m.s.role, u, creating) + "</div>" +
           (creating ? "" : '<div class="space-y-3">' + checkboxEl("su-active", "Account is active (can sign in)", u.isActive !== false).replace("<input ", self ? "<input disabled " : "<input ") +
             field("Set new password (optional)", "su-newpw", inputEl("su-newpw", "", { type: "password", autocomplete: "new-password" }), "Leave blank to keep the current password.") +
-            (Array.isArray(u.effectivePermissions) ? '<details class="text-xs"><summary class="cursor-pointer font-semibold text-[#4A415C]">Effective permissions (' + u.effectivePermissions.length + ')</summary><p class="font-mono text-[11px] text-[#4A415C] mt-1 break-words">' + esc(u.effectivePermissions.join(", ") || "none") + "</p></details>" : "") +
-            (u.mfaEnabled && !self ? '<div><button type="button" data-act="staff-reset-mfa" class="' + C.danger + '">Reset MFA…</button><p class="text-[11px] text-[#645C75] mt-1">Forces re-enrolment at next login.</p></div>' : "") + "</div>") +
+            (Array.isArray(u.effectivePermissions) ? '<details class="text-xs"><summary class="cursor-pointer font-semibold text-[#4A415C]">Effective permissions (' + u.effectivePermissions.length + ')</summary><p class="font-mono text-[11px] text-[#4A415C] mt-1 break-words">' + esc(u.effectivePermissions.join(", ") || "none") + "</p></details>" : "") + "</div>") +
           formFooter(creating ? "Create account" : "Save changes") + "</form>"
         );
       },
@@ -3003,18 +2986,6 @@
     }
     closeModal(m);
     notify("success", (u ? "Staff account updated." : "Staff account created.") + (r.data.sessionsRevoked ? " " + r.data.sessionsRevoked + " active session(s) revoked." : ""));
-    fetchStaffUsers();
-  };
-  ACTIONS["staff-reset-mfa"] = async function (el) {
-    const m = modalOf(el);
-    const u = m && m.s.user;
-    if (!u) return;
-    const ans = await promptDialog({ title: "Reset MFA for " + u.fullName, message: "Their authenticator will be removed and they must enrol again at next sign-in.", input: false, confirmLabel: "Reset MFA", danger: true });
-    if (!ans) return;
-    const r = await api("/api/admin/users", "PATCH", { userId: u.id, resetMfa: true });
-    if (!r.ok) return notify("error", r.data.error || "Could not reset MFA.");
-    notify("success", "MFA reset for " + u.fullName + ".");
-    closeModal(m);
     fetchStaffUsers();
   };
 
@@ -3426,83 +3397,6 @@
     return html;
   }
 
-  function renderSecurityTab() {
-    let html = '<div class="max-w-2xl space-y-6">';
-    if (state.mfaEnrollmentRequired) {
-      html +=
-        '<div role="alert" class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 space-y-1">' +
-        '<p class="font-bold">Mandatory Two-Factor Authentication Required (Policy D-20)</p>' +
-        '<p>All SUPERADMIN and ADMIN accounts must enroll a TOTP authenticator app before accessing administrative data or operations.</p>' +
-        "</div>";
-    }
-    if (Array.isArray(state.mfaRecoveryCodes) && state.mfaRecoveryCodes.length > 0) {
-      html +=
-        '<div class="rounded-xl border border-emerald-300 bg-emerald-50 p-5 space-y-3">' +
-        '<h3 class="text-sm font-bold text-emerald-950">Save Your Single-Use Recovery Codes (Shown Once)</h3>' +
-        '<p class="text-xs text-emerald-900">Store these codes securely offline. Each code can be used once if you lose access to your authenticator device.</p>' +
-        '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">' +
-        state.mfaRecoveryCodes
-          .map(function (c) {
-            return '<code class="block text-center font-mono text-xs font-bold bg-white border border-emerald-200 rounded px-2 py-1.5 text-emerald-950 select-all">' + esc(c) + "</code>";
-          })
-          .join("") +
-        "</div></div>";
-    }
-
-    html +=
-      '<div class="bg-white border border-[#E5DFEF] rounded-xl p-6 space-y-4">' +
-      '<div class="flex items-start justify-between gap-4">' +
-      "<div>" +
-      '<h3 class="text-base font-bold text-[#17151C]">Two-Factor Authentication (RFC 6238 TOTP MFA)</h3>' +
-      '<p class="text-xs text-[#645C75] mt-1">160-bit TOTP secrets encrypted with AES-256-GCM. Compatible with Google Authenticator, Authy, 1Password, and Microsoft Authenticator.</p>' +
-      "</div>" +
-      '<span class="px-3 py-1 rounded-full text-xs font-semibold border ' +
-      statusBadgeClass(state.mfaEnabled ? "ACTIVE" : "PENDING") +
-      '">' +
-      (state.mfaEnabled ? "MFA Enabled" : "MFA Not Enabled") +
-      "</span>" +
-      "</div>";
-
-    if (state.mfaSetupData) {
-      html +=
-        '<div class="pt-4 border-t border-[#ECE7F5] space-y-4">' +
-        '<div class="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-xl bg-[#FAF8FD] border border-[#ECE7F5]">' +
-        '<div data-qr-payload="' + esc(state.mfaSetupData.otpauthUrl || state.mfaSetupData.secret) + '" data-qr-size="180" class="bg-white p-2 rounded-lg border border-[#E5DFEF] shrink-0"></div>' +
-        '<div class="space-y-2 text-xs">' +
-        '<p class="font-bold text-[#17151C]">1. Scan QR Code in your Authenticator App</p>' +
-        '<p class="text-[#5C536E]">Or manually enter this 160-bit Base32 Setup Key:</p>' +
-        '<p class="font-mono text-xs font-bold break-all px-3 py-1.5 rounded bg-white border border-[#DDD5EA] text-[#4C3273] select-all">' + esc(state.mfaSetupData.secret) + "</p>" +
-        "</div></div>" +
-        '<form id="mfa-verify-form" class="space-y-3">' +
-        '<label for="mfa-verify-code" class="block text-xs font-semibold text-[#17151C]">2. Enter the 6-digit verification code from your app</label>' +
-        '<div class="flex flex-wrap items-center gap-3">' +
-        '<input id="mfa-verify-code" required type="text" inputmode="numeric" maxlength="8" placeholder="000 000" class="px-3 py-2 text-sm font-mono tracking-widest border border-[#DDD5EA] rounded-lg w-44 text-center" />' +
-        '<button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white">Verify &amp; Activate MFA</button>' +
-        "</div></form></div>";
-    } else if (state.mfaEnabled) {
-      html +=
-        '<form id="mfa-replace-form" class="pt-4 border-t border-[#ECE7F5] space-y-3">' +
-        '<p class="text-xs text-[#4C4263]">MFA is mandatory for your role and cannot be disabled. To replace your authenticator device, confirm your current password and a current 6-digit code:</p>' +
-        '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
-        '<input id="mfa-reauth-pw" required type="password" placeholder="Current password" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
-        '<input id="mfa-reauth-code" required type="text" inputmode="numeric" maxlength="10" placeholder="Current 6-digit code" class="px-3 py-2 text-sm font-mono tracking-widest border border-[#DDD5EA] rounded-lg text-center" />' +
-        "</div>" +
-        '<button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-[#6B4E96] hover:bg-[#5A3F82] text-white">Start Authenticator Replacement</button>' +
-        "</form>";
-    } else {
-      html +=
-        '<div class="pt-3 border-t border-[#ECE7F5]">' +
-        '<button type="button" id="mfa-init-btn" ' +
-        (state.mfaLoading ? "disabled " : "") +
-        'class="px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#6B4E96] hover:bg-[#5A3F82] text-white">' +
-        (state.mfaLoading ? "Generating Secret…" : "Set Up Authenticator App (TOTP)") +
-        "</button></div>";
-    }
-
-    html += "</div></div>";
-    return html;
-  }
-
   function renderAuditLogsTab() {
     let html = '<div class="space-y-4">';
     html +=
@@ -3616,14 +3510,9 @@
     else if (tab === "COUPONS") html = renderCouponsTab();
     else if (tab === "CMS") html = renderCmsTab();
     else if (tab === "USERS") html = renderUsersTab();
-    else if (tab === "SECURITY") html = renderSecurityTab();
     else if (tab === "AUDIT_LOGS") html = renderAuditLogsTab();
     else html = renderOverviewTab();
     mainEl.innerHTML = html;
-
-    if (window.PFGQrCode && typeof window.PFGQrCode.renderAll === "function") {
-      window.PFGQrCode.renderAll(mainEl);
-    }
 
     bindTabEvents();
 
@@ -3964,83 +3853,6 @@
       });
     });
 
-    // Security & MFA events (POST + CSRF; GET /api/auth/mfa is strictly read-only)
-    const mfaInitBtn = document.getElementById("mfa-init-btn");
-    if (mfaInitBtn) {
-      mfaInitBtn.addEventListener("click", async function () {
-        state.mfaLoading = true;
-        renderMain();
-        try {
-          const res = await apiFetch("/api/auth/mfa", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "setup" }),
-          });
-          const data = await res.json().catch(function () { return {}; });
-          if (res.ok && data.secret) {
-            state.mfaSetupData = data;
-          } else {
-            notify("error", data.error || "Unable to initialize MFA setup.");
-          }
-        } finally {
-          state.mfaLoading = false;
-          renderMain();
-        }
-      });
-    }
-
-    const mfaReplaceForm = document.getElementById("mfa-replace-form");
-    if (mfaReplaceForm) {
-      mfaReplaceForm.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        const currentPassword = (document.getElementById("mfa-reauth-pw") || {}).value || "";
-        const currentCode = ((document.getElementById("mfa-reauth-code") || {}).value || "").trim();
-        state.mfaLoading = true;
-        renderMain();
-        try {
-          const res = await apiFetch("/api/auth/mfa", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "setup", currentPassword: currentPassword, currentCode: currentCode }),
-          });
-          const data = await res.json().catch(function () { return {}; });
-          if (res.ok && data.secret) {
-            state.mfaSetupData = data;
-          } else {
-            notify("error", data.error || "Re-authentication failed.");
-          }
-        } finally {
-          state.mfaLoading = false;
-          renderMain();
-        }
-      });
-    }
-
-    const mfaVerifyForm = document.getElementById("mfa-verify-form");
-    if (mfaVerifyForm) {
-      mfaVerifyForm.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        const code = ((document.getElementById("mfa-verify-code") || {}).value || "").trim();
-        const res = await apiFetch("/api/auth/mfa", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: code, action: "enable" }),
-        });
-        const data = await res.json().catch(function () { return {}; });
-        if (!res.ok) {
-          notify("error", data.error || "Invalid verification code.");
-          return;
-        }
-        state.mfaEnabled = true;
-        state.mfaEnrollmentRequired = false;
-        state.mfaSetupData = null;
-        state.mfaRecoveryCodes = Array.isArray(data.recoveryCodes) ? data.recoveryCodes : null;
-        notify("success", data.message || "Multi-factor authentication is now active on your account.");
-        renderNav();
-        renderMain();
-      });
-    }
-
     // Audit Logs events
     const auditSearchInput = document.getElementById("audit-search-input");
     const auditFilterBtn = document.getElementById("audit-filter-btn");
@@ -4101,7 +3913,5 @@
   // Initialize Portal
   renderNav();
   renderMain();
-  if (!state.mfaEnrollmentRequired) {
-    fetchOverview();
-  }
+  fetchOverview();
 })();

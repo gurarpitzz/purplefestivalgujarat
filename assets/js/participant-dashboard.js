@@ -14,7 +14,6 @@
     accommodations: "/api/account/accommodations",
     registrations: "/api/account/registrations",
     claimLegacy: "/api/auth/claim-legacy",
-    mfa: "/api/auth/mfa",
     logout: "/api/auth/logout"
   };
 
@@ -1147,33 +1146,6 @@
         pendingBox.textContent = "";
       }
     }
-
-    updateMfaUi(Boolean(p.mfaEnabled));
-  }
-
-  function updateMfaUi(enabled) {
-    var badge = document.getElementById("dash-mfa-status-badge");
-    var startWrap = document.getElementById("dash-mfa-start-wrap");
-    var setupBox = document.getElementById("dash-mfa-setup-box");
-    var disableBox = document.getElementById("dash-mfa-disable-box");
-
-    if (badge) {
-      badge.textContent = enabled ? "Enabled" : "Not Enabled";
-      badge.className =
-        "px-2.5 py-1 rounded-lg text-xs font-bold border " +
-        (enabled
-          ? "bg-[#19734B]/15 text-[#145C3B] border-[#19734B]/30"
-          : "bg-[#F6F1F8] text-[#4B4257] border-[#59436D]/20");
-    }
-    if (enabled) {
-      if (startWrap) startWrap.classList.add("hidden");
-      if (setupBox) setupBox.classList.add("hidden");
-      if (disableBox) disableBox.classList.remove("hidden");
-    } else {
-      if (startWrap) startWrap.classList.remove("hidden");
-      if (setupBox) setupBox.classList.add("hidden");
-      if (disableBox) disableBox.classList.add("hidden");
-    }
   }
 
   // =========================================================================
@@ -1738,152 +1710,6 @@
         .finally(function () {
           submitBtn.disabled = false;
         });
-    });
-  }
-
-  // Optional MFA Setup / Enable / Disable (text setup key — zero QR pass imagery)
-  var mfaStartBtn = document.getElementById("dash-mfa-start-btn");
-  var mfaEnableBtn = document.getElementById("dash-mfa-enable-btn");
-  var mfaDisableBtn = document.getElementById("dash-mfa-disable-btn");
-  var mfaCopyCodesBtn = document.getElementById("dash-mfa-copy-codes-btn");
-  var mfaDismissCodesBtn = document.getElementById("dash-mfa-dismiss-codes-btn");
-  var lastDisplayedRecoveryCodes = [];
-
-  function showMfaRecoveryCodes(codes) {
-    var box = document.getElementById("dash-mfa-recovery-box");
-    var list = document.getElementById("dash-mfa-recovery-codes");
-    if (!box || !list) return;
-
-    if (!Array.isArray(codes) || codes.length === 0) {
-      lastDisplayedRecoveryCodes = [];
-      list.innerHTML = "";
-      box.classList.add("hidden");
-      return;
-    }
-
-    lastDisplayedRecoveryCodes = codes.map(function (c) {
-      return String(c);
-    });
-    list.innerHTML = lastDisplayedRecoveryCodes
-      .map(function (c) {
-        return (
-          '<li class="rounded-lg bg-white border border-[#59436D]/25 px-2.5 py-2 text-center font-semibold tracking-wider select-all">' +
-          escapeHtml(c) +
-          "</li>"
-        );
-      })
-      .join("");
-    box.classList.remove("hidden");
-    try {
-      box.focus();
-    } catch (e) {}
-  }
-
-  if (mfaCopyCodesBtn) {
-    mfaCopyCodesBtn.addEventListener("click", function () {
-      if (!lastDisplayedRecoveryCodes.length) return;
-      var text = lastDisplayedRecoveryCodes.join("\n");
-      var msgEl = document.getElementById("dash-mfa-message");
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard
-          .writeText(text)
-          .then(function () {
-            showBanner(msgEl, "success", "Recovery codes copied to clipboard. Store them in a secure location.");
-          })
-          .catch(function () {
-            showBanner(msgEl, "error", "Could not copy automatically. Please select and copy the codes manually.");
-          });
-      } else {
-        showBanner(msgEl, "error", "Clipboard access unavailable. Please select and copy the codes manually.");
-      }
-    });
-  }
-
-  if (mfaDismissCodesBtn) {
-    mfaDismissCodesBtn.addEventListener("click", function () {
-      showMfaRecoveryCodes([]);
-    });
-  }
-
-  if (mfaStartBtn) {
-    mfaStartBtn.addEventListener("click", function () {
-      var msgEl = document.getElementById("dash-mfa-message");
-      hideBanner(msgEl);
-      mfaStartBtn.disabled = true;
-      apiFetch(endpoints.mfa, { method: "POST", body: { action: "setup" } })
-        .then(function (res) {
-          if (!res.ok) {
-            showBanner(msgEl, "error", (res.data && res.data.error) || "Could not initialize MFA setup.");
-            return;
-          }
-          var secretEl = document.getElementById("dash-mfa-secret-code");
-          if (secretEl) secretEl.textContent = res.data.secret || "";
-          document.getElementById("dash-mfa-start-wrap").classList.add("hidden");
-          document.getElementById("dash-mfa-setup-box").classList.remove("hidden");
-        })
-        .catch(function () {
-          showBanner(msgEl, "error", "Network error initializing MFA.");
-        })
-        .finally(function () {
-          mfaStartBtn.disabled = false;
-        });
-    });
-  }
-
-  function submitMfaToggle(action) {
-    var msgEl = document.getElementById("dash-mfa-message");
-    hideBanner(msgEl);
-    var inputEl = document.getElementById(action === "enable" ? "mfa-verify-code" : "mfa-disable-code");
-    var pwEl = action === "disable" ? document.getElementById("mfa-disable-password") : null;
-    var code = inputEl ? inputEl.value.trim() : "";
-    var payload = { action: action, code: code };
-
-    if (action === "disable") {
-      var currentPassword = pwEl ? pwEl.value : "";
-      if (!currentPassword) {
-        showBanner(msgEl, "error", "Please enter your current password to disable two-factor authentication.");
-        if (pwEl) pwEl.focus();
-        return;
-      }
-      payload.currentPassword = currentPassword;
-    }
-
-    apiFetch(endpoints.mfa, { method: "POST", body: payload })
-      .then(function (res) {
-        if (!res.ok) {
-          showBanner(msgEl, "error", (res.data && res.data.error) || "Verification failed.");
-          return;
-        }
-        if (inputEl) inputEl.value = "";
-        if (pwEl) pwEl.value = "";
-        var enabled = Boolean(res.data.mfaEnabled);
-        updateMfaUi(enabled);
-        if (enabled && Array.isArray(res.data.recoveryCodes) && res.data.recoveryCodes.length > 0) {
-          showMfaRecoveryCodes(res.data.recoveryCodes);
-        } else if (!enabled) {
-          showMfaRecoveryCodes([]);
-        }
-        showBanner(
-          msgEl,
-          "success",
-          enabled
-            ? (res.data.message || "Two-factor authentication is now enabled. Save your single-use recovery codes below.")
-            : "Two-factor authentication has been disabled."
-        );
-      })
-      .catch(function () {
-        showBanner(msgEl, "error", "Network error verifying code.");
-      });
-  }
-
-  if (mfaEnableBtn) {
-    mfaEnableBtn.addEventListener("click", function () {
-      submitMfaToggle("enable");
-    });
-  }
-  if (mfaDisableBtn) {
-    mfaDisableBtn.addEventListener("click", function () {
-      submitMfaToggle("disable");
     });
   }
 

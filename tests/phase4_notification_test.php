@@ -522,9 +522,9 @@ pfgTest('T4-06', 'Ephemeral secret wiped post-handoff, password reset refuses bl
         curl_close($ch);
         pfgAssert($unauthCode === 401, "Expected 401 unauth on /api/admin/notifications, got {$unauthCode}");
 
-        // Create MFA-verified SUPERADMIN session directly in pfg27_test and fetch its live CSRF token via /api/auth/me
-        $adminRow = $pdo->query("SELECT u.id FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.code = 'SUPERADMIN' AND u.mfa_enabled = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
-        pfgAssert(is_array($adminRow), 'Expected MFA-enrolled SUPERADMIN from Phase 2 tests');
+        // Create SUPERADMIN session directly in pfg27_test and fetch its live CSRF token via /api/auth/me
+        $adminRow = $pdo->query("SELECT u.id FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.code = 'SUPERADMIN' AND u.is_active = 1 LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        pfgAssert(is_array($adminRow), 'Expected active SUPERADMIN from Phase 2 tests');
         $rawSess = bin2hex(random_bytes(32));
         $sessHash = hash_hmac('sha256', $rawSess, AUTH_SECRET);
         $pdo->prepare("INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 1, :exp, NOW())")

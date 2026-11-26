@@ -108,6 +108,7 @@ $isForbiddenPath = static function (string $relPath): ?string {
     if (in_array($norm, [
         'assets/js/registration-wizard.js',
         'assets/js/html5-qrcode.min.js',
+        'assets/js/qrcode-gen.js',
         'database/schema.sql',
         'database/seed.sql',
         'scripts/build-release-package.php',
