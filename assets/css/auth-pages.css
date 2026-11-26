@@ -200,3 +200,137 @@
   .pfg-input, .pfg-btn, .pfg-alert { border: 2px solid CanvasText; }
   .pfg-auth :is(a, button, input):focus-visible { outline: 3px solid Highlight; }
 }
+
+/* High Contrast Mode (WCAG 2.2 AAA >= 14:1 — zero white-on-white surfaces) */
+html[data-contrast="high"] .pfg-auth,
+html.high-contrast .pfg-auth,
+body.high-contrast .pfg-auth {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+html[data-contrast="high"] .pfg-auth-card,
+html.high-contrast .pfg-auth-card,
+body.high-contrast .pfg-auth-card,
+html[data-contrast="high"] .pfg-panel,
+html.high-contrast .pfg-panel,
+body.high-contrast .pfg-panel,
+html[data-contrast="high"] .pfg-alert,
+html.high-contrast .pfg-alert,
+body.high-contrast .pfg-alert {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: none !important;
+}
+html[data-contrast="high"] .pfg-auth-eyebrow,
+html.high-contrast .pfg-auth-eyebrow,
+html[data-contrast="high"] .pfg-auth h1,
+html.high-contrast .pfg-auth h1,
+html[data-contrast="high"] .pfg-auth-lead,
+html.high-contrast .pfg-auth-lead,
+html[data-contrast="high"] .pfg-field label,
+html.high-contrast .pfg-field label,
+html[data-contrast="high"] .pfg-hint,
+html.high-contrast .pfg-hint,
+html[data-contrast="high"] .pfg-check label,
+html.high-contrast .pfg-check label {
+  color: #ffffff !important;
+}
+html[data-contrast="high"] .pfg-req,
+html.high-contrast .pfg-req,
+html[data-contrast="high"] .pfg-field-error,
+html.high-contrast .pfg-field-error,
+html[data-contrast="high"] .pfg-auth a:not(.pfg-btn),
+html.high-contrast .pfg-auth a:not(.pfg-btn),
+html[data-contrast="high"] .pfg-btn--link,
+html.high-contrast .pfg-btn--link {
+  color: #ffea00 !important;
+}
+html[data-contrast="high"] .pfg-input,
+html.high-contrast .pfg-input,
+html[data-contrast="high"] .pfg-btn,
+html.high-contrast .pfg-btn,
+html[data-contrast="high"] .pfg-btn--ghost,
+html.high-contrast .pfg-btn--ghost,
+html[data-contrast="high"] .pfg-staff-badge,
+html.high-contrast .pfg-staff-badge {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+html[data-contrast="high"] .pfg-btn:hover,
+html.high-contrast .pfg-btn:hover {
+  background: #ffea00 !important;
+  color: #000000 !important;
+  border-color: #ffea00 !important;
+}
+html[data-contrast="high"] .pfg-divider,
+html.high-contrast .pfg-divider {
+  background: #ffffff !important;
+}
+
+/* Yellow-on-Black Mode (WCAG 2.2 AAA >= 17:1 — zero yellow-on-white surfaces) */
+html[data-contrast="yellow-black"] .pfg-auth,
+html.yellow-black .pfg-auth,
+body.yellow-black .pfg-auth {
+  background: #000000 !important;
+  color: #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-auth-card,
+html.yellow-black .pfg-auth-card,
+body.yellow-black .pfg-auth-card,
+html[data-contrast="yellow-black"] .pfg-panel,
+html.yellow-black .pfg-panel,
+body.yellow-black .pfg-panel,
+html[data-contrast="yellow-black"] .pfg-alert,
+html.yellow-black .pfg-alert,
+body.yellow-black .pfg-alert {
+  background: #000000 !important;
+  color: #ffea00 !important;
+  border: 2px solid #ffea00 !important;
+  box-shadow: none !important;
+}
+html[data-contrast="yellow-black"] .pfg-auth-eyebrow,
+html.yellow-black .pfg-auth-eyebrow,
+html[data-contrast="yellow-black"] .pfg-auth h1,
+html.yellow-black .pfg-auth h1,
+html[data-contrast="yellow-black"] .pfg-auth-lead,
+html.yellow-black .pfg-auth-lead,
+html[data-contrast="yellow-black"] .pfg-field label,
+html.yellow-black .pfg-field label,
+html[data-contrast="yellow-black"] .pfg-hint,
+html.yellow-black .pfg-hint,
+html[data-contrast="yellow-black"] .pfg-req,
+html.yellow-black .pfg-req,
+html[data-contrast="yellow-black"] .pfg-field-error,
+html.yellow-black .pfg-field-error,
+html[data-contrast="yellow-black"] .pfg-check label,
+html.yellow-black .pfg-check label,
+html[data-contrast="yellow-black"] .pfg-auth a:not(.pfg-btn),
+html.yellow-black .pfg-auth a:not(.pfg-btn),
+html[data-contrast="yellow-black"] .pfg-btn--link,
+html.yellow-black .pfg-btn--link {
+  color: #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-input,
+html.yellow-black .pfg-input,
+html[data-contrast="yellow-black"] .pfg-btn,
+html.yellow-black .pfg-btn,
+html[data-contrast="yellow-black"] .pfg-btn--ghost,
+html.yellow-black .pfg-btn--ghost,
+html[data-contrast="yellow-black"] .pfg-staff-badge,
+html.yellow-black .pfg-staff-badge {
+  background: #000000 !important;
+  color: #ffea00 !important;
+  border: 2px solid #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-btn:hover,
+html.yellow-black .pfg-btn:hover {
+  background: #ffea00 !important;
+  color: #000000 !important;
+  border-color: #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-divider,
+html.yellow-black .pfg-divider {
+  background: #ffea00 !important;
+}

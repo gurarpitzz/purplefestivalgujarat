@@ -4,24 +4,87 @@
   "integrationBranch": "swarm/phases-5-18",
   "baselineCommit": "6e2061b",
   "baselineTag": "phase4-verified-baseline",
-  "activeMilestone": "M2",
-  "updatedAt": "2026-11-26T17:56:00+05:30",
+  "activeMilestone": "M8_COMPLETE_LOCALLY",
+  "updatedAt": "2026-11-26T19:29:00+05:30",
   "stack": {
     "runtime": "Native PHP 8.2.12 + MariaDB 10.4.32 + Apache 2.4.58 (Bluehost cPanel compatible)",
-    "forbidden": ["Docker", "Kubernetes", "React", "Next.js", "Node backend", "Laravel", "PostgreSQL", "Redis", "RabbitMQ"]
+    "forbidden": [
+      "Docker",
+      "Kubernetes",
+      "React",
+      "Next.js",
+      "Node backend",
+      "Laravel",
+      "PostgreSQL",
+      "Redis",
+      "RabbitMQ"
+    ]
   },
   "milestones": {
-    "M0": { "name": "Swarm Bootstrap & Baseline Verification", "status": "ACCEPTED", "baselineChecks": "82/82 PASS" },
-    "M1": { "name": "Phase 4 — Transactional Email & Queue Infrastructure", "status": "ACCEPTED_LOCALLY", "liveStatus": "CONFIGURATION_BLOCKED" },
-    "M2": { "name": "Phases 5, 6, 7 — Participant Auth, 3-Category Registration & Lifecycle", "status": "IN_PROGRESS" },
-    "M3": { "name": "Phases 8, 9 — Superadmin Permission Profiles & Manual Registration Desk", "status": "READY" },
-    "M4": { "name": "Phases 10, 11 — Participant Dashboards & Complete Admin Portal", "status": "PENDING" },
-    "M5": { "name": "Phases 12, 13, 14 — Programme/Duties, Complete Comms & Public Site Integration", "status": "PENDING" },
-    "M6": { "name": "Phases 15, 16 — WCAG 2.2 AA Accessibility & Conditional Feature Classification", "status": "IN_PROGRESS" },
-    "M7": { "name": "Phase 17 — Full-System E2E, Playwright, Security, Concurrency & Visual Regression", "status": "PENDING" },
-    "M8": { "name": "Phase 18 — Bluehost Readiness, Clean Release Package & Operations Handover", "status": "PENDING" }
+    "M0": {
+      "name": "Swarm Bootstrap & Baseline Verification",
+      "status": "ACCEPTED_LOCALLY",
+      "baselineChecks": "82/82 PASS"
+    },
+    "M1": {
+      "name": "Phase 4 \u2014 Transactional Email & Queue Infrastructure",
+      "status": "ACCEPTED_LOCALLY_CONFIG_BLOCKED_LIVE",
+      "liveStatus": "CONFIGURATION_BLOCKED"
+    },
+    "M2": {
+      "name": "Phases 5, 6, 7 \u2014 Participant Auth, 3-Category Registration & Lifecycle",
+      "status": "ACCEPTED_LOCALLY"
+    },
+    "M3": {
+      "name": "Phases 8, 9 \u2014 Superadmin Permission Profiles & Manual Registration Desk",
+      "status": "ACCEPTED_LOCALLY"
+    },
+    "M4": {
+      "name": "Phases 10, 11 \u2014 Participant Dashboards & Complete Admin Portal",
+      "status": "ACCEPTED_LOCALLY"
+    },
+    "M5": {
+      "name": "Phases 12, 13, 14 \u2014 Programme/Duties, Complete Comms & Public Site Integration",
+      "status": "ACCEPTED_LOCALLY"
+    },
+    "M6": {
+      "name": "Phases 15, 16 \u2014 WCAG 2.2 AA Accessibility & Conditional Feature Classification",
+      "status": "ACCEPTED_LOCALLY"
+    },
+    "M7": {
+      "name": "Phase 17 \u2014 Full-System E2E, Playwright, Security, Concurrency & Visual Regression",
+      "status": "ACCEPTED_LOCALLY"
+    },
+    "M8": {
+      "name": "Phase 18 \u2014 Bluehost Readiness, Clean Release Package & Operations Handover",
+      "status": "ACCEPTED_LOCALLY_CONFIG_BLOCKED_LIVE"
+    }
   },
   "activeWorkers": [],
-  "completedTasks": ["M0-BOOTSTRAP", "M1-PHASE4"],
-  "inProgressTasks": ["T-DB-MIGRATIONS", "T-A11Y-CORE", "T-VISUAL-BASELINE"]
+  "completedTasks": [
+    "M0-BOOTSTRAP",
+    "M1-PHASE4",
+    "T-DB-MIGRATIONS",
+    "T-A11Y-CORE",
+    "T-VISUAL-BASELINE",
+    "T-PHASE5-AUTH",
+    "T-PHASE6-7-REG",
+    "T-PHASE8-RBAC",
+    "T-PHASE9-RGST",
+    "T-PHASE10-DASH",
+    "T-PHASE11-12-ADMIN-OPS",
+    "T-PHASE13-14-PUBLIC-COMMS",
+    "T-INDEPENDENT-REVIEW",
+    "T-REVIEW-REMEDIATION",
+    "T-PHASE17-QA-E2E",
+    "T-PHASE16-18-RELEASE-DOCS"
+  ],
+  "inProgressTasks": [],
+  "finalVerification": {
+    "phpSuite": "62/62 PASS",
+    "apacheSuite": "40/40 PASS",
+    "playwrightE2eWcagSuite": "5/5 PASS",
+    "totalChecks": "107/107 PASS",
+    "releasePackage": "184 runtime files, 0 leaks, 95/95 PHP lint PASS"
+  }
 }
