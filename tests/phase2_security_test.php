@@ -288,18 +288,53 @@ pfgTest('T2-04', 'Logout rejects GET (405) & missing CSRF (403); valid POST revo
 });
 
 // =========================================================================
-// T2-05: Session Fixation, Signup Containment & Password-Reset Token Scrubbing
+// T2-05: Session Fixation, Verified Signup Anti-Enumeration & Password-Reset Token Scrubbing
 // =========================================================================
-pfgTest('T2-05', 'Session fixation mitigation, signup containment (403), and zero resetUrl in notification_queue', function () use ($pdo, $rgstUser): string {
-    // Signup contained
-    $rSignup = p2Http('POST', '/api/auth/signup', [
-        'fullName' => 'Blocked Signup',
-        'email'    => 'blocked.signup@example.test',
+pfgTest('T2-05', 'Session fixation mitigation, verified signup anti-enumeration (202), and zero token leak in notification_queue', function () use ($pdo, $rgstUser): string {
+    pfgResetRateLimit($pdo, 'auth_signup_ip', '127.0.0.1');
+    $signupEmail = 'p2.verified.signup.' . bin2hex(random_bytes(3)) . '@example.test';
+    pfgResetRateLimit($pdo, 'auth_signup_email', $signupEmail);
+
+    // 1. Invalid signup payload (missing phone / confirmPassword / consent) -> 400
+    $rBadSignup = p2Http('POST', '/api/auth/signup', [
+        'fullName' => 'Invalid Signup',
+        'email'    => $signupEmail,
         'password' => 'StrongPass#2027',
     ]);
-    pfgAssert($rSignup['status'] === 403, "POST /api/auth/signup must be contained with 403, got {$rSignup['status']}");
+    pfgAssert($rBadSignup['status'] === 400, "Invalid POST /api/auth/signup must return 400, got {$rBadSignup['status']}");
 
-    // Session fixation: logging in while sending an old session cookie revokes the old cookie
+    // 2. Valid signup -> uniform 202 with ZERO raw token in JSON response or notification_queue.payload
+    $validPayload = [
+        'fullName'        => 'Verified Signup Tester',
+        'email'           => $signupEmail,
+        'phone'           => '+91 98250 11223',
+        'password'        => 'StrongPass#2027',
+        'confirmPassword' => 'StrongPass#2027',
+        'consentAccepted' => true,
+    ];
+    $rSignup1 = p2Http('POST', '/api/auth/signup', $validPayload);
+    pfgAssert(
+        $rSignup1['status'] === 202 && !empty($rSignup1['json']['emailVerificationRequired']),
+        "Valid POST /api/auth/signup must return 202 + emailVerificationRequired, got {$rSignup1['status']}: {$rSignup1['body']}"
+    );
+    pfgAssert(
+        !isset($rSignup1['json']['token']) && !isset($rSignup1['json']['verificationToken'])
+        && !str_contains($rSignup1['body'], 'verify-email?token=') && !str_contains($rSignup1['body'], 'actionUrl'),
+        'Raw verification token/URL leaked into signup JSON response!'
+    );
+
+    $verifyPayload = (string)$pdo->query("SELECT payload FROM notification_queue WHERE template_code = 'ACCOUNT_VERIFICATION' ORDER BY created_at DESC LIMIT 1")->fetchColumn();
+    pfgAssert(
+        !str_contains($verifyPayload, 'verify-email?token=') && !str_contains($verifyPayload, 'actionUrl') && !str_contains($verifyPayload, 'rawToken'),
+        'Raw verification token/URL leaked into notification_queue.payload!'
+    );
+
+    // 3. Duplicate email signup -> uniform 202 byte-identical response (anti-enumeration)
+    $rSignupDup = p2Http('POST', '/api/auth/signup', $validPayload);
+    pfgAssert($rSignupDup['status'] === 202, "Duplicate email POST /api/auth/signup must return uniform 202, got {$rSignupDup['status']}");
+    pfgAssert($rSignupDup['body'] === $rSignup1['body'], 'Duplicate signup response differed from initial signup (enumeration leak)!');
+
+    // 4. Session fixation: logging in while sending an old session cookie revokes the old cookie
     $s1 = p2Login($rgstUser['username'], $rgstUser['password']);
     $oldCookie = $s1['cookies'];
     $r2 = p2Http('POST', '/api/auth/login', ['username' => $rgstUser['username'], 'password' => $rgstUser['password']], $oldCookie);
@@ -307,14 +342,14 @@ pfgTest('T2-05', 'Session fixation mitigation, signup containment (403), and zer
     $rOldCheck = p2Http('GET', '/api/auth/me', null, $oldCookie);
     pfgAssert(is_array($rOldCheck['json']) && array_key_exists('user', $rOldCheck['json']) && $rOldCheck['json']['user'] === null, 'Pre-existing session cookie was not revoked on re-login!');
 
-    // Password reset does NOT store plaintext resetUrl in notification_queue.payload
+    // 5. Password reset does NOT store plaintext resetUrl in notification_queue.payload
     pfgResetRateLimit($pdo, 'auth_pwreset_email', $rgstUser['email']);
     pfgResetRateLimit($pdo, 'auth_pwreset_ip', '127.0.0.1');
     $rReset = p2Http('POST', '/api/auth/password-reset', ['email' => $rgstUser['email']]);
     pfgAssert($rReset['status'] === 200, 'Password reset request failed');
-    $nqPayload = (string)$pdo->query("SELECT payload FROM notification_queue WHERE template_code = 'PASSWORD_RESET' ORDER BY created_at DESC LIMIT 1")->fetchColumn();
-    pfgAssert(!str_contains($nqPayload, 'resetToken=') && !str_contains($nqPayload, 'resetUrl'), 'Plaintext resetUrl leaked into notification_queue.payload!');
-    return 'Signup contained (403), prior cookie revoked on re-login, and zero resetToken in notification_queue.payload';
+    $nqPayload = (string)$pdo->query("SELECT payload FROM notification_queue WHERE template_code IN ('PASSWORD_RESET', 'PASSWORD_RECOVERY') ORDER BY created_at DESC LIMIT 1")->fetchColumn();
+    pfgAssert(!str_contains($nqPayload, 'resetToken=') && !str_contains($nqPayload, 'resetUrl') && !str_contains($nqPayload, 'actionUrl'), 'Plaintext resetUrl leaked into notification_queue.payload!');
+    return 'Invalid signup->400, valid & duplicate signup->uniform 202 (0 token leaks), prior cookie revoked on re-login, 0 resetUrl in notification_queue.payload';
 });
 
 // =========================================================================
@@ -630,22 +665,37 @@ pfgTest('T2-15', 'Script-context JSON escaping neutralizes </script> XSS; Gujara
 // =========================================================================
 // T2-16: Unsafe URL Scheme Rejection (SLI videoDemoUrl & CMS URLs)
 // =========================================================================
-pfgTest('T2-16', 'javascript:/data: URLs rejected (400) on SLI registration and CMS partner/media writes', function () use ($saSess): string {
-    // SLI with javascript: videoDemoUrl -> 400
+pfgTest('T2-16', 'javascript:/data: URLs rejected (400) on SLI registration and CMS partner/media writes', function () use ($saSess, $partSess): string {
+    // Authenticated verified participant submits SLI with javascript: videoDemoUrl -> 400
     $rSliBad = p2Http('POST', '/api/registrations', [
-        'categoryCode'          => 'SLI',
-        'fullName'              => 'SLI XSS Tester',
-        'email'                 => 'sli.xss@example.test',
-        'phone'                 => '+91 9876543211',
-        'country'               => 'India',
-        'occupation'            => 'Accessibility Professional',
-        'isPersonWithDisability'=> 'NO',
-        'attendingDays'         => ['DAY_1'],
-        'consentZeroTolerance'  => true,
-        'consentDataProcessing' => true,
-        'sliDetails'            => ['videoDemoUrl' => 'javascript:alert(document.cookie)'],
-    ]);
-    pfgAssert($rSliBad['status'] === 400, "SLI javascript: URL expected 400, got {$rSliBad['status']}");
+        'categoryCode'                 => 'SLI',
+        'phone'                        => '+91 9876543211',
+        'country'                      => 'India',
+        'cityDistrict'                 => 'Vadodara',
+        'state'                        => 'Gujarat',
+        'isPersonWithDisability'       => 'NO',
+        'emergencyContactName'         => 'Emergency Helper',
+        'emergencyContactRelationship' => 'Colleague',
+        'emergencyContactPhone'        => '+91 9876543299',
+        'consentZeroTolerance'         => true,
+        'consentDataProcessing'        => true,
+        'consentAccuracy'              => true,
+        'sliDetails'                   => [
+            'age'                    => 28,
+            'cityDistrict'           => 'Vadodara',
+            'state'                  => 'Gujarat',
+            'basedInGujarat'         => true,
+            'qualificationCategory'  => 'CERTIFIED_ISL',
+            'experienceBand'         => '3_TO_5',
+            'comfortablePublicStage' => true,
+            'availabilityShifts'     => ['DAY_1_SHIFT_1'],
+            'videoDemoUrl'           => 'javascript:alert(document.cookie)',
+        ],
+    ], $partSess['cookies'], ['X-CSRF-Token' => $partSess['csrf']]);
+    pfgAssert(
+        $rSliBad['status'] === 400 && !empty($rSliBad['json']['errors']['videoDemoUrl']),
+        "SLI javascript: URL expected 400 with videoDemoUrl error, got {$rSliBad['status']}: {$rSliBad['body']}"
+    );
 
     // CMS partner with javascript: websiteUrl -> 400
     $rCmsBad1 = p2Http('POST', '/api/admin/cms', [
@@ -667,7 +717,7 @@ pfgTest('T2-16', 'javascript:/data: URLs rejected (400) on SLI registration and 
     ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rCmsBad2['status'] === 400, "CMS media data: URL expected 400, got {$rCmsBad2['status']}");
 
-    return 'javascript: and data: URLs rejected (400) on SLI videoDemoUrl, CMS partner websiteUrl, and CMS media url';
+    return 'javascript: and data: URLs rejected (400) on authenticated SLI videoDemoUrl, CMS partner websiteUrl, and CMS media url';
 });
 
 // =========================================================================
@@ -675,19 +725,33 @@ pfgTest('T2-16', 'javascript:/data: URLs rejected (400) on SLI registration and 
 // =========================================================================
 $createdRegId = '';
 $createdRegCode = '';
-pfgTest('T2-17', 'Registration creates Registration ID, 0 QR credentials, 0 qrserver URLs, encrypted disclosures & Gujarati/Hindi UTF-8', function () use ($pdo, $sinkDir, &$createdRegId, &$createdRegCode): string {
+pfgTest('T2-17', 'Verified participant registration creates atomic PFG-2027-000001, 0 QR rows, encrypted disclosures & Gujarati/Hindi UTF-8', function () use ($pdo, $sinkDir, &$createdRegId, &$createdRegCode): string {
     foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $old) {
         @unlink($old);
     }
     $qrBefore = (int)$pdo->query('SELECT COUNT(*) FROM qr_credentials')->fetchColumn();
 
+    // Seed verified participant with Gujarati/Hindi UTF-8 full name & authenticate cleanly
+    $anitaUid = uuid4();
+    $now = nowSql();
+    $pdo->prepare("
+        INSERT INTO users (id, username, email, email_verified_at, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at)
+        VALUES (:id, NULL, 'anita.utf8@example.test', :now, :pw, 'અનિતા શર્मा (Anita)', '+91 9876543222', 'India', 1, 'ACTIVE', :now, :now)
+    ")->execute([':id' => $anitaUid, ':now' => $now, ':pw' => hashPassword('AnitaPass#2027')]);
+    $partRoleId = (string)$pdo->query("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1")->fetchColumn();
+    $pdo->prepare('INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_at) VALUES (:id, :uid, :rid, NULL, :now)')
+        ->execute([':id' => uuid4(), ':uid' => $anitaUid, ':rid' => $partRoleId, ':now' => $now]);
+
+    pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
+    $anitaSess = p2Login('anita.utf8@example.test', 'AnitaPass#2027');
+    pfgAssert($anitaSess['resp']['status'] === 200 && $anitaSess['csrf'] !== '', 'Verified participant login failed: ' . $anitaSess['resp']['body']);
+
     $rReg = p2Http('POST', '/api/registrations', [
         'categoryCode'              => 'ATTENDEE',
-        'fullName'                  => 'અનિતા શર્मा (Anita)',
-        'email'                     => 'anita.utf8@example.test',
         'phone'                     => '+91 9876543222',
         'country'                   => 'India',
-        'occupation'                => 'Teacher',
+        'cityDistrict'              => 'Vadodara',
+        'state'                     => 'Gujarat',
         'organizationName'          => '=CMD|\'/C calc\'!A0', // Also tests CSV formula injection in T2-20!
         'isPersonWithDisability'    => 'YES',
         'disabilityCategoryCodes'   => ['BLINDNESS'],
@@ -695,25 +759,36 @@ pfgTest('T2-17', 'Registration creates Registration ID, 0 QR credentials, 0 qrse
         'accommodationTypes'        => ['BRAILLE_SCHEDULE'],
         'accommodationFreeText'     => 'Front row tactile guide needed',
         'attendingDays'             => ['DAY_1', 'DAY_2'],
+        'attendeeDetails'           => [
+            'ageGroup'               => '18_35',
+            'selfIdentificationTags' => ['Teacher / Special Educator'],
+        ],
         'consentZeroTolerance'      => true,
         'consentDataProcessing'     => true,
-    ]);
-    pfgAssert($rReg['status'] === 201, "Public registration failed ({$rReg['status']}): {$rReg['body']}");
+        'consentAccuracy'           => true,
+    ], $anitaSess['cookies'], ['X-CSRF-Token' => $anitaSess['csrf']]);
+    pfgAssert($rReg['status'] === 201, "Verified Attendee registration failed ({$rReg['status']}): {$rReg['body']}");
     $createdRegId = (string)($rReg['json']['registration']['id'] ?? '');
     $createdRegCode = (string)($rReg['json']['registration']['registrationCode'] ?? '');
-    pfgAssert(str_starts_with($createdRegCode, 'PFG-2027-'), 'Registration ID format broken: ' . $createdRegCode);
+    pfgAssert($createdRegCode === 'PFG-2027-000001', 'Expected atomic PFG-2027-000001, got: ' . $createdRegCode);
     pfgAssert(is_array($rReg['json']) && array_key_exists('qrPass', $rReg['json']) && $rReg['json']['qrPass'] === null, 'qrPass must be null per D-01!');
 
     // Verify ZERO new qr_credentials rows created
     $qrAfter = (int)$pdo->query('SELECT COUNT(*) FROM qr_credentials')->fetchColumn();
     pfgAssert($qrAfter === $qrBefore, 'New qr_credentials row was created despite D-01 retirement!');
 
-    // Verify email captured locally contains Registration ID and ZERO api.qrserver.com or rawToken
+    // Verify captured emails contain Registration ID and ZERO api.qrserver.com or rawToken
     $mailFiles = glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [];
-    pfgAssert(count($mailFiles) === 1, 'Expected 1 confirmation email in local sink');
-    $mailJson = (string)file_get_contents($mailFiles[0]);
-    pfgAssert(str_contains($mailJson, $createdRegCode), 'Confirmation email missing Registration ID');
-    pfgAssert(!str_contains($mailJson, 'qrserver.com') && !str_contains($mailJson, 'PFG27.'), 'Confirmation email leaked qrserver.com or QR token!');
+    pfgAssert(count($mailFiles) >= 1, 'Expected >=1 confirmation email in local sink');
+    $foundCodeInMail = false;
+    foreach ($mailFiles as $mf) {
+        $mailJson = (string)file_get_contents($mf);
+        if (str_contains($mailJson, $createdRegCode)) {
+            $foundCodeInMail = true;
+        }
+        pfgAssert(!str_contains($mailJson, 'qrserver.com') && !str_contains($mailJson, 'PFG27.'), 'Confirmation email leaked qrserver.com or QR token!');
+    }
+    pfgAssert($foundCodeInMail, 'Confirmation email missing Registration ID ' . $createdRegCode);
 
     // Verify sensitive free-text is encrypted in DB and stripped from registration_responses.answers
     $encDis = (string)$pdo->query("SELECT self_description FROM participant_disability_disclosures WHERE registration_id = " . $pdo->quote($createdRegId) . " LIMIT 1")->fetchColumn();
@@ -723,40 +798,70 @@ pfgTest('T2-17', 'Registration creates Registration ID, 0 QR credentials, 0 qrse
     $respSnap = (string)$pdo->query("SELECT answers FROM registration_responses WHERE registration_id = " . $pdo->quote($createdRegId) . " LIMIT 1")->fetchColumn();
     pfgAssert(!str_contains($respSnap, 'Confidential') && !str_contains($respSnap, 'tactile guide'), 'Sensitive disclosures leaked into registration_responses.answers!');
 
-    return "Created {$createdRegCode} (Gujarati/Hindi UTF-8 intact), 0 QR rows created, 0 qrserver refs, disclosures encrypted enc:v1:";
+    return "Created {$createdRegCode} (Gujarati/Hindi UTF-8 intact), 0 QR rows, 0 qrserver refs, disclosures encrypted enc:v1:";
 });
 
 // =========================================================================
-// T2-18: Unauthenticated Account Attachment / Takeover Blocked (FND-07)
+// T2-18: Unauthenticated & Unverified Registration Submission Blocked (FND-07 / Phase 5-6)
 // =========================================================================
-pfgTest('T2-18', 'Unauthenticated registration with existing participant OR staff email blocked (409, zero code leak)', function () use ($pdo, $saUser, $createdRegCode): string {
+pfgTest('T2-18', 'Unauthenticated POST /api/registrations blocked (401) and unverified participant blocked (403)', function () use ($pdo, $saUser, $createdRegCode): string {
     $regsBefore = (int)$pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn();
 
+    // 1. Unauthenticated attempts (including targeting existing participant & staff emails) -> strictly 401
     foreach (['anita.utf8@example.test', $saUser['email']] as $victimEmail) {
         $r = p2Http('POST', '/api/registrations', [
-            'categoryCode'          => 'VOLUNTEER',
+            'categoryCode'          => 'ATTENDEE',
             'fullName'              => 'Attacker Impersonator',
             'email'                 => $victimEmail,
             'phone'                 => '+91 9000000000',
             'country'               => 'India',
-            'occupation'            => 'Student',
             'isPersonWithDisability'=> 'NO',
             'attendingDays'         => ['DAY_1'],
             'consentZeroTolerance'  => true,
             'consentDataProcessing' => true,
+            'consentAccuracy'       => true,
         ]);
-        pfgAssert($r['status'] === 409, "Unauthenticated attachment to {$victimEmail} expected 409, got {$r['status']}");
+        pfgAssert($r['status'] === 401, "Unauthenticated POST /api/registrations ({$victimEmail}) expected 401, got {$r['status']}");
         pfgAssert(!isset($r['json']['existingRegistrationCode']) && !str_contains($r['body'], $createdRegCode), 'Response leaked existingRegistrationCode!');
     }
 
-    pfgAssert((int)$pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn() === $regsBefore, 'Registration was attached despite 409!');
-    return 'Both existing participant & staff email attachments blocked (409) with 0 DB writes and 0 registration code leaks';
+    // 2. Unverified participant with valid session + CSRF -> strictly 403 + emailVerificationRequired=true
+    $unverUid = uuid4();
+    $now = nowSql();
+    $pdo->prepare("
+        INSERT INTO users (id, username, email, email_verified_at, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at)
+        VALUES (:id, NULL, 'unverified.part@example.test', NULL, :pw, 'Unverified Participant', '+91 98250 99887', 'India', 1, 'PENDING_VERIFICATION', :now, :now)
+    ")->execute([':id' => $unverUid, ':now' => $now, ':pw' => hashPassword('UnverPass#2027')]);
+    $partRoleId = (string)$pdo->query("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1")->fetchColumn();
+    $pdo->prepare('INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_at) VALUES (:id, :uid, :rid, NULL, :now)')
+        ->execute([':id' => uuid4(), ':uid' => $unverUid, ':rid' => $partRoleId, ':now' => $now]);
+
+    $unverTok = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $pdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 0, :exp, :now)')
+        ->execute([':id' => uuid4(), ':uid' => $unverUid, ':th' => hashToken($unverTok), ':exp' => nowSql(time() + 3600), ':now' => $now]);
+    $unverCsrf = pfgComputeSessionBoundCsrfToken($unverTok);
+
+    $rUnver = p2Http('POST', '/api/registrations', [
+        'categoryCode'          => 'ATTENDEE',
+        'attendingDays'         => ['DAY_1'],
+        'attendeeDetails'       => ['ageGroup' => '18_35', 'selfIdentificationTags' => ['Student']],
+        'consentZeroTolerance'  => true,
+        'consentDataProcessing' => true,
+        'consentAccuracy'       => true,
+    ], [SESSION_COOKIE_NAME => $unverTok], ['X-CSRF-Token' => $unverCsrf]);
+    pfgAssert(
+        $rUnver['status'] === 403 && !empty($rUnver['json']['emailVerificationRequired']),
+        "Unverified participant POST /api/registrations expected 403 emailVerificationRequired=true, got {$rUnver['status']}: {$rUnver['body']}"
+    );
+
+    pfgAssert((int)$pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn() === $regsBefore, 'Registration was written despite 401/403!');
+    return 'Unauthenticated POST blocked (401, 0 code leaks) and unverified participant blocked (403 emailVerificationRequired=true), 0 DB writes';
 });
 
 // =========================================================================
 // T2-19: Discontinued QR Endpoints (410) & MFA QR Library Preserved (D-01)
 // =========================================================================
-pfgTest('T2-19', 'Discontinued QR issuance/verify/confirm endpoints return 410 Gone; qrcode-gen.js & historical tables intact', function () use ($root, $pdo, $saSess, $rgstUser, $createdRegId): string {
+pfgTest('T2-19', 'All retired QR endpoints return 410 Gone; qrcode-gen.js, historical tables & manual /rgst desk intact', function () use ($root, $pdo, $saSess, $rgstUser, $createdRegId): string {
     // Re-authenticate RGST with new password set in T2-13 (proves T2-13 revoked old RGST session!)
     pfgResetRateLimit($pdo, 'auth_login_ip', '127.0.0.1');
     $freshRgst = p2Login($rgstUser['username'], 'RgstNewPass#2027');
@@ -765,25 +870,33 @@ pfgTest('T2-19', 'Discontinued QR issuance/verify/confirm endpoints return 410 G
     $r1 = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($createdRegId), ['credentialAction' => 'ISSUE'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($r1['status'] === 410, "Admin credentialAction=ISSUE expected 410, got {$r1['status']}");
 
-    $r2 = p2Http('POST', '/api/qr/pass', ['registrationId' => $createdRegId, 'action' => 'reissue'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
-    pfgAssert($r2['status'] === 410, "POST /api/qr/pass reissue expected 410, got {$r2['status']}");
+    $r2Get = p2Http('GET', '/api/qr/pass.php?registrationId=' . urlencode($createdRegId), null, $saSess['cookies']);
+    pfgAssert($r2Get['status'] === 410, "GET /api/qr/pass.php expected 410, got {$r2Get['status']}");
 
-    $r3 = p2Http('POST', '/api/qr/verify', ['input' => 'PFG-2027-000001'], $freshRgst['cookies'], ['X-CSRF-Token' => $freshRgst['csrf']]);
-    pfgAssert($r3['status'] === 410, "POST /api/qr/verify expected 410, got {$r3['status']}");
+    $r2Post = p2Http('POST', '/api/qr/pass.php', ['registrationId' => $createdRegId, 'action' => 'reissue'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($r2Post['status'] === 410, "POST /api/qr/pass.php expected 410, got {$r2Post['status']}");
 
-    $r4 = p2Http('POST', '/api/checkins/confirm', ['credentialId' => 'dummy', 'venueLabel' => 'Main Gate'], $freshRgst['cookies'], ['X-CSRF-Token' => $freshRgst['csrf']]);
-    pfgAssert($r4['status'] === 410, "POST /api/checkins/confirm expected 410, got {$r4['status']}");
+    $r3 = p2Http('POST', '/api/qr/verify.php', ['input' => 'PFG-2027-000001'], $freshRgst['cookies'], ['X-CSRF-Token' => $freshRgst['csrf']]);
+    pfgAssert($r3['status'] === 410, "POST /api/qr/verify.php expected 410, got {$r3['status']}");
+
+    $r4 = p2Http('POST', '/api/checkins/confirm.php', ['credentialId' => 'dummy', 'venueLabel' => 'Main Gate'], $freshRgst['cookies'], ['X-CSRF-Token' => $freshRgst['csrf']]);
+    pfgAssert($r4['status'] === 410, "POST /api/checkins/confirm.php expected 410, got {$r4['status']}");
 
     // Verify qrcode-gen.js preserved for MFA enrollment and historical tables exist
     pfgAssert(is_file($root . '/assets/js/qrcode-gen.js'), 'assets/js/qrcode-gen.js must be preserved for TOTP MFA!');
     $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
     pfgAssert(in_array('qr_credentials', $tables, true) && in_array('checkins', $tables, true), 'Historical qr_credentials/checkins tables must be preserved!');
 
-    // Verify /rgst renders deprecation notice for RGST operator
+    // Verify /rgst renders Phase 9 Manual Registration Desk with zero QR camera scanner library
     $rRgstPage = p2Http('GET', '/rgst', null, $freshRgst['cookies']);
-    pfgAssert($rRgstPage['status'] === 200 && str_contains($rRgstPage['body'], 'QR Pass Scanning Discontinued'), '/rgst missing D-01 deprecation notice');
+    pfgAssert(
+        $rRgstPage['status'] === 200
+        && str_contains($rRgstPage['body'], 'Manual 3-Day Attendance Verification')
+        && !str_contains($rRgstPage['body'], 'html5-qrcode'),
+        '/rgst missing Phase 9 Manual Desk or still references html5-qrcode'
+    );
 
-    return 'All 4 retired QR endpoints returned 410 Gone; historical tables, qrcode-gen.js, and /rgst D-01 notice verified';
+    return 'All 5 retired QR routes returned 410 Gone; historical tables, qrcode-gen.js & QR-free /rgst desk verified';
 });
 
 // =========================================================================
