@@ -206,7 +206,14 @@ pfgTest('T3-03', 'Legacy pre-Phase-3 DB upgrade: duplicate consolidation, sequen
         $migCount = (int)$lpdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
         pfgAssert($tableCount === 70, "Expected 70 tables after full legacy upgrade, got {$tableCount}");
         pfgAssert($fkCount >= 79, "Expected >= 79 FKs after full legacy upgrade, got {$fkCount}");
-        pfgAssert($migCount === 13, "Expected 13 applied migrations after full legacy upgrade, got {$migCount}");
+        pfgAssert($migCount === 14, "Expected 14 applied migrations (000–013) after full legacy upgrade, got {$migCount}");
+
+        // Verify Migration 013 made registrations.user_id & privacy_consent_records.user_id nullable while preserving historical user_id
+        $regNullable = (string)$lpdo->query("SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'registrations' AND COLUMN_NAME = 'user_id'")->fetchColumn();
+        $pcrNullable = (string)$lpdo->query("SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'privacy_consent_records' AND COLUMN_NAME = 'user_id'")->fetchColumn();
+        $histUidAfter = (string)$lpdo->query("SELECT user_id FROM registrations WHERE id = '{$regId}'")->fetchColumn();
+        pfgAssert($regNullable === 'YES' && $pcrNullable === 'YES', "Migration 013 nullable check failed: reg={$regNullable}, pcr={$pcrNullable}");
+        pfgAssert($histUidAfter === $uid, 'Migration 013 altered historical registrations.user_id!');
         return ['applied' => $migCount, 'tables' => $tableCount, 'nextCode' => $nextCode, 'fks' => $fkCount, 'reRunEncrypted' => $reRun004['encryptedFields']['accommodation_requests']];
     });
 
@@ -402,18 +409,21 @@ pfgTest('T3-07', 'Foreign key enforcement rejects invalid children & RESTRICT pr
     }
     pfgAssert($rejectedBadAccomm, 'FK failed to reject accommodation_requests with nonexistent registration_id');
 
-    // 3. RESTRICT prevents deleting a user who has registrations
-    $existingUserId = (string)$pdo->query('SELECT user_id FROM registrations LIMIT 1')->fetchColumn();
-    pfgAssert($existingUserId !== '', 'Expected at least 1 registration in pfg27_test from Phase 2 tests');
+    // 3. Accountless registration with user_id = NULL is allowed by Migration 013 FK, while RESTRICT blocks deleting parent category with registrations
+    $nullRegId = uuid4();
+    $pdo->prepare("INSERT INTO registrations (id, registration_code, edition_id, user_id, category_id, category_code, status, payment_status, full_name, email, phone, country, is_person_with_disability, created_at, updated_at) VALUES (:id, :code, :eid, NULL, :cid, 'ATTENDEE', 'CONFIRMED', 'NOT_REQUIRED', 'Accountless FK Check', 'nullfk@example.test', '+919999999998', 'India', 'NO', NOW(), NOW())")
+        ->execute([':id' => $nullRegId, ':code' => 'PFG-2027-FKNULL1', ':eid' => $edId, ':cid' => $catId]);
+    $pdo->prepare('DELETE FROM registrations WHERE id = :id')->execute([':id' => $nullRegId]);
+
     $restrictedDelete = false;
     try {
-        $pdo->prepare('DELETE FROM users WHERE id = :uid')->execute([':uid' => $existingUserId]);
+        $pdo->prepare('DELETE FROM registration_categories WHERE id = :cid')->execute([':cid' => $catId]);
     } catch (PDOException $e) {
         $restrictedDelete = ($e->getCode() === '23000');
     }
-    pfgAssert($restrictedDelete, 'ON DELETE RESTRICT did not block deleting parent user with registrations');
+    pfgAssert($restrictedDelete, 'ON DELETE RESTRICT did not block deleting parent registration_category with registrations');
 
-    return 'Invalid registration/accommodation FK inserts rejected (SQLSTATE 23000); parent user DELETE blocked by ON DELETE RESTRICT';
+    return 'Invalid registration/accommodation FK inserts rejected (SQLSTATE 23000); NULL user_id allowed; parent category DELETE blocked by ON DELETE RESTRICT';
 });
 
 // T3-08: Registration Transaction Atomicity (FND-21), Single Canonical Write & Idempotency-Key Replay
@@ -467,23 +477,42 @@ pfgTest('T3-08', 'Single-transaction registration atomicity, zero legacy dual-wr
 
     try {
         $email = 'idem.canonical.' . bin2hex(random_bytes(3)) . '@example.test';
-        $idemUid = uuid4();
-        $nowSqlStr = nowSql();
-        $pdo->prepare("
-            INSERT INTO users (id, email, email_verified_at, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at)
-            VALUES (:id, :em, :now, :pw, 'Canonical Tester', '+91 98250 55555', 'India', 1, 'ACTIVE', :now, :now)
-        ")->execute([':id' => $idemUid, ':em' => $email, ':now' => $nowSqlStr, ':pw' => hashPassword('Canonical#2027')]);
-        $partRoleId = (string)$pdo->query("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1")->fetchColumn();
-        $pdo->prepare('INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_at) VALUES (:id, :uid, :rid, NULL, :now)')
-            ->execute([':id' => uuid4(), ':uid' => $idemUid, ':rid' => $partRoleId, ':now' => $nowSqlStr]);
+        $usersBefore = (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
-        $rawSess = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
-        $pdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 0, :exp, :now)')
-            ->execute([':id' => uuid4(), ':uid' => $idemUid, ':th' => hashToken($rawSess), ':exp' => nowSql(time() + 3600), ':now' => $nowSqlStr]);
-        $csrfTok = pfgComputeSessionBoundCsrfToken($rawSess);
+        // Obtain anonymous session cookie + CSRF token via public GET /api/registrations (accountless flow)
+        $anonCookies = [];
+        $chGet = curl_init('http://127.0.0.1:8087/api/registrations');
+        curl_setopt_array($chGet, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$anonCookies): int {
+                $t = trim($line);
+                if (stripos($t, 'set-cookie:') === 0) {
+                    $val = trim(substr($t, 11));
+                    $semi = explode(';', $val);
+                    if (strpos($semi[0], '=') !== false) {
+                        [$cn, $cv] = explode('=', $semi[0], 2);
+                        $anonCookies[trim($cn)] = trim($cv);
+                    }
+                }
+                return strlen($line);
+            },
+        ]);
+        $getBody = (string)curl_exec($chGet);
+        curl_close($chGet);
+        $getJson = json_decode($getBody, true);
+        $csrfTok = (string)($getJson['csrfToken'] ?? '');
+        pfgAssert($csrfTok !== '' && !empty($anonCookies), 'Failed to obtain anonymous CSRF/session from GET /api/registrations');
+        $cookiePairs = [];
+        foreach ($anonCookies as $ck => $cv) {
+            $cookiePairs[] = $ck . '=' . $cv;
+        }
+        $cookieHeader = implode('; ', $cookiePairs);
 
         $idemKey = 'pfg-idem-' . bin2hex(random_bytes(6));
         $payload = json_encode([
+            'fullName'                  => 'Canonical Tester',
+            'email'                     => $email,
             'phone'                     => '+91 98250 55555',
             'country'                   => 'India',
             'cityDistrict'              => 'Vadodara',
@@ -505,14 +534,14 @@ pfgTest('T3-08', 'Single-transaction registration atomicity, zero legacy dual-wr
             'idempotencyKey'            => $idemKey,
         ]);
 
-        $doPost = static function () use ($payload, $idemKey, $rawSess, $csrfTok): array {
+        $doPost = static function () use ($payload, $idemKey, $cookieHeader, $csrfTok): array {
             $ch = curl_init('http://127.0.0.1:8087/api/registrations');
             curl_setopt_array($ch, [
                 CURLOPT_POST           => true,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER     => [
                     'Content-Type: application/json',
-                    'Cookie: ' . SESSION_COOKIE_NAME . '=' . $rawSess,
+                    'Cookie: ' . $cookieHeader,
                     'X-CSRF-Token: ' . $csrfTok,
                     'Idempotency-Key: ' . $idemKey,
                 ],
@@ -531,6 +560,12 @@ pfgTest('T3-08', 'Single-transaction registration atomicity, zero legacy dual-wr
         $regId1 = (string)($r1['json']['registration']['id'] ?? '');
         pfgAssert(preg_match('/^PFG-2027-\d{6,}$/', $code1) === 1, "Expected atomic format PFG-2027-NNNNNN, got {$code1}");
 
+        // Verify accountless: user_id IS NULL and ZERO new users created!
+        $regUid = $pdo->query("SELECT user_id FROM registrations WHERE id = " . $pdo->quote($regId1))->fetchColumn();
+        $usersAfter = (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        pfgAssert($regUid === null || $regUid === false, 'Accountless registration unexpectedly set user_id!');
+        pfgAssert($usersAfter === $usersBefore, 'Accountless registration created a users row!');
+
         // Replay with same Idempotency-Key -> HTTP 200 with exact same Registration ID & 0 duplicate rows
         $r2 = $doPost();
         pfgAssert($r2['status'] === 200 && !empty($r2['json']['idempotentReplay']), "Replay expected 200 idempotentReplay, got {$r2['status']}: {$r2['raw']}");
@@ -545,7 +580,7 @@ pfgTest('T3-08', 'Single-transaction registration atomicity, zero legacy dual-wr
         pfgAssert($canAcc === 1 && $legAcc === 0, "Expected canonical accommodation=1, legacy=0; got {$canAcc}/{$legAcc}");
         pfgAssert($canDis === 1 && $legDis === 0, "Expected canonical disability=1, legacy=0; got {$canDis}/{$legDis}");
 
-        return "Rollback left 0 orphan users; POST -> {$code1} (canonical=1, legacy=0); Idempotency-Key replay -> HTTP 200 same code";
+        return "Rollback left 0 orphan users; accountless POST -> {$code1} (user_id=NULL, 0 users created, canonical=1, legacy=0); Idempotency-Key replay -> HTTP 200 same code";
     } finally {
         proc_terminate($proc);
         if (isset($pipes[0]) && is_resource($pipes[0])) {
@@ -581,10 +616,11 @@ pfgTest('T3-09', 'Soft-deleted registrations excluded from accommodation & check
 pfgTest('T3-10', 'Manual attendance_records decoupled from QR, enforces per-day uniqueness & correction audit trail', function (): string {
     $pdo = pfgCreateDirectPdo('pfg27_test');
     $edId = (string)$pdo->query('SELECT id FROM festival_editions WHERE is_active = 1 LIMIT 1')->fetchColumn();
-    $regRow = $pdo->query("SELECT id, user_id FROM registrations WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $regRow = $pdo->query("SELECT id FROM registrations WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
     pfgAssert(is_array($regRow), 'No active registration found');
     $regId = (string)$regRow['id'];
-    $opId = (string)$regRow['user_id'];
+    $opId = (string)$pdo->query("SELECT id FROM users WHERE is_active = 1 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1")->fetchColumn();
+    pfgAssert($opId !== '', 'No active staff operator user found');
     $now = nowSql();
 
     // Verify zero qr_credentials required
@@ -827,7 +863,7 @@ pfgTest('T3-13', 'Real mysqldump backup, full database restore, decryption & seq
             $postMigs = (int)$rpdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
             pfgAssert($postTables === $preTables && $postTables === 70, "Table count mismatch after restore: pre={$preTables}, post={$postTables}, expected=70");
             pfgAssert($postFks === $preFks && $postFks >= 79, "FK count mismatch after restore: pre={$preFks}, post={$postFks}, expected>=79");
-            pfgAssert($postMigs === 13, "Migration count mismatch after restore: {$postMigs}, expected=13");
+            pfgAssert($postMigs === 14, "Migration count mismatch after restore: {$postMigs}, expected=14");
 
             // Verify encrypted accommodation decrypts cleanly after restore (incl. Gujarati UTF-8)
             $restoredEnc = (string)$rpdo->query('SELECT free_text_details FROM accommodation_requests LIMIT 1')->fetchColumn();

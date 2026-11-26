@@ -64,12 +64,14 @@ require_once dirname(__DIR__) . '/includes/header.php';
             2. Registration Categories, Application Review &amp; No Guaranteed Benefits
           </h2>
           <p class="text-[#4B4257]">
-            Registration for Purple Festival Gujarat 2027 is offered across three primary
-            categories: <strong>Attendee</strong>, <strong>Volunteer</strong>, and
-            <strong>Sign Language Interpreter (SLI)</strong>. Attendee registrations are
-            confirmed upon submission (subject to festival edition capacity). Volunteer and
+            Registration for Purple Festival Gujarat 2027 is accountless (no participant
+            website login or password required) and is offered across three primary
+            categories: <strong>Attendee</strong>, <strong>Sign Language Interpreter (SLI)</strong>,
+            and <strong>Volunteer</strong>. Attendee registrations are
+            confirmed upon submission (subject to festival edition capacity), with confirmation
+            sent via email. Volunteer and
             SLI applications undergo verification and coordinator review prior to approval and
-            duty assignment. Submitting an application does not guarantee approval for
+            duty assignment, with decisions and assignments communicated by email. Submitting an application does not guarantee approval for
             operational roles, and registration or approval does
             <strong>not</strong> guarantee travel reimbursement, lodging, outstation
             accommodation, or honorarium unless separately confirmed in writing by the Festival

@@ -70,8 +70,8 @@ require_once dirname(__DIR__) . '/includes/header.php';
           </form>
 
           <div class="pfg-links">
-            <a href="/forgot-password">Forgot your password?</a>
-            <a href="/login">Participant sign in</a>
+            <a href="/forgot-password">Forgot staff password?</a>
+            <a href="/apply">Public registration (no login needed)</a>
           </div>
         </div>
       </div>

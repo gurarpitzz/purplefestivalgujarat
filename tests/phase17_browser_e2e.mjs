@@ -297,9 +297,8 @@ try {
   browser = await pw.chromium.launch({ channel: 'chrome', headless: true });
 
   const uniqueSuffix = crypto.randomBytes(3).toString('hex');
-  const partEmail = `e2e.participant.${uniqueSuffix}@example.test`;
-  const partPass = 'E2ePart#2027';
-  const partName = `E2E Participant ${uniqueSuffix}`;
+  const partEmail = `e2e.applicant.${uniqueSuffix}@example.test`;
+  const partName = `E2E Applicant ${uniqueSuffix}`;
   let attendeeCode = '';
   let volunteerCode = '';
   let volunteerRegId = '';
@@ -310,37 +309,18 @@ try {
   const partPage = await partContext.newPage();
 
   // =========================================================================
-  // E2E-01: Attendee Full Browser Journey (Signup -> Verify -> Login -> /apply -> /apply/attendee -> /dashboard)
+  // E2E-01: Accountless Public Attendee Browser Journey (/apply -> /apply/attendee -> Review -> Confirm, 0 accounts, 0 QR, 0 /dashboard)
   // =========================================================================
-  await runCheck('E2E-01', 'Attendee browser journey: /register -> verify-email -> /login -> /apply (3 cards) -> /apply/attendee -> /dashboard (0 QR)', async () => {
+  await runCheck('E2E-01', 'Accountless Attendee browser journey: /apply (3 boxes, 0 login) -> /apply/attendee -> Review -> Confirm (user_id=NULL, 0 users created, 0 QR)', async () => {
     clearMailSink();
 
-    // 1. Register on /register
-    await partPage.goto(`${BASE_URL}/register`, { waitUntil: 'networkidle' });
-    await partPage.fill('#register-name', partName);
-    await partPage.fill('#register-email', partEmail);
-    await partPage.fill('#register-phone', '+91 98250 44556');
-    await partPage.fill('#register-password', partPass);
-    await partPage.fill('#register-confirm', partPass);
-    await partPage.check('#register-consent');
-    await partPage.click('#register-submit');
-    await partPage.waitForSelector('#register-success:not([hidden])', { timeout: 10000 });
+    const usersBefore = Number(runPhpHelper(`
+      require_once '${ROOT.replace(/\\/g, '/')}/includes/config.php';
+      require_once '${ROOT.replace(/\\/g, '/')}/includes/database.php';
+      echo (int)getDb()->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    `));
 
-    // 2. Extract verify link from tests/tmp/mail-sink & confirm email
-    const verifyUrl = extractVerifyUrlFromSink(partEmail);
-    assert(verifyUrl, 'Could not find verification URL in tests/tmp/mail-sink/');
-    await partPage.goto(verifyUrl, { waitUntil: 'networkidle' });
-    await partPage.click('#verify-confirm');
-    await partPage.waitForSelector('#verify-done:not([hidden])', { timeout: 10000 });
-
-    // 3. Login on /login
-    await partPage.goto(`${BASE_URL}/login`, { waitUntil: 'networkidle' });
-    await partPage.fill('#login-email', partEmail);
-    await partPage.fill('#login-password', partPass);
-    await partPage.click('#login-submit');
-    await partPage.waitForURL((u) => u.pathname.startsWith('/dashboard'), { timeout: 10000 });
-
-    // 4. Navigate to /apply — assert strictly 3 primary category cards, 0 legacy/ACCESSIBLE cards
+    // 1. Open /apply WITHOUT logging in — assert strictly 3 primary category cards, 0 legacy/ACCESSIBLE cards, 0 login/signup wall
     await partPage.goto(`${BASE_URL}/apply`, { waitUntil: 'networkidle' });
     const cardCodes = await partPage.$$eval('article[data-primary-category]', (els) =>
       els.map((el) => el.getAttribute('data-primary-category'))
@@ -353,15 +333,22 @@ try {
     assert(!applyHtml.includes('data-primary-category="DELEGATE"') && !applyHtml.includes('data-primary-category="ACCESSIBLE"'), 'Legacy or ACCESSIBLE card found on /apply');
     await saveShot(partPage, 'apply_hub_desktop.png');
 
-    // 5. Complete /apply/attendee
+    // 2. Open /apply/attendee directly without login, fill applicant details + attendee fields + consents
     await partPage.goto(`${BASE_URL}/apply/attendee`, { waitUntil: 'networkidle' });
+    await partPage.fill('#pfg-full-name', partName);
+    await partPage.fill('#pfg-email', partEmail);
+    await partPage.fill('#pfg-phone', '+91 98250 44556');
     await partPage.check('#pfg-age-group-18_35');
     await partPage.check('#pfg-self-tag-1');
     await partPage.check('#pfg-day-day_1');
     await partPage.check('#pfg-consent-zero-tolerance');
     await partPage.check('#pfg-consent-dpdp');
     await partPage.check('#pfg-consent-accuracy');
-    await partPage.click('#pfg-btn-submit');
+
+    // 3. Review-before-submit step -> Confirm & Submit
+    await partPage.click('#pfg-btn-review');
+    await partPage.waitForSelector('#pfg-review-panel:not([hidden])', { timeout: 8000 });
+    await partPage.click('#pfg-btn-confirm-submit');
     await partPage.waitForSelector('#pfg-confirmation-panel:not([hidden])', { timeout: 12000 });
 
     const confText = await partPage.textContent('#pfg-confirmation-panel');
@@ -370,19 +357,26 @@ try {
     attendeeCode = codeMatch[0];
     const confHtml = await partPage.innerHTML('#pfg-confirmation-panel');
     assert(!confHtml.includes('qrserver.com') && !confHtml.includes('<canvas'), 'QR pass element leaked into Attendee confirmation!');
+    assert(!confHtml.includes('/dashboard'), 'Retired /dashboard link leaked into Attendee confirmation!');
+    assert(confHtml.includes('Return to Homepage'), 'Confirmation missing Return to Homepage link');
 
-    // 6. Verify /dashboard shows Registration ID and zero QR pass
-    await partPage.goto(`${BASE_URL}/dashboard`, { waitUntil: 'networkidle' });
-    await partPage.waitForFunction(
-      (code) => document.body && document.body.innerText.includes(code),
-      attendeeCode,
-      { timeout: 10000 }
-    );
-    const dashHtml = await partPage.content();
-    assert(!dashHtml.includes('qrserver.com') && !dashHtml.includes('html5-qrcode'), 'QR pass leaked into Participant Dashboard!');
-    await saveShot(partPage, 'dashboard_desktop.png');
+    // 4. Verify DB invariants: ZERO new users rows created & registrations.user_id IS NULL
+    const dbCheck = JSON.parse(runPhpHelper(`
+      require_once '${ROOT.replace(/\\/g, '/')}/includes/config.php';
+      require_once '${ROOT.replace(/\\/g, '/')}/includes/database.php';
+      $pdo = getDb();
+      $uCnt = (int)$pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+      $regUid = $pdo->query("SELECT user_id FROM registrations WHERE registration_code = " . $pdo->quote('${attendeeCode}') . " LIMIT 1")->fetchColumn();
+      echo json_encode(['usersAfter' => $uCnt, 'regUserId' => $regUid === false ? null : $regUid]);
+    `));
+    assert(dbCheck.usersAfter === usersBefore, `Accountless Attendee registration created ${dbCheck.usersAfter - usersBefore} users row(s)!`);
+    assert(dbCheck.regUserId === null, `Expected registrations.user_id=NULL, got ${dbCheck.regUserId}`);
 
-    return `Registered ${partEmail} -> verified -> logged in -> /apply(3 cards) -> ${attendeeCode} confirmed (0 QR) -> visible on /dashboard`;
+    // 5. Verify retired /dashboard returns 410 Gone in browser (no fatal error)
+    const dashResp = await partPage.goto(`${BASE_URL}/dashboard`, { waitUntil: 'networkidle' });
+    assert(dashResp && dashResp.status() === 410, `Expected GET /dashboard -> 410 Gone, got ${dashResp ? dashResp.status() : 'null'}`);
+
+    return `Accountless /apply(3 cards) -> /apply/attendee -> Review -> ${attendeeCode} confirmed (user_id=NULL, 0 users created, 0 QR, 0 /dashboard); /dashboard->410`;
   });
 
   // =========================================================================
@@ -452,15 +446,20 @@ try {
   });
 
   // =========================================================================
-  // E2E-03: Volunteer & SLI Browser Forms + Admin Review/Assign + Dashboard Duty + RGST Attendance
+  // E2E-03: Accountless Volunteer & SLI Browser Forms + Admin Review/Assign + Email Check + RGST Attendance (All 3 Categories)
   // =========================================================================
-  await runCheck('E2E-03', 'Volunteer & SLI browser forms (shared a11y + shift grid), Admin approve/assign, dashboard duty display & RGST mark', async () => {
-    // 1. Submit Volunteer form in browser
+  await runCheck('E2E-03', 'Accountless Volunteer & SLI browser forms (Review step, 0 accounts), Admin approve/assign (email 0 /dashboard) & RGST mark for both', async () => {
+    clearMailSink();
+
+    // 1. Submit accountless Volunteer form in browser
     await partPage.goto(`${BASE_URL}/apply/volunteer`, { waitUntil: 'networkidle' });
     const volShifts = await partPage.locator('input[name="availabilityShifts[]"]').count();
     const volPwdRadios = await partPage.locator('input[name="isPersonWithDisability"]').count();
     assert(volShifts === 6 && volPwdRadios >= 3, `Volunteer form missing shift grid (${volShifts}) or shared accessibility (${volPwdRadios})`);
 
+    await partPage.fill('#pfg-full-name', `${partName} Volunteer`);
+    await partPage.fill('#pfg-email', partEmail);
+    await partPage.fill('#pfg-phone', '+91 98250 44557');
     await partPage.fill('#pfg-vol-age', '23');
     await partPage.check('#pfg-msu-external');
     await partPage.check('#pfg-primary-role-1');
@@ -472,19 +471,25 @@ try {
     await partPage.check('#pfg-consent-zero-tolerance');
     await partPage.check('#pfg-consent-dpdp');
     await partPage.check('#pfg-consent-accuracy');
-    await partPage.click('#pfg-btn-submit');
+    await partPage.click('#pfg-btn-review');
+    await partPage.waitForSelector('#pfg-review-panel:not([hidden])', { timeout: 8000 });
+    await partPage.click('#pfg-btn-confirm-submit');
     await partPage.waitForSelector('#pfg-confirmation-panel:not([hidden])', { timeout: 12000 });
     const volConfText = await partPage.textContent('#pfg-confirmation-panel');
     const volMatch = String(volConfText || '').match(/PFG-2027-\d{6,}/);
     assert(volMatch, `Volunteer confirmation missing Registration ID: ${volConfText}`);
+    assert(String(volConfText || '').includes('Pending Coordinator Review'), 'Volunteer confirmation must state Pending Coordinator Review');
     volunteerCode = volMatch[0];
 
-    // 2. Submit SLI form in browser
+    // 2. Submit accountless SLI form in browser
     await partPage.goto(`${BASE_URL}/apply/sli`, { waitUntil: 'networkidle' });
     const sliShifts = await partPage.locator('input[name="availabilityShifts[]"]').count();
     const sliPwdRadios = await partPage.locator('input[name="isPersonWithDisability"]').count();
     assert(sliShifts === 6 && sliPwdRadios >= 3, `SLI form missing shift grid (${sliShifts}) or shared accessibility (${sliPwdRadios})`);
 
+    await partPage.fill('#pfg-full-name', `${partName} SLI`);
+    await partPage.fill('#pfg-email', partEmail);
+    await partPage.fill('#pfg-phone', '+91 98250 44558');
     await partPage.fill('#pfg-sli-age', '30');
     await partPage.fill('#pfg-sli-city', 'Vadodara');
     await partPage.selectOption('#pfg-sli-state', 'Gujarat');
@@ -499,11 +504,14 @@ try {
     await partPage.check('#pfg-consent-zero-tolerance');
     await partPage.check('#pfg-consent-dpdp');
     await partPage.check('#pfg-consent-accuracy');
-    await partPage.click('#pfg-btn-submit');
+    await partPage.click('#pfg-btn-review');
+    await partPage.waitForSelector('#pfg-review-panel:not([hidden])', { timeout: 8000 });
+    await partPage.click('#pfg-btn-confirm-submit');
     await partPage.waitForSelector('#pfg-confirmation-panel:not([hidden])', { timeout: 12000 });
     const sliConfText = await partPage.textContent('#pfg-confirmation-panel');
     const sliMatch = String(sliConfText || '').match(/PFG-2027-\d{6,}/);
     assert(sliMatch, `SLI confirmation missing Registration ID: ${sliConfText}`);
+    assert(String(sliConfText || '').includes('Pending Coordinator Review'), 'SLI confirmation must state Pending Coordinator Review');
     sliCode = sliMatch[0];
 
     // 3. Admin approves both Volunteer & SLI and assigns Volunteer a duty via live Admin APIs
@@ -511,10 +519,11 @@ try {
       require_once '${ROOT.replace(/\\/g, '/')}/includes/config.php';
       require_once '${ROOT.replace(/\\/g, '/')}/includes/database.php';
       $pdo = getDb();
-      $v = $pdo->query("SELECT id FROM registrations WHERE registration_code = " . $pdo->quote('${volunteerCode}') . " LIMIT 1")->fetchColumn();
-      $s = $pdo->query("SELECT id FROM registrations WHERE registration_code = " . $pdo->quote('${sliCode}') . " LIMIT 1")->fetchColumn();
-      echo json_encode(['volId' => $v, 'sliId' => $s]);
+      $v = $pdo->query("SELECT id, user_id FROM registrations WHERE registration_code = " . $pdo->quote('${volunteerCode}') . " LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+      $s = $pdo->query("SELECT id, user_id FROM registrations WHERE registration_code = " . $pdo->quote('${sliCode}') . " LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+      echo json_encode(['volId' => $v['id'] ?? null, 'volUid' => $v['user_id'] ?? null, 'sliId' => $s['id'] ?? null, 'sliUid' => $s['user_id'] ?? null]);
     `));
+    assert(regLookup.volUid === null && regLookup.sliUid === null, 'Accountless Volunteer or SLI unexpectedly set user_id!');
     volunteerRegId = regLookup.volId;
     sliRegId = regLookup.sliId;
 
@@ -554,41 +563,47 @@ try {
     });
     assert(rAssign.status === 201, `Admin duty assign failed: ${rAssign.status} ${await rAssign.text()}`);
 
-    // 4. Participant opens /dashboard and verifies duty assignment is displayed
-    await partPage.goto(`${BASE_URL}/dashboard`, { waitUntil: 'networkidle' });
-    await partPage.waitForFunction(
-      (title) => document.body && document.body.innerText.includes(title),
-      dutyTitle,
-      { timeout: 10000 }
-    );
+    // 4. Verify duty assignment email was captured in local mail sink with ZERO /dashboard links
+    let sawDutyMail = false;
+    for (const f of fs.readdirSync(SINK_DIR)) {
+      if (!f.endsWith('.json')) continue;
+      const content = fs.readFileSync(path.join(SINK_DIR, f), 'utf8');
+      if (content.includes(dutyTitle)) {
+        sawDutyMail = true;
+        assert(!content.includes('/dashboard'), `Duty assignment email leaked retired /dashboard link!`);
+      }
+    }
+    assert(sawDutyMail, `Duty assignment email for "${dutyTitle}" not found in local mail sink`);
 
-    // 5. RGST marks approved Volunteer Day 1 attendance & verifies persistence
-    await rgstPage.fill('#rgst-search-input', volunteerCode);
-    await rgstPage.click('#rgst-search-btn');
-    const volRow = rgstPage.locator('#rgst-table-body tr', { hasText: volunteerCode }).first();
-    await volRow.waitFor({ state: 'visible', timeout: 10000 });
-    const volDay1 = volRow.locator('input.rgst-day-checkbox[data-date="2027-01-21"]').first();
-    const volDay1Id = await volDay1.getAttribute('id');
-    await volDay1.click();
-    await rgstPage.waitForFunction(
-      (id) => {
-        const el = document.getElementById(id);
-        return Boolean(el && el.checked && !el.disabled);
-      },
-      volDay1Id,
-      { timeout: 10000 }
-    );
+    // 5. RGST marks approved Volunteer AND approved SLI Day 1 attendance & verifies persistence
+    for (const targetCode of [volunteerCode, sliCode]) {
+      await rgstPage.fill('#rgst-search-input', targetCode);
+      await rgstPage.click('#rgst-search-btn');
+      const row = rgstPage.locator('#rgst-table-body tr', { hasText: targetCode }).first();
+      await row.waitFor({ state: 'visible', timeout: 10000 });
+      const day1 = row.locator('input.rgst-day-checkbox[data-date="2027-01-21"]').first();
+      const day1Id = await day1.getAttribute('id');
+      await day1.click();
+      await rgstPage.waitForFunction(
+        (id) => {
+          const el = document.getElementById(id);
+          return Boolean(el && el.checked && !el.disabled);
+        },
+        day1Id,
+        { timeout: 10000 }
+      );
+    }
 
-    return `Volunteer(${volunteerCode}) & SLI(${sliCode}) submitted -> Admin approved & assigned "${dutyTitle}" -> visible on /dashboard -> RGST marked Day 1 PRESENT`;
+    return `Accountless Volunteer(${volunteerCode}) & SLI(${sliCode}) submitted -> Admin approved & assigned "${dutyTitle}" (email 0 /dashboard) -> RGST marked both Day 1 PRESENT`;
   });
 
   // =========================================================================
-  // E2E-04: Public Desktop Visual Screenshots (Home, Programme, Accessibility)
+  // E2E-04: Public Desktop Visual Screenshots (Home, Programme, Accessibility, Staff Login)
   // =========================================================================
   const pubContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const pubPage = await pubContext.newPage();
 
-  await runCheck('E2E-04', 'Capture post-Phase-15 desktop visual screenshots (home, programme, accessibility) with zero JS page errors', async () => {
+  await runCheck('E2E-04', 'Capture desktop visual screenshots (home, programme, accessibility, staff_login) with zero JS page errors', async () => {
     const pageErrors = [];
     pubPage.on('pageerror', (err) => pageErrors.push(err.message));
 
@@ -604,10 +619,14 @@ try {
     await pubPage.waitForTimeout(300);
     const a11ySize = await saveShot(pubPage, 'accessibility_desktop.png');
 
-    assert(pageErrors.length === 0, `Uncaught JS pageerrors: ${pageErrors.join(' | ')}`);
-    assert(homeSize > 10000 && progSize > 10000 && a11ySize > 10000, 'One or more desktop screenshots appear empty');
+    await pubPage.goto(`${BASE_URL}/staff/login`, { waitUntil: 'networkidle' });
+    await pubPage.waitForTimeout(300);
+    const staffLoginSize = await saveShot(pubPage, 'staff_login_desktop.png');
 
-    return `Saved 6 desktop screenshots: home(${homeSize}B), programme(${progSize}B), accessibility(${a11ySize}B), apply_hub, dashboard, rgst_desk — 0 pageerrors`;
+    assert(pageErrors.length === 0, `Uncaught JS pageerrors: ${pageErrors.join(' | ')}`);
+    assert(homeSize > 10000 && progSize > 10000 && a11ySize > 10000 && staffLoginSize > 10000, 'One or more desktop screenshots appear empty');
+
+    return `Saved 6 desktop screenshots: home(${homeSize}B), programme(${progSize}B), accessibility(${a11ySize}B), staff_login(${staffLoginSize}B), apply_hub, rgst_desk — 0 pageerrors`;
   });
 
   // =========================================================================
@@ -618,10 +637,10 @@ try {
       { path: '/', page: pubPage },
       { path: '/programme', page: pubPage },
       { path: '/accessibility', page: pubPage },
-      { path: '/login', page: pubPage },
-      { path: '/register', page: pubPage },
       { path: '/apply', page: pubPage },
-      { path: '/dashboard', page: partPage },
+      { path: '/apply/attendee', page: pubPage },
+      { path: '/staff/login', page: pubPage },
+      { path: '/forgot-password', page: pubPage },
       { path: '/rgst', page: rgstPage },
     ];
 
@@ -753,11 +772,11 @@ try {
 
       const routes = [
         { path: '/', page: pPub, keySel: 'h1' },
-        { path: '/login', page: pPub, keySel: '#login-submit' },
-        { path: '/register', page: pPub, keySel: '#register-submit' },
+        { path: '/staff/login', page: pPub, keySel: '#staff-submit' },
         { path: '/forgot-password', page: pPub, keySel: 'button[type="submit"]' },
         { path: '/apply', page: pPub, keySel: 'article[data-primary-category]' },
-        { path: '/dashboard', page: pPart, keySel: 'h1' },
+        { path: '/apply/attendee', page: pPub, keySel: '#pfg-full-name' },
+        { path: '/apply/volunteer', page: pPub, keySel: '#pfg-full-name' },
         { path: '/rgst', page: pRgst, keySel: '#rgst-search-input' },
       ];
 

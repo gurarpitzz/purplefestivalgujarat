@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/registration-validators.php';
-require_once __DIR__ . '/../includes/form-components/account-identity-card.php';
+require_once __DIR__ . '/../includes/form-components/applicant-details.php';
 require_once __DIR__ . '/../includes/form-components/shared-accessibility.php';
 require_once __DIR__ . '/../includes/form-components/shift-availability-grid.php';
 require_once __DIR__ . '/../includes/form-components/emergency-contact.php';
@@ -19,30 +19,7 @@ require_once __DIR__ . '/../includes/form-components/consent-declarations.php';
 $esc = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
 $pdo = getDb();
-$currentUser = getCurrentUser($pdo);
-if (!$currentUser || empty($currentUser['id'])) {
-    header('Location: /login?next=' . rawurlencode('/apply/volunteer'));
-    exit;
-}
-enforceStaffMfaGate($currentUser);
-
-$userId = (string)$currentUser['id'];
-$stmtUser = $pdo->prepare(
-    'SELECT id, email, email_verified_at, full_name, phone, country, city_district, state, preferred_language,
-            emergency_contact_name, emergency_contact_relationship, emergency_contact_phone
-     FROM users WHERE id = :id AND deleted_at IS NULL LIMIT 1'
-);
-$stmtUser->execute([':id' => $userId]);
-$userRow = $stmtUser->fetch(PDO::FETCH_ASSOC);
-if (!$userRow) {
-    header('Location: /login?next=' . rawurlencode('/apply/volunteer'));
-    exit;
-}
-$emailVerified = !empty($userRow['email_verified_at']);
-
-$stmtEd = $pdo->prepare('SELECT id FROM festival_editions WHERE slug = :slug LIMIT 1');
-$stmtEd->execute([':slug' => defined('FESTIVAL_EDITION_SLUG') ? FESTIVAL_EDITION_SLUG : 'gujarat-2027']);
-$editionId = (string)($stmtEd->fetchColumn() ?: '');
+$registrationOpen = pfgIsPublicRegistrationOpen($pdo);
 
 $disabilityCategories = [];
 $stmtDis = $pdo->query('SELECT id, code, name, rpwd_group, description FROM disability_categories ORDER BY display_order ASC');
@@ -62,105 +39,21 @@ if (empty($accommodationTypes) && defined('ACCOMMODATION_TYPES_SEED')) {
     $accommodationTypes = ACCOMMODATION_TYPES_SEED;
 }
 
-$editRegId = isset($_GET['edit']) && is_string($_GET['edit']) ? trim($_GET['edit']) : '';
-$mode = 'create';
-$initialData = [];
-
-$stmtAct = $pdo->prepare(
-    "SELECT * FROM registrations
-     WHERE user_id = :uid AND UPPER(category_code) = 'VOLUNTEER' AND deleted_at IS NULL
-       AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
-     ORDER BY created_at DESC LIMIT 1"
-);
-$stmtAct->execute([':uid' => $userId]);
-$existingActive = $stmtAct->fetch(PDO::FETCH_ASSOC) ?: null;
-
-if (
-    $editRegId !== '' &&
-    $existingActive &&
-    (string)$existingActive['id'] === $editRegId &&
-    in_array((string)$existingActive['status'], ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true)
-) {
-    $mode = 'edit';
-    $stmtVol = $pdo->prepare('SELECT * FROM volunteer_applications WHERE registration_id = :rid LIMIT 1');
-    $stmtVol->execute([':rid' => $editRegId]);
-    $vRow = $stmtVol->fetch(PDO::FETCH_ASSOC) ?: [];
-
-    $stmtDisOwn = $pdo->prepare('SELECT disability_code, self_description FROM participant_disability_disclosures WHERE registration_id = :rid');
-    $stmtDisOwn->execute([':rid' => $editRegId]);
-    $disCodes = [];
-    $disSelf = '';
-    foreach ($stmtDisOwn->fetchAll(PDO::FETCH_ASSOC) ?: [] as $dr) {
-        if (!empty($dr['disability_code'])) {
-            $disCodes[] = (string)$dr['disability_code'];
-        }
-        if ($disSelf === '' && !empty($dr['self_description'])) {
-            $disSelf = (string)pfgDecryptSensitiveValue((string)$dr['self_description']);
-        }
-    }
-
-    $stmtAccOwn = $pdo->prepare('SELECT * FROM accommodation_requests WHERE registration_id = :rid ORDER BY created_at DESC LIMIT 1');
-    $stmtAccOwn->execute([':rid' => $editRegId]);
-    $accRow = $stmtAccOwn->fetch(PDO::FETCH_ASSOC) ?: [];
-
-    $initialData = [
-        'emergencyContactName'         => $existingActive['emergency_contact_name'] ?? ($vRow['emergency_contact_name'] ?? ''),
-        'emergencyContactRelationship' => $existingActive['emergency_contact_relationship'] ?? ($userRow['emergency_contact_relationship'] ?? ''),
-        'emergencyContactPhone'        => $existingActive['emergency_contact_phone'] ?? ($vRow['emergency_contact_phone'] ?? ''),
-        'isPersonWithDisability'       => $existingActive['is_person_with_disability'] ?? '',
-        'disabilityCategoryCodes'      => $disCodes,
-        'disabilitySelfDescription'    => $disSelf,
-        'accommodationTypes'           => jsonDecode($accRow['selected_types'] ?? '[]', []),
-        'accommodationFreeText'        => (string)(pfgDecryptSensitiveValue($accRow['free_text_details'] ?? $accRow['notes'] ?? null) ?? ''),
-        'escortAccompanying'           => !empty($accRow['escort_accompanying']),
-        'escortName'                   => (string)(pfgDecryptSensitiveValue($accRow['escort_name_encrypted'] ?? null) ?? ''),
-        'volunteerDetails'             => [
-            'age'                  => $vRow['age'] ?? '',
-            'gender'               => $vRow['gender'] ?? '',
-            'msuAffiliation'       => $vRow['msu_affiliation_status'] ?? '',
-            'msuFacultyDepartment' => $vRow['msu_faculty_department'] ?? '',
-            'institutionName'      => $vRow['institution_name'] ?? '',
-            'crrNumber'            => $vRow['crr_number'] ?? '',
-            'primaryRole'          => $vRow['primary_role'] ?? '',
-            'secondaryRoles'       => jsonDecode($vRow['preferred_roles'] ?? '[]', []),
-            'anchoringExperience'  => $vRow['anchoring_experience'] ?? '',
-            'relevantExperience'   => $vRow['relevant_experience'] ?? '',
-            'languagesSpoken'      => jsonDecode($vRow['languages_spoken'] ?? '[]', []),
-            'languagesOther'       => $vRow['languages_other'] ?? '',
-            'availabilityShifts'   => jsonDecode($vRow['availability_shifts'] ?? '[]', []),
-        ],
-    ];
-} elseif ($editionId !== '' && !$existingActive) {
-    $stmtDr = $pdo->prepare(
-        "SELECT payload_json FROM registration_drafts WHERE edition_id = :eid AND user_id = :uid AND category_code = 'VOLUNTEER' LIMIT 1"
-    );
-    $stmtDr->execute([':eid' => $editionId, ':uid' => $userId]);
-    $rawDraft = $stmtDr->fetchColumn();
-    if (is_string($rawDraft) && $rawDraft !== '') {
-        $decoded = jsonDecode($rawDraft, []);
-        if (is_array($decoded)) {
-            $initialData = pfgDecryptDraftPayload($decoded);
-        }
-    }
-}
-
 $ecDefaults = [
-    'emergencyContactName'         => $initialData['emergencyContactName'] ?? ($userRow['emergency_contact_name'] ?? ''),
-    'emergencyContactRelationship' => $initialData['emergencyContactRelationship'] ?? ($userRow['emergency_contact_relationship'] ?? ''),
-    'emergencyContactPhone'        => $initialData['emergencyContactPhone'] ?? ($userRow['emergency_contact_phone'] ?? ''),
+    'emergencyContactName'         => '',
+    'emergencyContactRelationship' => '',
+    'emergencyContactPhone'        => '',
 ];
 
 $bootData = [
-    'categoryCode'   => 'VOLUNTEER',
-    'categoryName'   => 'Festival Volunteer',
-    'mode'           => $mode,
-    'registrationId' => $mode === 'edit' ? $editRegId : null,
-    'csrfToken'      => getCsrfToken(),
-    'initialDraft'   => $initialData,
+    'categoryCode'     => 'VOLUNTEER',
+    'categoryName'     => 'Festival Volunteer',
+    'registrationOpen' => $registrationOpen,
+    'csrfToken'        => $registrationOpen ? getCsrfToken() : '',
 ];
 
-$pageTitle = ($mode === 'edit' ? 'Edit Volunteer Application' : 'Festival Volunteer Application') . ' | Purple Festival Gujarat 2027';
-$pageDescription = 'Apply as a Festival Volunteer for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara). Volunteers with and without disabilities are equally welcomed.';
+$pageTitle = 'Festival Volunteer Application | Purple Festival Gujarat 2027';
+$pageDescription = 'Apply as a Festival Volunteer for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara). Volunteers with and without disabilities are equally welcomed. No account required.';
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -172,53 +65,18 @@ require_once __DIR__ . '/../includes/header.php';
 
     <header class="mb-7">
       <span class="inline-flex items-center rounded-full bg-[#F2E9FE] px-3 py-1 text-xs font-bold text-[#5B2A86]">
-        Primary Category 2 of 3 · Free · Coordinator Review Required
+        Primary Category 3 of 3 · Free · No Account Required · Coordinator Review
       </span>
       <h1 class="mt-2 text-[clamp(1.65rem,3.2vw,2.35rem)] font-bold tracking-[-0.02em] text-[#202D59]">
-        <?= $mode === 'edit' ? 'Update Your Volunteer Application' : 'Festival Volunteer Application' ?>
+        Festival Volunteer Application
       </h1>
       <p class="mt-2 text-sm leading-relaxed text-[#46537C]">
         Volunteers with and without disabilities are equally welcomed (minimum age 16 years). Applications are reviewed by our Volunteer Coordinators before approval and shift assignment.
       </p>
-      <?php if ($mode === 'edit' && !empty($existingActive['public_review_note']) && (string)$existingActive['status'] === 'ADDITIONAL_INFO_REQUIRED'): ?>
-        <div role="note" class="mt-4 rounded-xl border-2 border-amber-600 bg-amber-50 p-4 text-sm text-amber-950">
-          <p class="font-bold">Coordinator Information Request:</p>
-          <p class="mt-1"><?= $esc($existingActive['public_review_note']) ?></p>
-        </div>
-      <?php endif; ?>
     </header>
 
-    <?php if (!$emailVerified): ?>
-      <div role="alert" class="rounded-2xl border-2 border-amber-600/40 bg-amber-50 p-6">
-        <h2 class="text-lg font-bold text-amber-950">Please Verify Your Email Address First</h2>
-        <p class="mt-2 text-sm text-amber-900">
-          Your account email (<strong><?= $esc($userRow['email']) ?></strong>) must be verified before submitting a Volunteer application.
-        </p>
-        <a href="/verify-email" class="touch-target mt-4 inline-flex items-center justify-center rounded-lg bg-[#202D59] px-5 py-2.5 text-sm font-bold text-white">
-          Go to Email Verification
-        </a>
-      </div>
-    <?php elseif ($existingActive && $mode === 'create'): ?>
-      <div class="rounded-2xl border-2 border-emerald-700/35 bg-white p-6 shadow-xs">
-        <span class="inline-flex items-center rounded-full bg-[#F2E9FE] px-3 py-1 text-xs font-bold text-[#5B2A86]">
-          Application Active · <?= $esc($existingActive['status']) ?>
-        </span>
-        <h2 class="mt-3 text-xl font-bold text-[#202D59]">You Already Have an Active Volunteer Application</h2>
-        <p class="mt-2 text-sm text-[#46537C]">
-          Reference ID: <strong class="font-mono text-[#202D59]"><?= $esc($existingActive['registration_code']) ?></strong>.
-          Track coordinator review status and shift assignments in your Participant Dashboard.
-        </p>
-        <div class="mt-5 flex flex-wrap gap-3">
-          <a href="/dashboard" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#202D59] px-5 py-2.5 text-sm font-bold text-white">
-            Open Participant Dashboard
-          </a>
-          <?php if (in_array((string)$existingActive['status'], ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true)): ?>
-            <a href="/apply/volunteer?edit=<?= rawurlencode((string)$existingActive['id']) ?>" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-2.5 text-sm font-bold text-[#202D59]">
-              Edit Application
-            </a>
-          <?php endif; ?>
-        </div>
-      </div>
+    <?php if (!$registrationOpen): ?>
+      <?= pfgRenderRegistrationClosedCard('Festival Volunteer Application') ?>
     <?php else: ?>
       <div
         id="pfg-form-error-summary"
@@ -228,11 +86,10 @@ require_once __DIR__ . '/../includes/header.php';
         hidden
         class="mb-6 rounded-2xl border-2 border-red-600 bg-red-50 p-5 text-sm text-red-950"
       ></div>
-      <div id="pfg-draft-status" role="status" aria-live="polite" class="mb-4 text-xs font-semibold text-[#46537C]"></div>
 
       <form id="pfg-category-form" novalidate class="space-y-7">
-        <!-- Section 0: Account Identity Summary -->
-        <?= pfgRenderAccountIdentityCard($userRow) ?>
+        <!-- Section 0: Direct Applicant Personal & Contact Details -->
+        <?= pfgRenderApplicantDetails(true, 'Volunteer Application') ?>
 
         <!-- Section 1: Volunteer Profile & MSU Affiliation -->
         <section aria-labelledby="vol-sec1-heading" class="rounded-2xl border-2 border-[#202D59]/15 bg-white p-5 sm:p-7">
@@ -455,33 +312,39 @@ require_once __DIR__ . '/../includes/header.php';
         </section>
 
         <!-- Section 4: Shared Accessibility & Accommodations Module -->
-        <?= pfgRenderSharedAccessibility($disabilityCategories, $accommodationTypes, $initialData) ?>
+        <?= pfgRenderSharedAccessibility($disabilityCategories, $accommodationTypes, []) ?>
 
         <!-- Section 5: Emergency Contact (Required) -->
         <?= pfgRenderEmergencyContact($ecDefaults, true, true) ?>
 
         <!-- Section 6: Declarations & Consents -->
-        <?= pfgRenderConsentDeclarations('VOLUNTEER', $mode === 'edit' ? ['consentZeroTolerance' => true, 'consentDataProcessing' => true, 'consentAccuracy' => true] : []) ?>
+        <?= pfgRenderConsentDeclarations('VOLUNTEER', []) ?>
 
         <!-- Submit Controls -->
         <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-[#202D59]/15 bg-white p-5">
           <div class="flex flex-wrap items-center gap-3">
-            <?php if ($mode === 'create'): ?>
-              <button type="button" id="pfg-btn-save-draft" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-2.5 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]">
-                Save Draft
-              </button>
-            <?php endif; ?>
             <a href="/apply" class="text-sm font-semibold text-[#46537C] underline hover:text-[#202D59]">Cancel</a>
           </div>
-          <button
-            type="submit"
-            id="pfg-btn-submit"
-            class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-7 py-3 text-base font-bold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-50"
-          >
-            <?= $mode === 'edit' ? 'Save & Resubmit Application' : 'Submit Volunteer Application' ?>
-          </button>
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              id="pfg-btn-review"
+              class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] transition-colors hover:bg-[#DDDDF9]"
+            >
+              Review Information
+            </button>
+            <button
+              type="submit"
+              id="pfg-btn-submit"
+              class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-7 py-3 text-base font-bold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-50"
+            >
+              Submit Volunteer Application
+            </button>
+          </div>
         </div>
       </form>
+
+      <section id="pfg-review-panel" hidden tabindex="-1" aria-labelledby="pfg-review-heading" class="rounded-2xl border-2 border-[#5B2A86]/35 bg-white p-6 sm:p-8 shadow-sm"></section>
 
       <section id="pfg-confirmation-panel" hidden tabindex="-1" aria-live="polite" class="rounded-2xl border-2 border-emerald-700/40 bg-white p-6 sm:p-8 shadow-sm"></section>
     <?php endif; ?>

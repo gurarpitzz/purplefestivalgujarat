@@ -924,3 +924,9 @@ html.dyslexia-font textarea {
   flex-wrap: wrap;
   max-width: 100%;
 }
+
+/* WCAG 2.2 AA 400% zoom (320px) reflow: prevent <fieldset> min-inline-size:min-content overflow */
+fieldset {
+  min-width: 0;
+  max-width: 100%;
+}

@@ -52,15 +52,18 @@ try {
         }
     }
     if (is_array($pfgHeaderUser)) {
-        $pfgHeaderRoles = is_array($pfgHeaderUser['roles'] ?? null) ? $pfgHeaderUser['roles'] : ['PARTICIPANT'];
+        $pfgHeaderRoles = is_array($pfgHeaderUser['roles'] ?? null) ? $pfgHeaderUser['roles'] : [];
         if (in_array('SUPERADMIN', $pfgHeaderRoles, true) || in_array('ADMIN', $pfgHeaderRoles, true)) {
             $pfgNavState = 'ADMIN';
         } elseif (in_array('RGST', $pfgHeaderRoles, true)) {
             $pfgNavState = 'RGST';
         } else {
-            $pfgNavState = 'PARTICIPANT';
+            // CAD-17: Non-staff / historical participant sessions render public navigation only
+            $pfgHeaderUser = null;
+            $pfgHeaderRoles = [];
+            $pfgNavState = 'GUEST';
         }
-        if (function_exists('getCsrfToken')) {
+        if ($pfgHeaderUser !== null && function_exists('getCsrfToken')) {
             $pfgHeaderCsrfToken = getCsrfToken();
         }
     }
@@ -283,47 +286,12 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
               Logout
             </button>
           </form>
-        <?php elseif ($pfgNavState === 'PARTICIPANT'): ?>
-          <a
-            href="/dashboard"
-            class="touch-target hidden items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white sm:inline-flex"
-          >
-            Dashboard
-          </a>
-          <a
-            href="/apply"
-            class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-5 py-2 text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
-          >
-            Apply
-          </a>
-          <form
-            method="post"
-            action="/api/auth/logout"
-            data-pfg-logout-form="true"
-            class="hidden md:inline-flex"
-          >
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
-            <input type="hidden" name="redirect" value="/" />
-            <button
-              type="submit"
-              data-pfg-logout-btn="true"
-              class="touch-target inline-flex items-center justify-center border border-[#202D59]/35 bg-white/70 px-4 py-2 text-[14px] font-semibold text-[#202D59] transition-colors hover:border-[#202D59] hover:bg-[#202D59] hover:text-white"
-            >
-              Logout
-            </button>
-          </form>
         <?php else: ?>
           <a
-            href="/login"
-            class="touch-target hidden items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[16px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white sm:inline-flex"
+            href="/staff/login"
+            class="touch-target hidden items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white sm:inline-flex"
           >
-            Login
-          </a>
-          <a
-            href="/register"
-            class="touch-target hidden items-center justify-center px-3 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:text-[#A459FF] xl:inline-flex"
-          >
-            Register
+            Staff Login
           </a>
           <a
             href="/apply"
@@ -427,32 +395,6 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
               Logout
             </button>
           </form>
-        <?php elseif ($pfgNavState === 'PARTICIPANT'): ?>
-          <a
-            href="/dashboard"
-            data-mobile-nav-link="true"
-            class="touch-target flex items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
-          >
-            Dashboard
-          </a>
-          <a
-            href="/apply"
-            data-mobile-nav-link="true"
-            class="btn-primary-pfg touch-target flex items-center justify-center bg-[#A459FF] px-4 py-2.5 text-sm font-bold text-white"
-          >
-            Apply
-          </a>
-          <form method="post" action="/api/auth/logout" data-pfg-logout-form="true" class="w-full">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
-            <input type="hidden" name="redirect" value="/" />
-            <button
-              type="submit"
-              data-pfg-logout-btn="true"
-              class="touch-target flex w-full items-center justify-center border border-[#202D59]/35 bg-white/70 px-4 py-2.5 text-sm font-bold text-[#202D59]"
-            >
-              Logout
-            </button>
-          </form>
         <?php else: ?>
           <a
             href="/apply"
@@ -461,28 +403,12 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
           >
             Apply Now
           </a>
-          <div class="grid grid-cols-2 gap-2.5">
-            <a
-              href="/login"
-              data-mobile-nav-link="true"
-              class="touch-target flex items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
-            >
-              Login
-            </a>
-            <a
-              href="/register"
-              data-mobile-nav-link="true"
-              class="touch-target flex items-center justify-center border border-[#202D59]/35 bg-white/75 px-4 py-2.5 text-sm font-bold text-[#202D59]"
-            >
-              Register
-            </a>
-          </div>
           <a
             href="/staff/login"
             data-mobile-nav-link="true"
-            class="mt-1 inline-flex items-center justify-center py-1.5 text-xs font-semibold text-[#202D59]/75 underline-offset-4 hover:text-[#202D59] hover:underline"
+            class="touch-target flex items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
           >
-            Staff Portal
+            Staff Login
           </a>
         <?php endif; ?>
       </div>

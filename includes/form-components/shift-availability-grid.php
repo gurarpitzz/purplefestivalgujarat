@@ -25,11 +25,11 @@ if (!function_exists('pfgRenderShiftAvailabilityGrid')) {
 
         $note = $isSli
             ? 'Sessions use paired interpreters rotating every 20–30 minutes across two daily shifts. Selecting your available shifts helps SLI coordinators plan sustainable rosters and automatically records your attending festival days.'
-            : 'Approved volunteers will be invited to a sensitisation workshop and venue walk-through before the festival; schedule details will be shared by email and in your Participant Dashboard. Your attending days are automatically derived from your selected shifts.';
+            : 'Approved volunteers will be invited to a sensitisation workshop and venue walk-through before the festival; schedule details will be shared by email. Your attending days are automatically derived from your selected shifts.';
 
         ob_start();
         ?>
-        <fieldset class="border-0 p-0" aria-describedby="pfg-shift-grid-help">
+        <fieldset class="min-w-0 max-w-full border-0 p-0" aria-describedby="pfg-shift-grid-help">
           <legend class="text-base font-bold text-[#202D59]">
             Festival Day &amp; Shift Availability (21–23 January 2027) <span class="text-red-700" aria-hidden="true">*</span>
           </legend>
@@ -37,7 +37,7 @@ if (!function_exists('pfgRenderShiftAvailabilityGrid')) {
             Select at least one shift slot when you are available to serve. All checkboxes start unselected.
           </p>
 
-          <div class="mt-4 overflow-x-auto rounded-xl border-2 border-[#DCE5F7]">
+          <div class="relative mt-4 overflow-x-auto rounded-xl border-2 border-[#DCE5F7]" style="position:relative;overflow-x:auto;max-width:100%;">
             <table class="w-full border-collapse text-left text-sm">
               <thead>
                 <tr class="bg-[#F2E9FE] text-[#202D59]">
@@ -66,7 +66,7 @@ if (!function_exists('pfgRenderShiftAvailabilityGrid')) {
                     <td class="px-4 py-2 text-center">
                       <label
                         for="pfg-shift-<?= $esc(strtolower($slot1)) ?>"
-                        class="touch-target inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#DCE5F7] bg-[#F9FAFF] px-4 py-2.5 hover:border-[#A459FF]"
+                        class="touch-target relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#DCE5F7] bg-[#F9FAFF] px-4 py-2.5 hover:border-[#A459FF]"
                       >
                         <input
                           type="checkbox"
@@ -83,7 +83,7 @@ if (!function_exists('pfgRenderShiftAvailabilityGrid')) {
                     <td class="px-4 py-2 text-center">
                       <label
                         for="pfg-shift-<?= $esc(strtolower($slot2)) ?>"
-                        class="touch-target inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#DCE5F7] bg-[#F9FAFF] px-4 py-2.5 hover:border-[#A459FF]"
+                        class="touch-target relative inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#DCE5F7] bg-[#F9FAFF] px-4 py-2.5 hover:border-[#A459FF]"
                       >
                         <input
                           type="checkbox"

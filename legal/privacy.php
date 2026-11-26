@@ -49,12 +49,14 @@ require_once dirname(__DIR__) . '/includes/header.php';
           <p class="text-[#4B4257]">
             Purple Festival Gujarat 2027 collects personal data strictly with your explicit,
             informed consent in accordance with India&apos;s Digital Personal Data Protection
-            (DPDP) Act, 2023. We process your information solely to manage participant accounts
-            and three-category festival registrations (<strong>Attendee</strong>,
-            <strong>Volunteer</strong>, and <strong>Sign Language Interpreter (SLI)</strong>),
-            review Volunteer and SLI applications, arrange requested accessibility accommodations,
-            verify your official Registration ID (<code>PFG-2027-NNNNNN</code>) at manual
-            Vadodara Registration Desks, and communicate official festival updates.
+            (DPDP) Act, 2023. Public registration is <strong>accountless</strong> — we do not
+            require participants to create website accounts or passwords. We process only the
+            information needed to manage three-category festival registrations
+            (<strong>Attendee</strong>, <strong>Sign Language Interpreter (SLI)</strong>, and
+            <strong>Volunteer</strong>), review SLI and Volunteer applications, arrange requested
+            accessibility accommodations, verify your official Registration ID
+            (<code>PFG-2027-NNNNNN</code>) at manual Vadodara Registration Desks, and communicate
+            official festival updates via email.
           </p>
         </section>
 
@@ -84,8 +86,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
           </h2>
           <ul class="list-disc space-y-1.5 pl-5 text-[#4B4257]">
             <li>
-              <strong>Password Protection:</strong> Account passwords are never stored in
-              plaintext and are hashed using salted <strong>bcrypt</strong> (cost factor 12).
+              <strong>Data Minimization &amp; Staff-Only Credentials:</strong> Participants do not
+              create website accounts or passwords. Authorized staff passwords (Superadmin, Admin,
+              and Registration Desk) are never stored in plaintext and are hashed using salted
+              <strong>bcrypt</strong> (cost factor 12).
             </li>
             <li>
               <strong>Authenticated Encryption at Rest:</strong> Voluntary disability disclosures
@@ -121,12 +125,11 @@ require_once dirname(__DIR__) . '/includes/header.php';
           </h2>
           <ul class="list-disc space-y-1.5 pl-5 text-[#4B4257]">
             <li>
-              <strong>Right to Access:</strong> View your registration details, consent
-              records, and accommodation requests anytime via your Participant Dashboard.
-            </li>
-            <li>
-              <strong>Right to Correction &amp; Updating:</strong> Update your profile or
-              accessibility needs before the festival.
+              <strong>Right to Access &amp; Correction:</strong> Request a summary of your
+              submitted registration details, consent records, or corrections to your contact or
+              accessibility needs at any time by emailing
+              <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#59436D] underline">purplefestivalvadodara@gmail.com</a>
+              with your official Registration ID (<code>PFG-2027-NNNNNN</code>).
             </li>
             <li>
               <strong>Right to Erasure &amp; Consent Withdrawal:</strong> Request deletion of

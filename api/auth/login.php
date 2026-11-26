@@ -189,25 +189,23 @@ try {
         $roles = $rp['roles'];
         $permissions = $rp['permissions'];
 
+        // CAD-17: Authentication is strictly restricted to festival staff (SUPERADMIN, ADMIN, RGST).
+        // Participant accounts are discontinued; public registration is accountless.
         $isStaff = in_array('SUPERADMIN', $roles, true)
             || in_array('ADMIN', $roles, true)
             || in_array('RGST', $roles, true);
 
         $accountStatus = strtoupper((string)($user['account_status'] ?? 'ACTIVE'));
 
-        if (!$isStaff && $portal === 'staff') {
-            $outcome = 'non_staff_on_staff_portal';
-        } elseif (!$isStaff && empty($user['email_verified_at']) && $accountStatus === 'PENDING_VERIFICATION') {
-            $outcome = 'unverified_participant';
-        } elseif (!$isStaff && in_array($accountStatus, ['SUSPENDED', 'ARCHIVED', 'DISABLED', 'DEACTIVATED'], true)) {
+        if (!$isStaff) {
+            $outcome = 'non_staff_blocked';
+        } elseif (in_array($accountStatus, ['SUSPENDED', 'ARCHIVED', 'DISABLED', 'DEACTIVATED'], true)) {
             $outcome = 'account_not_active';
-        } elseif ($isStaff && $portal === 'participant') {
-            $outcome = 'staff_on_participant_portal';
         } else {
             $outcome = 'success';
         }
 
-        // Always reset failed_login_attempts & clear expired lockout upon valid password
+        // Always reset failed_login_attempts & clear expired lockout upon valid password for staff
         if ($outcome === 'success') {
             $upd = $pdo->prepare("
                 UPDATE users
@@ -222,18 +220,6 @@ try {
                 ':updated_at'    => $nowSqlStr,
                 ':id'            => $user['id'],
             ]);
-        } else {
-            $upd = $pdo->prepare("
-                UPDATE users
-                SET failed_login_attempts = 0,
-                    locked_until = NULL,
-                    updated_at = :updated_at
-                WHERE id = :id
-            ");
-            $upd->execute([
-                ':updated_at' => $nowSqlStr,
-                ':id'         => $user['id'],
-            ]);
         }
 
         $pdo->commit();
@@ -244,30 +230,17 @@ try {
         throw $txErr;
     }
 
-    if ($outcome === 'non_staff_on_staff_portal') {
+    if ($outcome === 'non_staff_blocked') {
         logAudit([
             'actorUserId'  => $user['id'],
             'action'       => 'ACCESS_DENIED',
             'resourceType' => 'auth',
             'resourceId'   => $user['id'],
-            'metadata'     => ['reason' => 'non_staff_login_blocked'],
+            'metadata'     => ['reason' => 'participant_login_discontinued_staff_only'],
         ]);
         jsonResponse([
-            'error' => 'This portal is restricted to authorized festival staff (Superadmin, Admin, and Registration Desk).',
-        ], 403);
-    }
-
-    if ($outcome === 'unverified_participant') {
-        logAudit([
-            'actorUserId'  => $user['id'],
-            'action'       => 'LOGIN_BLOCKED_UNVERIFIED',
-            'resourceType' => 'user',
-            'resourceId'   => $user['id'],
-        ]);
-        jsonResponse([
-            'error'                     => 'Please verify your email address before signing in. Check your inbox for the verification link or request a new one.',
-            'emailVerificationRequired' => true,
-        ], 403);
+            'error' => GENERIC_AUTH_ERROR,
+        ], 401);
     }
 
     if ($outcome === 'account_not_active') {
@@ -279,21 +252,7 @@ try {
             'metadata'     => ['reason' => 'account_not_active', 'accountStatus' => $accountStatus],
         ]);
         jsonResponse([
-            'error' => 'This account is not active. Please contact the Festival Secretariat for assistance.',
-        ], 403);
-    }
-
-    if ($outcome === 'staff_on_participant_portal') {
-        logAudit([
-            'actorUserId'  => $user['id'],
-            'action'       => 'ACCESS_DENIED',
-            'resourceType' => 'auth',
-            'resourceId'   => $user['id'],
-            'metadata'     => ['reason' => 'staff_on_participant_portal'],
-        ]);
-        jsonResponse([
-            'error'      => 'Festival staff accounts must sign in through the Staff Portal.',
-            'staffLogin' => '/staff/login',
+            'error' => 'This staff account is not active. Please contact the Superadmin or Festival Secretariat.',
         ], 403);
     }
 
@@ -303,14 +262,13 @@ try {
         'mfaVerified' => false,
     ], $pdo);
 
-    if ($isStaff) {
-        $redirectTo = getPortalPathForRoles($roles);
-    } else {
-        // Participants land on /dashboard unless a safe, non-staff `next` URL was supplied.
-        $nextIsStaffArea = $nextRedirect !== ''
-            && (bool)preg_match('#^/(admin|rgst|staff)(/|\?|$)#i', $nextRedirect);
-        $redirectTo = ($nextRedirect !== '' && !$nextIsStaffArea) ? $nextRedirect : '/dashboard';
-    }
+    $portalDefault = getPortalPathForRoles($roles);
+    $nextIsAllowed = $nextRedirect !== ''
+        && (
+            (in_array('SUPERADMIN', $roles, true) || in_array('ADMIN', $roles, true)) && (bool)preg_match('#^/(admin|rgst)(/|\?|$)#i', $nextRedirect)
+            || in_array('RGST', $roles, true) && (bool)preg_match('#^/rgst(/|\?|$)#i', $nextRedirect)
+        );
+    $redirectTo = $nextIsAllowed ? $nextRedirect : $portalDefault;
     $displayUsername = !empty($user['username']) ? (string)$user['username'] : (string)$user['email'];
 
     logAudit([

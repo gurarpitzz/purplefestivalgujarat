@@ -225,7 +225,7 @@ function pfgDutyNotify(PDO $pdo, array $reg, array $duty, string $category, stri
         'Status'               => strtoupper((string)$duty['status']) !== 'ASSIGNED' ? ucfirst(strtolower((string)$duty['status'])) : null,
     ], static fn($v) => $v !== null && $v !== '');
     try {
-        return pfgEnqueueNotification($pdo, [
+        $qInfo = pfgEnqueueNotification($pdo, [
             'to'              => (string)$reg['email'],
             'templateCode'    => $tpl,
             'variables'       => [
@@ -237,11 +237,13 @@ function pfgDutyNotify(PDO $pdo, array $reg, array $duty, string $category, stri
             'entityType'      => 'duty_assignment',
             'entityId'        => (string)$duty['id'],
             'idempotencyKey'  => 'duty:' . $duty['id'] . ':' . $kind . ':' . substr(md5(jsonEncode($details) . ($duty['updated_at'] ?? '')), 0, 12),
-            'createInApp'     => !empty($reg['user_id']),
-            'inAppTitle'      => $kind === 'created' ? 'New duty assignment' : 'Duty assignment updated',
-            'inAppMessage'    => "{$duty['role_title']} on {$duty['duty_date_ist']} ({$time}).",
-            'inAppActionUrl'  => '/dashboard',
+            'createInApp'     => false,
         ]);
+        if (MAIL_DRIVER === 'file' && empty($qInfo['deduped']) && !empty($qInfo['queueId'])) {
+            pfgDispatchQueuedIdNow($pdo, (string)$qInfo['queueId']);
+            $qInfo['status'] = 'CAPTURED_LOCAL';
+        }
+        return $qInfo;
     } catch (Throwable $e) {
         error_log('/api/admin/assignments.php notification enqueue warning: ' . $e->getMessage());
         return null;

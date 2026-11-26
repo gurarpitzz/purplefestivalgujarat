@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/config.php';
 require_once __DIR__ . '/../includes/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/registration-validators.php';
-require_once __DIR__ . '/../includes/form-components/account-identity-card.php';
+require_once __DIR__ . '/../includes/form-components/applicant-details.php';
 require_once __DIR__ . '/../includes/form-components/shared-accessibility.php';
 require_once __DIR__ . '/../includes/form-components/emergency-contact.php';
 require_once __DIR__ . '/../includes/form-components/consent-declarations.php';
@@ -18,32 +18,7 @@ require_once __DIR__ . '/../includes/form-components/consent-declarations.php';
 $esc = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
 $pdo = getDb();
-$currentUser = getCurrentUser($pdo);
-if (!$currentUser || empty($currentUser['id'])) {
-    header('Location: /login?next=' . rawurlencode('/apply/attendee'));
-    exit;
-}
-enforceStaffMfaGate($currentUser);
-
-$userId = (string)$currentUser['id'];
-$stmtUser = $pdo->prepare(
-    'SELECT id, email, email_verified_at, full_name, phone, country, city_district, state, preferred_language,
-            emergency_contact_name, emergency_contact_relationship, emergency_contact_phone
-     FROM users WHERE id = :id AND deleted_at IS NULL LIMIT 1'
-);
-$stmtUser->execute([':id' => $userId]);
-$userRow = $stmtUser->fetch(PDO::FETCH_ASSOC);
-if (!$userRow) {
-    header('Location: /login?next=' . rawurlencode('/apply/attendee'));
-    exit;
-}
-
-$emailVerified = !empty($userRow['email_verified_at']);
-
-// Load edition, disability categories, accommodation types
-$stmtEd = $pdo->prepare('SELECT id FROM festival_editions WHERE slug = :slug LIMIT 1');
-$stmtEd->execute([':slug' => defined('FESTIVAL_EDITION_SLUG') ? FESTIVAL_EDITION_SLUG : 'gujarat-2027']);
-$editionId = (string)($stmtEd->fetchColumn() ?: '');
+$registrationOpen = pfgIsPublicRegistrationOpen($pdo);
 
 $disabilityCategories = [];
 $stmtDis = $pdo->query('SELECT id, code, name, rpwd_group, description FROM disability_categories ORDER BY display_order ASC');
@@ -63,115 +38,21 @@ if (empty($accommodationTypes) && defined('ACCOMMODATION_TYPES_SEED')) {
     $accommodationTypes = ACCOMMODATION_TYPES_SEED;
 }
 
-// Check edit mode or existing active registration
-$editRegId = isset($_GET['edit']) && is_string($_GET['edit']) ? trim($_GET['edit']) : '';
-$mode = 'create';
-$existingActive = null;
-$initialData = [];
-
-$stmtAct = $pdo->prepare(
-    "SELECT * FROM registrations
-     WHERE user_id = :uid AND UPPER(category_code) = 'ATTENDEE' AND deleted_at IS NULL
-       AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
-     ORDER BY created_at DESC LIMIT 1"
-);
-$stmtAct->execute([':uid' => $userId]);
-$existingActive = $stmtAct->fetch(PDO::FETCH_ASSOC) ?: null;
-
-$editableStatuses = ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED', 'CONFIRMED'];
-$existingIsEditable = $existingActive
-    && in_array(strtoupper((string)$existingActive['status']), $editableStatuses, true);
-
-if ($editRegId !== '' && $existingIsEditable && (string)$existingActive['id'] === $editRegId) {
-    $mode = 'edit';
-    $stmtAd = $pdo->prepare('SELECT * FROM attendee_details WHERE registration_id = :rid LIMIT 1');
-    $stmtAd->execute([':rid' => $editRegId]);
-    $adRow = $stmtAd->fetch(PDO::FETCH_ASSOC) ?: [];
-
-    $stmtDisOwn = $pdo->prepare('SELECT disability_code, self_description FROM participant_disability_disclosures WHERE registration_id = :rid');
-    $stmtDisOwn->execute([':rid' => $editRegId]);
-    $disCodes = [];
-    $disSelf = '';
-    foreach ($stmtDisOwn->fetchAll(PDO::FETCH_ASSOC) ?: [] as $dr) {
-        if (!empty($dr['disability_code'])) {
-            $disCodes[] = (string)$dr['disability_code'];
-        }
-        if ($disSelf === '' && !empty($dr['self_description'])) {
-            $disSelf = (string)pfgDecryptSensitiveValue((string)$dr['self_description']);
-        }
-    }
-
-    $stmtAccOwn = $pdo->prepare('SELECT * FROM accommodation_requests WHERE registration_id = :rid ORDER BY created_at DESC LIMIT 1');
-    $stmtAccOwn->execute([':rid' => $editRegId]);
-    $accRow = $stmtAccOwn->fetch(PDO::FETCH_ASSOC) ?: [];
-
-    $initialData = [
-        'organizationName'             => $existingActive['organization_name'] ?? '',
-        'designation'                  => $existingActive['designation'] ?? '',
-        'attendingDays'                => jsonDecode($existingActive['attending_days'] ?? '[]', []),
-        'interestedTracks'             => jsonDecode($existingActive['interested_tracks'] ?? '[]', []),
-        'emergencyContactName'         => $existingActive['emergency_contact_name'] ?? ($userRow['emergency_contact_name'] ?? ''),
-        'emergencyContactRelationship' => $existingActive['emergency_contact_relationship'] ?? ($userRow['emergency_contact_relationship'] ?? ''),
-        'emergencyContactPhone'        => $existingActive['emergency_contact_phone'] ?? ($userRow['emergency_contact_phone'] ?? ''),
-        'isPersonWithDisability'       => $existingActive['is_person_with_disability'] ?? '',
-        'disabilityCategoryCodes'      => $disCodes,
-        'disabilitySelfDescription'    => $disSelf,
-        'accommodationTypes'           => jsonDecode($accRow['selected_types'] ?? '[]', []),
-        'accommodationFreeText'        => (string)(pfgDecryptSensitiveValue($accRow['free_text_details'] ?? $accRow['notes'] ?? null) ?? ''),
-        'escortAccompanying'           => !empty($accRow['escort_accompanying']),
-        'escortName'                   => (string)(pfgDecryptSensitiveValue($accRow['escort_name_encrypted'] ?? null) ?? ''),
-        'attendeeDetails'              => [
-            'ageGroup'                 => $adRow['age_group'] ?? '',
-            'gender'                   => $adRow['gender'] ?? '',
-            'selfIdentificationTags'   => jsonDecode($adRow['self_identification_tags'] ?? '[]', []),
-            'guardianName'             => $adRow['guardian_name'] ?? '',
-            'guardianRelationship'     => $adRow['guardian_relationship'] ?? '',
-            'guardianPhone'            => $adRow['guardian_phone'] ?? '',
-            'paraSportsAthlete'        => !empty($adRow['para_sports_athlete']),
-            'paraSportsEvents'         => jsonDecode($adRow['para_sports_events'] ?? '[]', []),
-            'paraSportsOther'          => $adRow['para_sports_other'] ?? '',
-            'outstationTravelRequired' => !empty($adRow['outstation_travel_required']),
-            'arrivalAt'                => $adRow['arrival_at'] ?? '',
-            'departureAt'              => $adRow['departure_at'] ?? '',
-            'travelMode'               => $adRow['travel_mode'] ?? '',
-            'lodgingNeeded'            => !empty($adRow['lodging_needed']),
-            'accessibleRoomNeeded'     => !empty($adRow['accessible_room_needed']),
-            'accompanyingCount'        => $adRow['accompanying_count'] ?? '',
-            'foodPreference'           => $adRow['food_preference'] ?? '',
-            'dietaryRequirements'      => (string)(pfgDecryptSensitiveValue($adRow['dietary_requirements_encrypted'] ?? null) ?? ''),
-        ],
-    ];
-} elseif ($editionId !== '' && !$existingActive) {
-    $stmtDr = $pdo->prepare(
-        "SELECT payload_json FROM registration_drafts WHERE edition_id = :eid AND user_id = :uid AND category_code = 'ATTENDEE' LIMIT 1"
-    );
-    $stmtDr->execute([':eid' => $editionId, ':uid' => $userId]);
-    $rawDraft = $stmtDr->fetchColumn();
-    if (is_string($rawDraft) && $rawDraft !== '') {
-        $decoded = jsonDecode($rawDraft, []);
-        if (is_array($decoded)) {
-            $initialData = pfgDecryptDraftPayload($decoded);
-        }
-    }
-}
-
 $ecDefaults = [
-    'emergencyContactName'         => $initialData['emergencyContactName'] ?? ($userRow['emergency_contact_name'] ?? ''),
-    'emergencyContactRelationship' => $initialData['emergencyContactRelationship'] ?? ($userRow['emergency_contact_relationship'] ?? ''),
-    'emergencyContactPhone'        => $initialData['emergencyContactPhone'] ?? ($userRow['emergency_contact_phone'] ?? ''),
+    'emergencyContactName'         => '',
+    'emergencyContactRelationship' => '',
+    'emergencyContactPhone'        => '',
 ];
 
 $bootData = [
-    'categoryCode'   => 'ATTENDEE',
-    'categoryName'   => 'Attendee',
-    'mode'           => $mode,
-    'registrationId' => $mode === 'edit' ? $editRegId : null,
-    'csrfToken'      => getCsrfToken(),
-    'initialDraft'   => $initialData,
+    'categoryCode'     => 'ATTENDEE',
+    'categoryName'     => 'Attendee',
+    'registrationOpen' => $registrationOpen,
+    'csrfToken'        => $registrationOpen ? getCsrfToken() : '',
 ];
 
-$pageTitle = ($mode === 'edit' ? 'Edit Attendee Registration' : 'Attendee Registration') . ' | Purple Festival Gujarat 2027';
-$pageDescription = 'Register as an Attendee for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara). Free registration with integrated Accessibility & Accommodations support.';
+$pageTitle = 'Attendee Registration | Purple Festival Gujarat 2027';
+$pageDescription = 'Register as an Attendee for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara). Free accountless registration with integrated Accessibility & Accommodations support.';
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -183,50 +64,18 @@ require_once __DIR__ . '/../includes/header.php';
 
     <header class="mb-7">
       <span class="inline-flex items-center rounded-full bg-[#F2E9FE] px-3 py-1 text-xs font-bold text-[#5B2A86]">
-        Primary Category 1 of 3 · Free · Instant Registration ID
+        Primary Category 1 of 3 · Free · No Account Required
       </span>
       <h1 class="mt-2 text-[clamp(1.65rem,3.2vw,2.35rem)] font-bold tracking-[-0.02em] text-[#202D59]">
-        <?= $mode === 'edit' ? 'Update Your Attendee Registration' : 'Attendee Registration' ?>
+        Attendee Registration
       </h1>
       <p class="mt-2 text-sm leading-relaxed text-[#46537C]">
         For visitors, families, students, professionals, educators, institutions, athletes, allies, and persons with disabilities attending Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara).
       </p>
     </header>
 
-    <?php if (!$emailVerified): ?>
-      <div role="alert" class="rounded-2xl border-2 border-amber-600/40 bg-amber-50 p-6">
-        <h2 class="text-lg font-bold text-amber-950">Please Verify Your Email Address First</h2>
-        <p class="mt-2 text-sm text-amber-900">
-          Your account email (<strong><?= $esc($userRow['email']) ?></strong>) must be verified before submitting an Attendee registration.
-        </p>
-        <a href="/verify-email" class="touch-target mt-4 inline-flex items-center justify-center rounded-lg bg-[#202D59] px-5 py-2.5 text-sm font-bold text-white">
-          Go to Email Verification
-        </a>
-      </div>
-    <?php elseif ($existingActive && $mode === 'create'): ?>
-      <div class="rounded-2xl border-2 border-emerald-700/35 bg-white p-6 shadow-xs">
-        <span class="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-900">
-          Already Registered · <?= $esc($existingActive['status']) ?>
-        </span>
-        <h2 class="mt-3 text-xl font-bold text-[#202D59]">You Already Hold an Active Attendee Registration</h2>
-        <p class="mt-2 text-sm text-[#46537C]">
-          Your official Registration ID is <strong class="font-mono text-[#202D59]"><?= $esc($existingActive['registration_code']) ?></strong>.
-          You can view your registration, update accommodations, or edit details from your Participant Dashboard — or apply separately as a Festival Volunteer or Sign Language Interpreter.
-        </p>
-        <div class="mt-5 flex flex-wrap gap-3">
-          <a href="/dashboard" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#202D59] px-5 py-2.5 text-sm font-bold text-white">
-            Open Participant Dashboard
-          </a>
-          <?php if ($existingIsEditable): ?>
-          <a href="/apply/attendee?edit=<?= rawurlencode((string)$existingActive['id']) ?>" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-2.5 text-sm font-bold text-[#202D59]">
-            Edit Attendee Registration
-          </a>
-          <?php endif; ?>
-          <a href="/apply" class="touch-target inline-flex items-center justify-center rounded-lg border border-[#DCE5F7] bg-[#F6F5FE] px-5 py-2.5 text-sm font-semibold text-[#202D59]">
-            Explore Volunteer / SLI Categories
-          </a>
-        </div>
-      </div>
+    <?php if (!$registrationOpen): ?>
+      <?= pfgRenderRegistrationClosedCard('Attendee Registration') ?>
     <?php else: ?>
       <!-- Error Summary Region -->
       <div
@@ -238,13 +87,10 @@ require_once __DIR__ . '/../includes/header.php';
         class="mb-6 rounded-2xl border-2 border-red-600 bg-red-50 p-5 text-sm text-red-950"
       ></div>
 
-      <!-- Draft Status Live Region -->
-      <div id="pfg-draft-status" role="status" aria-live="polite" class="mb-4 text-xs font-semibold text-[#46537C]"></div>
-
       <!-- Registration Form -->
       <form id="pfg-category-form" novalidate class="space-y-7">
-        <!-- Section 0: Account Identity Summary -->
-        <?= pfgRenderAccountIdentityCard($userRow) ?>
+        <!-- Section 0: Direct Applicant Personal & Contact Details -->
+        <?= pfgRenderApplicantDetails(true, 'Attendee Registration') ?>
 
         <!-- Section 1: About You & Minor Safeguarding -->
         <section aria-labelledby="att-sec1-heading" class="rounded-2xl border-2 border-[#202D59]/15 bg-white p-5 sm:p-7">
@@ -594,40 +440,43 @@ require_once __DIR__ . '/../includes/header.php';
         </section>
 
         <!-- Section 4: Shared Accessibility & Accommodations Module -->
-        <?= pfgRenderSharedAccessibility($disabilityCategories, $accommodationTypes, $initialData) ?>
+        <?= pfgRenderSharedAccessibility($disabilityCategories, $accommodationTypes, []) ?>
 
         <!-- Section 5: Emergency Contact (Optional for adults; Required when Under 18) -->
         <?= pfgRenderEmergencyContact($ecDefaults, false, false) ?>
 
         <!-- Section 6: Consents & Declarations -->
-        <?= pfgRenderConsentDeclarations('ATTENDEE', $mode === 'edit' ? ['consentZeroTolerance' => true, 'consentDataProcessing' => true, 'consentAccuracy' => true] : []) ?>
+        <?= pfgRenderConsentDeclarations('ATTENDEE', []) ?>
 
         <!-- Submit Controls -->
         <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-[#202D59]/15 bg-white p-5">
           <div class="flex flex-wrap items-center gap-3">
-            <?php if ($mode === 'create'): ?>
-              <button
-                type="button"
-                id="pfg-btn-save-draft"
-                class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-2.5 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]"
-              >
-                Save Draft
-              </button>
-            <?php endif; ?>
             <a href="/apply" class="text-sm font-semibold text-[#46537C] underline hover:text-[#202D59]">Cancel</a>
           </div>
 
-          <button
-            type="submit"
-            id="pfg-btn-submit"
-            class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-7 py-3 text-base font-bold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-50"
-          >
-            <?= $mode === 'edit' ? 'Save Registration Changes' : 'Complete Free Attendee Registration' ?>
-          </button>
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              id="pfg-btn-review"
+              class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] transition-colors hover:bg-[#DDDDF9]"
+            >
+              Review Information
+            </button>
+            <button
+              type="submit"
+              id="pfg-btn-submit"
+              class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-7 py-3 text-base font-bold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-50"
+            >
+              Complete Free Attendee Registration
+            </button>
+          </div>
         </div>
       </form>
 
-      <!-- Confirmation Panel (populated by category-forms.js on success — ZERO QR code) -->
+      <!-- Review Summary Panel (populated by category-forms.js before submission) -->
+      <section id="pfg-review-panel" hidden tabindex="-1" aria-labelledby="pfg-review-heading" class="rounded-2xl border-2 border-[#5B2A86]/35 bg-white p-6 sm:p-8 shadow-sm"></section>
+
+      <!-- Confirmation Panel (populated by category-forms.js on success — ZERO QR code, ZERO dashboard link) -->
       <section id="pfg-confirmation-panel" hidden tabindex="-1" aria-live="polite" class="rounded-2xl border-2 border-emerald-700/40 bg-white p-6 sm:p-8 shadow-sm"></section>
     <?php endif; ?>
   </div>

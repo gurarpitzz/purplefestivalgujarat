@@ -1046,6 +1046,12 @@ if (!function_exists('getCurrentUser')) {
 
         $rp = getUserRolesAndPermissions((string)$row['user_id'], $pdo);
 
+        // CAD-17: Only administrative staff classifications (SUPERADMIN, ADMIN, RGST) may hold active sessions.
+        // Any historical PARTICIPANT session cookies are rejected cleanly as unauthenticated.
+        if (empty(array_intersect(['SUPERADMIN', 'ADMIN', 'RGST'], $rp['roles']))) {
+            return null;
+        }
+
         // Historical MFA columns remain intact in DB but are inactive under the revised auth policy.
         $currentUserPayload = [
             'id'                    => (string)$row['user_id'],

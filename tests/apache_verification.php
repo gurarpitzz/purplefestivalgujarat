@@ -158,7 +158,7 @@ try {
     foreach ([
         ['A-01', 'GET / (Homepage)', '/', 200],
         ['A-02', 'GET /apply (Extensionless rewrite)', '/apply', 200],
-        ['A-03', 'GET /login (Extensionless rewrite)', '/login', 200],
+        ['A-03', 'GET /login retired participant route -> 302 /staff/login', '/login', 302],
         ['A-04', 'GET /programme (Extensionless rewrite)', '/programme', 200],
         ['A-05', 'GET /accessibility (Extensionless rewrite)', '/accessibility', 200],
         ['A-06', 'GET /assets/css/app.css (Static CSS)', '/assets/css/app.css', 200],
@@ -167,7 +167,7 @@ try {
         ['A-09', 'GET /api/registrations (API rewrite + MariaDB)', '/api/registrations', 200],
         ['A-10', 'GET /admin unauth redirect', '/admin', 302],
         ['A-11', 'GET /rgst unauth redirect', '/rgst', 302],
-        ['A-12', 'GET /dashboard unauth redirect (FND-13)', '/dashboard', 302],
+        ['A-12', 'GET /dashboard retired participant portal (410 Gone)', '/dashboard', 410],
         ['A-13', 'GET /api/admin/overview unauth 401', '/api/admin/overview', 401],
         ['A-14', 'GET /api/admin/cms unauth 401', '/api/admin/cms', 401],
         ['A-27', 'GET /api/admin/notifications unauth 401', '/api/admin/notifications', 401],
@@ -184,14 +184,17 @@ try {
         ['A-23', 'GET /.user.ini (.htaccess 403)', '/.user.ini', 403],
         ['A-24', 'GET /.cpanel.yml (.htaccess 403)', '/.cpanel.yml', 403],
         ['A-25', 'GET /nonexistent-pfg27-route (clean 404)', '/nonexistent-pfg27-route', 404],
-        ['A-30', 'GET /register (Phase 5 signup clean route)', '/register', 200],
-        ['A-31', 'GET /verify-email (Phase 5 verify clean route)', '/verify-email', 200],
-        ['A-32', 'GET /forgot-password (Phase 5 forgot-password clean route)', '/forgot-password', 200],
-        ['A-33', 'GET /reset-password (Phase 5 reset-password clean route)', '/reset-password', 200],
-        ['A-34', 'GET /staff/login (Phase 5 isolated staff portal)', '/staff/login', 200],
-        ['A-35', 'GET /apply/attendee unauth redirect (302)', '/apply/attendee', 302],
+        ['A-30', 'GET /register retired signup route -> 302 /apply', '/register', 302],
+        ['A-31', 'GET /verify-email retired participant verification (410 Gone)', '/verify-email', 410],
+        ['A-32', 'GET /forgot-password (Staff password recovery route)', '/forgot-password', 200],
+        ['A-33', 'GET /reset-password (Staff password reset route)', '/reset-password', 200],
+        ['A-34', 'GET /staff/login (Staff-only authentication portal)', '/staff/login', 200],
+        ['A-35', 'GET /apply/attendee accountless public form (200)', '/apply/attendee', 200],
+        ['A-35B', 'GET /apply/sli accountless public form (200)', '/apply/sli', 200],
+        ['A-35C', 'GET /apply/volunteer accountless public form (200)', '/apply/volunteer', 200],
         ['A-36', 'GET /api/attendance unauth (401)', '/api/attendance', 401],
-        ['A-37', 'GET /api/account/dashboard unauth (401)', '/api/account/dashboard', 401],
+        ['A-37', 'GET /api/account/dashboard retired participant API (410 Gone)', '/api/account/dashboard', 410],
+        ['A-37B', 'GET /api/auth/signup retired participant API (410 Gone)', '/api/auth/signup', 410],
         ['A-38', 'GET /api/admin/permission-profiles unauth (401)', '/api/admin/permission-profiles', 401],
         ['A-39', 'GET /api/admin/assignments unauth (401)', '/api/admin/assignments', 401],
     ] as [$id, $label, $path, $exp]) {
@@ -217,9 +220,9 @@ try {
     require_once dirname(__DIR__) . '/includes/database.php';
     require_once dirname(__DIR__) . '/includes/auth.php';
     $apPdo = getDb();
-    $apUser = $apPdo->query("SELECT u.id FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.code = 'PARTICIPANT' AND u.is_active = 1 AND u.deleted_at IS NULL LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $apUser = $apPdo->query("SELECT u.id FROM users u INNER JOIN user_roles ur ON ur.user_id = u.id INNER JOIN roles r ON r.id = ur.role_id WHERE r.code IN ('SUPERADMIN', 'ADMIN', 'RGST') AND u.is_active = 1 AND u.deleted_at IS NULL LIMIT 1")->fetch(PDO::FETCH_ASSOC);
     $a40Ok = false;
-    $a40Evidence = 'No participant user found to create ephemeral test session';
+    $a40Evidence = 'No active staff user found to create ephemeral test session';
     if (is_array($apUser) && !empty($apUser['id'])) {
         $rawSessTok = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
         $sessId = uuid4();

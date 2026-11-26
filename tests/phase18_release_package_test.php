@@ -107,6 +107,7 @@ $isForbiddenPath = static function (string $relPath): ?string {
     }
     if (in_array($norm, [
         'assets/js/registration-wizard.js',
+        'assets/js/participant-dashboard.js',
         'assets/js/html5-qrcode.min.js',
         'assets/js/qrcode-gen.js',
         'database/schema.sql',
@@ -446,11 +447,12 @@ PHP;
             '/',
             '/programme.php',
             '/accessibility.php',
-            '/login.php',
-            '/register.php',
             '/forgot-password.php',
             '/staff/login.php',
             '/apply/index.php',
+            '/apply/attendee.php',
+            '/apply/sli.php',
+            '/apply/volunteer.php',
         ];
         $pubFails = [];
         foreach ($publicChecks as $p) {
@@ -463,9 +465,9 @@ PHP;
         }
         $record(
             'P18-05',
-            'Packaged public page routes return HTTP 200 (8 routes incl. / with festival title)',
+            'Packaged public page routes return HTTP 200 (9 routes incl. accountless /apply/* & /staff/login)',
             empty($pubFails),
-            empty($pubFails) ? '8/8 packaged public routes returned HTTP 200 and / contains "Purple Festival Gujarat 2027"' : 'Failures: ' . implode(', ', $pubFails)
+            empty($pubFails) ? '9/9 packaged public routes returned HTTP 200 and / contains "Purple Festival Gujarat 2027"' : 'Failures: ' . implode(', ', $pubFails)
         );
 
         // ---------------------------------------------------------------------
@@ -514,13 +516,17 @@ PHP;
         );
 
         // ---------------------------------------------------------------------
-        // P18-08: Verify packaged auth/security boundaries (401 APIs, 302 portals, 401+410 QR pass, 403 internal)
+        // P18-08: Verify packaged auth/security boundaries (401 staff APIs, 410 retired participant routes, 302 redirects, 403 internal)
         // ---------------------------------------------------------------------
         $secChecks = [
             ['/api/attendance/index.php', 401],
-            ['/api/account/dashboard.php', 401],
+            ['/api/account/dashboard.php', 410],
+            ['/api/auth/signup.php', 410],
             ['/api/admin/notifications.php', 401],
-            ['/dashboard/index.php', 302],
+            ['/dashboard/index.php', 410],
+            ['/verify-email.php', 410],
+            ['/login.php', 302],
+            ['/register.php', 302],
             ['/admin/index.php', 302],
             ['/rgst/index.php', 302],
             ['/api/qr/pass.php', 401],
@@ -542,9 +548,9 @@ PHP;
         }
         $record(
             'P18-08',
-            'Packaged security boundaries: 401 protected APIs, 302 protected portals, 401/410 QR pass, 403 internal files',
+            'Packaged security boundaries: 401 staff APIs, 410 retired participant APIs/pages, 302 redirects, 403 internal files',
             empty($secFails),
-            empty($secFails) ? '11/11 packaged security route checks passed + api/qr/pass.php verified containing 410 Gone' : 'Failures: ' . implode(', ', $secFails)
+            empty($secFails) ? '15/15 packaged security route checks passed + api/qr/pass.php verified containing 410 Gone' : 'Failures: ' . implode(', ', $secFails)
         );
     }
 } finally {

@@ -42,54 +42,27 @@ function p5ExtractTokenFromMailSink(string $sinkDir, string $recipientEmail, str
 }
 
 /**
- * Helper: seed a verified participant directly and return user + active HTTP session cookie/CSRF.
+ * Helper: obtain an anonymous session cookie + CSRF token for accountless public registration.
  */
-function p5CreateVerifiedParticipantSession(PDO $pdo, string $email, string $fullName, string $password = 'PartPass#2027'): array
+function p5AnonSession(): array
 {
-    $uid = uuid4();
-    $now = nowSql();
-    $pdo->prepare("
-        INSERT INTO users (id, username, email, email_verified_at, password_hash, full_name, phone, country, city_district, state, is_active, account_status, created_at, updated_at)
-        VALUES (:id, NULL, :e, :now, :pw, :fn, '+91 98250 12345', 'India', 'Vadodara', 'Gujarat', 1, 'ACTIVE', :now, :now)
-    ")->execute([
-        ':id'  => $uid,
-        ':e'   => $email,
-        ':now' => $now,
-        ':pw'  => hashPassword($password),
-        ':fn'  => $fullName,
-    ]);
-    $partRoleId = (string)$pdo->query("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1")->fetchColumn();
-    $pdo->prepare('INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_at) VALUES (:id, :uid, :rid, NULL, :now)')
-        ->execute([':id' => uuid4(), ':uid' => $uid, ':rid' => $partRoleId, ':now' => $now]);
-
-    $rawTok = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
-    $pdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 0, :exp, :now)')
-        ->execute([
-            ':id'  => uuid4(),
-            ':uid' => $uid,
-            ':th'  => hashToken($rawTok),
-            ':exp' => nowSql(time() + 7200),
-            ':now' => $now,
-        ]);
-
-    return [
-        'id'       => $uid,
-        'email'    => $email,
-        'fullName' => $fullName,
-        'password' => $password,
-        'cookies'  => [SESSION_COOKIE_NAME => $rawTok],
-        'csrf'     => pfgComputeSessionBoundCsrfToken($rawTok),
-    ];
+    $s = p2AnonSession();
+    pfgAssert($s['csrf'] !== '', 'Failed to fetch anonymous session CSRF token from GET /api/registrations');
+    return $s;
 }
 
 /**
- * Helper: build valid category registration payloads for ATTENDEE, VOLUNTEER, SLI.
+ * Helper: build valid accountless category registration payloads for ATTENDEE, VOLUNTEER, SLI.
  */
 function p5ValidPayload(string $category, array $overrides = []): array
 {
+    $rand = bin2hex(random_bytes(3));
     $base = [
         'categoryCode'                 => strtoupper($category),
+        'fullName'                     => 'Applicant ' . strtoupper($category) . ' ' . $rand,
+        'email'                        => 'p5.' . strtolower($category) . '.' . $rand . '@example.test',
         'phone'                        => '+91 98250 12345',
+        'preferredLanguage'            => 'English',
         'country'                      => 'India',
         'cityDistrict'                 => 'Vadodara',
         'state'                        => 'Gujarat',
@@ -147,90 +120,49 @@ function p5ValidPayload(string $category, array $overrides = []): array
 $p5Pdo = pfgCreateDirectPdo('pfg27_test');
 
 // Shared state across T5-03 / T5-04
-$t503User = null;
 $t503VolRegId = '';
 $t503SliRegId = '';
 
 // =========================================================================
-// T5-01: Full Phase 5 Participant Lifecycle
+// T5-01: Staff-Only Authentication Lifecycle & Retired Participant Auth Removal (CAD-17)
 // =========================================================================
-pfgTest('T5-01', 'Phase 5 participant lifecycle: signup (202), verify email, replay block, login, profile/email-change, atomic pw-reset & staff isolation', function () use ($p5Pdo, $sinkDir): string {
+pfgTest('T5-01', 'Staff-only auth lifecycle: staff login/pw-reset complexity & replay block; participant signup/login/verify retired (410/401)', function () use ($p5Pdo, $sinkDir): string {
     foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $old) {
         @unlink($old);
     }
-    foreach (['auth_signup_ip', 'auth_verify_email_ip', 'auth_login_ip', 'auth_pwreset_ip', 'auth_pwreset_complete_ip'] as $sc) {
+    foreach (['auth_login_ip', 'auth_pwreset_ip', 'auth_pwreset_complete_ip'] as $sc) {
         pfgResetRateLimit($p5Pdo, $sc, '127.0.0.1');
     }
 
-    $email1 = 'p5.lifecycle.' . bin2hex(random_bytes(3)) . '@example.test';
-    $email2 = 'p5.changed.' . bin2hex(random_bytes(3)) . '@example.test';
-    $pw1 = 'Phase5Pass#1';
-    $pw2 = 'Phase5Reset#99';
+    // 1. Participant signup, verification, and account APIs return 410 Gone
+    foreach (['/api/auth/signup', '/api/auth/verify-email', '/api/auth/resend-verification', '/api/auth/claim-legacy', '/api/account/dashboard', '/api/account/profile', '/api/account/registrations', '/api/account/drafts', '/api/account/notifications'] as $ep) {
+        $r = p2Http('POST', $ep, []);
+        pfgAssert($r['status'] === 410 && !empty($r['json']['deprecated']), "Retired {$ep} expected 410 Gone, got {$r['status']}");
+    }
 
-    // 1. Signup -> uniform 202
-    $rSign = p2Http('POST', '/api/auth/signup', [
-        'fullName'        => 'Meera Desai',
-        'email'           => $email1,
-        'phone'           => '+91 98250 10001',
-        'password'        => $pw1,
-        'confirmPassword' => $pw1,
-        'consentAccepted' => true,
-    ]);
-    pfgAssert($rSign['status'] === 202 && !empty($rSign['json']['emailVerificationRequired']), "Signup expected 202, got {$rSign['status']}: {$rSign['body']}");
+    // 2. Historical PARTICIPANT cannot authenticate or trigger password reset email
+    $histPart = p2CreateTestUser($p5Pdo, 'p5_hist_part_' . bin2hex(random_bytes(2)), 'p5.hist.part.' . bin2hex(random_bytes(3)) . '@example.test', 'HistPart#2027', 'PARTICIPANT');
+    $rPartLogin = p2Http('POST', '/api/auth/login', ['username' => $histPart['email'], 'password' => $histPart['password']]);
+    pfgAssert($rPartLogin['status'] === 401 && empty($rPartLogin['cookies'][SESSION_COOKIE_NAME]), "Historical PARTICIPANT login expected 401, got {$rPartLogin['status']}");
 
-    // 2. Unverified login blocked 403
-    $rPreVerify = p2Http('POST', '/api/auth/login', ['email' => $email1, 'password' => $pw1, 'portal' => 'participant']);
-    pfgAssert($rPreVerify['status'] === 403 && !empty($rPreVerify['json']['emailVerificationRequired']), "Unverified login expected 403, got {$rPreVerify['status']}");
+    pfgResetRateLimit($p5Pdo, 'auth_pwreset_email', $histPart['email']);
+    $rPartReset = p2Http('POST', '/api/auth/password-reset', ['email' => $histPart['email']]);
+    pfgAssert($rPartReset['status'] === 200, 'Participant password-reset request should return uniform 200');
+    pfgAssert(count(glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: []) === 0, 'Password reset email was sent for retired PARTICIPANT!');
 
-    // 3. Extract verification token from local mail sink
-    $verifyTok = p5ExtractTokenFromMailSink($sinkDir, $email1, '/verify-email\?token=([A-Za-z0-9_\-%]+)/');
-    pfgAssert(is_string($verifyTok) && strlen($verifyTok) >= 20, 'Failed to extract signup verification token from mail sink');
+    // 3. Staff (ADMIN) atomic password reset with letter+digit complexity enforcement & single-use replay block
+    $staffUname = 'p5_staff_' . bin2hex(random_bytes(2));
+    $staffEmail = $staffUname . '@example.test';
+    $pw1 = 'StaffInit#2027';
+    $pw2 = 'StaffReset#99';
+    p2CreateTestUser($p5Pdo, $staffUname, $staffEmail, $pw1, 'ADMIN');
 
-    // Non-consuming GET peek
-    $rPeek = p2Http('GET', '/api/auth/verify-email?token=' . rawurlencode($verifyTok));
-    pfgAssert($rPeek['status'] === 200 && !empty($rPeek['json']['valid']) && ($rPeek['json']['purpose'] ?? '') === 'SIGNUP_VERIFY', 'Verify peek failed: ' . $rPeek['body']);
+    pfgResetRateLimit($p5Pdo, 'auth_pwreset_email', $staffEmail);
+    $rReqReset = p2Http('POST', '/api/auth/password-reset', ['email' => $staffEmail]);
+    pfgAssert($rReqReset['status'] === 200, "Staff password reset request failed: {$rReqReset['body']}");
 
-    // POST consume -> 200
-    $rVer = p2Http('POST', '/api/auth/verify-email', ['token' => $verifyTok]);
-    pfgAssert($rVer['status'] === 200 && !empty($rVer['json']['success']), "Verify email expected 200, got {$rVer['status']}: {$rVer['body']}");
-
-    // Replay blocked -> 400
-    $rVerReplay = p2Http('POST', '/api/auth/verify-email', ['token' => $verifyTok]);
-    pfgAssert($rVerReplay['status'] === 400, "Verify token replay expected 400, got {$rVerReplay['status']}");
-
-    // 4. Staff portal isolation -> 403
-    $rStaffBlock = p2Http('POST', '/api/auth/login', ['username' => $email1, 'password' => $pw1, 'portal' => 'staff']);
-    pfgAssert($rStaffBlock['status'] === 403, "Participant on staff portal expected 403, got {$rStaffBlock['status']}");
-
-    // 5. Participant login -> 200
-    $login = p2Http('POST', '/api/auth/login', ['email' => $email1, 'password' => $pw1, 'portal' => 'participant']);
-    pfgAssert($login['status'] === 200 && !empty($login['json']['csrfToken']), "Participant login failed: {$login['body']}");
-    $ck = $login['cookies'];
-    $csrf = (string)$login['json']['csrfToken'];
-
-    // 6. Profile PATCH + email change verification
-    $rPatch = p2Http('PATCH', '/api/account/profile', [
-        'fullName'        => 'Meera Desai-Patel',
-        'cityDistrict'    => 'Vadodara',
-        'state'           => 'Gujarat',
-        'email'           => $email2,
-        'currentPassword' => $pw1,
-    ], $ck, ['X-CSRF-Token' => $csrf]);
-    pfgAssert($rPatch['status'] === 200 && !empty($rPatch['json']['emailChangePending']), "Profile PATCH expected 200 emailChangePending, got {$rPatch['status']}: {$rPatch['body']}");
-
-    $emailChangeTok = p5ExtractTokenFromMailSink($sinkDir, $email2, '/verify-email\?token=([A-Za-z0-9_\-%]+)/');
-    pfgAssert(is_string($emailChangeTok) && strlen($emailChangeTok) >= 20, 'Failed to extract EMAIL_CHANGE token from mail sink');
-
-    $rEcVer = p2Http('POST', '/api/auth/verify-email', ['token' => $emailChangeTok]);
-    pfgAssert($rEcVer['status'] === 200 && ($rEcVer['json']['purpose'] ?? '') === 'EMAIL_CHANGE', "Email change verify failed: {$rEcVer['body']}");
-
-    // 7. Atomic password reset with letter+digit complexity enforcement
-    pfgResetRateLimit($p5Pdo, 'auth_pwreset_email', $email2);
-    $rReqReset = p2Http('POST', '/api/auth/password-reset', ['email' => $email2]);
-    pfgAssert($rReqReset['status'] === 200, "Password reset request failed: {$rReqReset['body']}");
-
-    $resetTok = p5ExtractTokenFromMailSink($sinkDir, $email2, '/reset-password\?token=([A-Za-z0-9_\-%]+)/');
-    pfgAssert(is_string($resetTok) && strlen($resetTok) >= 20, 'Failed to extract password reset token from mail sink');
+    $resetTok = p5ExtractTokenFromMailSink($sinkDir, $staffEmail, '/reset-password\?token=([A-Za-z0-9_\-%]+)/');
+    pfgAssert(is_string($resetTok) && strlen($resetTok) >= 20, 'Failed to extract staff password reset token from mail sink');
 
     // Reject weak password (no digit) -> 400
     $rWeak = p2Http('PUT', '/api/auth/password-reset', ['token' => $resetTok, 'newPassword' => 'NoDigitsHere!']);
@@ -238,143 +170,133 @@ pfgTest('T5-01', 'Phase 5 participant lifecycle: signup (202), verify email, rep
 
     // Complete reset with letter+digit password -> 200
     $rDone = p2Http('PUT', '/api/auth/password-reset', ['token' => $resetTok, 'newPassword' => $pw2]);
-    pfgAssert($rDone['status'] === 200 && !empty($rDone['json']['success']), "Password reset completion failed: {$rDone['body']}");
+    pfgAssert($rDone['status'] === 200 && !empty($rDone['json']['success']), "Staff password reset completion failed: {$rDone['body']}");
 
     // Replay reset token -> 400
     $rResetReplay = p2Http('PUT', '/api/auth/password-reset', ['token' => $resetTok, 'newPassword' => 'AnotherPass#88']);
     pfgAssert($rResetReplay['status'] === 400, "Reset token replay expected 400, got {$rResetReplay['status']}");
 
-    // Verify new password logs in cleanly with new email & old password rejected
-    $rOldPw = p2Http('POST', '/api/auth/login', ['email' => $email2, 'password' => $pw1, 'portal' => 'participant']);
-    pfgAssert($rOldPw['status'] === 401, "Old password should fail (401), got {$rOldPw['status']}");
-    $rNewPw = p2Http('POST', '/api/auth/login', ['email' => $email2, 'password' => $pw2, 'portal' => 'participant']);
-    pfgAssert($rNewPw['status'] === 200, "Login with new email + new password failed: {$rNewPw['body']}");
+    // Verify new password logs in cleanly to /admin & old password rejected
+    $rOldPw = p2Http('POST', '/api/auth/login', ['username' => $staffUname, 'password' => $pw1]);
+    pfgAssert($rOldPw['status'] === 401, "Old staff password should fail (401), got {$rOldPw['status']}");
+    $rNewPw = p2Http('POST', '/api/auth/login', ['username' => $staffUname, 'password' => $pw2]);
+    pfgAssert($rNewPw['status'] === 200 && ($rNewPw['json']['redirectTo'] ?? '') === '/admin', "Staff login with new password failed: {$rNewPw['body']}");
 
-    return 'Signup(202)->mail-sink verify(200)->replay(400)->staff-portal(403)->profile+email-change(200)->pw-reset complexity(400)+atomic(200)+replay(400) verified';
+    return 'All 9 retired participant auth/account endpoints->410; historical PARTICIPANT login(401)+reset(0 mail); staff pw-reset complexity(400)+atomic(200)+replay(400)+login(200) verified';
 });
 
 // =========================================================================
-// T5-02: Verified-Email Legacy Registration Claim
+// T5-02: Historical Data Preservation & Coexistence with Accountless Registrations (CAD-17)
 // =========================================================================
-pfgTest('T5-02', 'Verified participant claims passwordless legacy reg (code preserved); staff-owned reg blocked with uniform 404', function () use ($p5Pdo, $saUser): string {
-    $claimEmail = 'legacy.claim.' . bin2hex(random_bytes(3)) . '@example.test';
+pfgTest('T5-02', 'Historical user_id registrations preserved & readable in Admin/RGST alongside new accountless user_id=NULL records', function () use ($p5Pdo, $saSess, $rgstUser): string {
     $edId = (string)$p5Pdo->query('SELECT id FROM festival_editions WHERE is_active = 1 LIMIT 1')->fetchColumn();
     $delCatId = (string)$p5Pdo->query("SELECT id FROM registration_categories WHERE code = 'DELEGATE' LIMIT 1")->fetchColumn();
     $partRoleId = (string)$p5Pdo->query("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1")->fetchColumn();
     $now = nowSql();
 
-    // Create synthetic passwordless legacy user + legacy DELEGATE registration
+    // Seed a historical registration with non-null user_id & legacy DELEGATE category
     $legUid = uuid4();
     $legRegId = uuid4();
     $legCode = 'PFG-2027-009101';
-    $p5Pdo->prepare("INSERT INTO users (id, email, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at) VALUES (:id, :e, NULL, 'Legacy Owner', '+91 98250 22222', 'India', 1, 'ACTIVE', :n, :n)")
-        ->execute([':id' => $legUid, ':e' => $claimEmail, ':n' => $now]);
+    $legEmail = 'legacy.hist.' . bin2hex(random_bytes(3)) . '@example.test';
+    $p5Pdo->prepare("INSERT INTO users (id, email, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at) VALUES (:id, :e, NULL, 'Historical Delegate Record', '+91 98250 22222', 'India', 1, 'ACTIVE', :n, :n)")
+        ->execute([':id' => $legUid, ':e' => $legEmail, ':n' => $now]);
     $p5Pdo->prepare('INSERT INTO user_roles (id, user_id, role_id, assigned_at) VALUES (:id, :uid, :rid, :n)')
         ->execute([':id' => uuid4(), ':uid' => $legUid, ':rid' => $partRoleId, ':n' => $now]);
-    $p5Pdo->prepare("INSERT INTO registrations (id, registration_code, edition_id, user_id, category_id, category_code, status, payment_status, full_name, email, phone, country, is_person_with_disability, created_at, updated_at) VALUES (:id, :code, :eid, :uid, :cid, 'DELEGATE', 'CONFIRMED', 'NOT_REQUIRED', 'Legacy Owner', :e, '+91 98250 22222', 'India', 'NO', :n, :n)")
-        ->execute([':id' => $legRegId, ':code' => $legCode, ':eid' => $edId, ':uid' => $legUid, ':cid' => $delCatId, ':e' => $claimEmail, ':n' => $now]);
+    $p5Pdo->prepare("INSERT INTO registrations (id, registration_code, edition_id, user_id, category_id, category_code, status, payment_status, full_name, email, phone, country, is_person_with_disability, created_at, updated_at) VALUES (:id, :code, :eid, :uid, :cid, 'DELEGATE', 'CONFIRMED', 'NOT_REQUIRED', 'Historical Delegate Record', :e, '+91 98250 22222', 'India', 'NO', :n, :n)")
+        ->execute([':id' => $legRegId, ':code' => $legCode, ':eid' => $edId, ':uid' => $legUid, ':cid' => $delCatId, ':e' => $legEmail, ':n' => $now]);
 
-    // Also create a staff-owned registration with the SAME email (must NEVER be claimable; uniform 404!)
-    $staffRegId = uuid4();
-    $staffRegCode = 'PFG-2027-009102';
-    $p5Pdo->prepare("INSERT INTO registrations (id, registration_code, edition_id, user_id, category_id, category_code, status, payment_status, full_name, email, phone, country, is_person_with_disability, created_at, updated_at) VALUES (:id, :code, :eid, :uid, :cid, 'DELEGATE', 'CONFIRMED', 'NOT_REQUIRED', 'Staff Owned', :e, '+91 98250 33333', 'India', 'NO', :n, :n)")
-        ->execute([':id' => $staffRegId, ':code' => $staffRegCode, ':eid' => $edId, ':uid' => $saUser['id'], ':cid' => $delCatId, ':e' => $claimEmail, ':n' => $now]);
+    // 1. Legacy claim endpoint is cleanly retired (410 Gone)
+    $rClaim = p2Http('POST', '/api/auth/claim-legacy', ['registrationCode' => $legCode]);
+    pfgAssert($rClaim['status'] === 410, "Retired /api/auth/claim-legacy expected 410, got {$rClaim['status']}");
 
-    // Create verified participant with matching email (update legacy user email to free unique constraint? Wait: users.email is UNIQUE!)
-    // Actually in MariaDB users.email is UNIQUE, so the legacy user has NULL password and same email OR legacy reg has matching r.email while legacy user has a different placeholder email!
-    // Wait: let's check how legacy user + new user coexist when users.email has UNIQUE index!
-    // Let's give the legacy passwordless user an archival email (`legacy-placeholder@...`) while `registrations.email = $claimEmail` — which matches real Phase 5 legacy SQL!
-    $p5Pdo->prepare('UPDATE users SET email = :arch WHERE id = :id')
-        ->execute([':arch' => 'legacy.archived.' . bin2hex(random_bytes(3)) . '@example.test', ':id' => $legUid]);
+    // 2. Historical non-null user_id registration remains readable in Admin & searchable at RGST desk
+    $rAdmDet = p2Http('GET', '/api/admin/registrations?id=' . urlencode($legRegId), null, $saSess['cookies']);
+    pfgAssert($rAdmDet['status'] === 200 && ($rAdmDet['json']['registration']['registrationCode'] ?? '') === $legCode, 'Admin failed to inspect historical registration');
 
-    $verifiedPart = p5CreateVerifiedParticipantSession($p5Pdo, $claimEmail, 'Verified Claimer');
+    pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
+    $rgstSessLocal = p2Login($rgstUser['username'], 'RgstNewPass#2027');
+    pfgAssert($rgstSessLocal['resp']['status'] === 200, 'RGST login failed');
+    $rDeskSearch = p2Http('GET', '/api/attendance?q=' . rawurlencode($legCode), null, $rgstSessLocal['cookies']);
+    pfgAssert($rDeskSearch['status'] === 200 && count($rDeskSearch['json']['rows'] ?? []) === 1, 'RGST desk failed to find historical registration');
 
-    // GET claimable -> strictly 1 (only the non-staff passwordless legacy row)
-    $rList = p2Http('GET', '/api/auth/claim-legacy', null, $verifiedPart['cookies']);
-    pfgAssert($rList['status'] === 200 && (int)($rList['json']['count'] ?? -1) === 1, "GET claim-legacy expected count=1, got {$rList['status']}: {$rList['body']}");
-    pfgAssert(($rList['json']['claimable'][0]['registrationCode'] ?? '') === $legCode, 'Claimable list did not return expected legacy code');
+    // 3. New accountless registration coexists with user_id = NULL and ZERO new users created
+    $usersBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    $anon = p5AnonSession();
+    $rNew = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['fullName' => 'New Accountless Visitor', 'email' => $legEmail]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rNew['status'] === 201, "Accountless registration alongside historical email failed: {$rNew['body']}");
+    $newRegId = (string)$rNew['json']['registration']['id'];
+    $newUid = $p5Pdo->query('SELECT user_id FROM registrations WHERE id = ' . $p5Pdo->quote($newRegId))->fetchColumn();
+    pfgAssert($newUid === null || $newUid === false, 'New accountless registration unexpectedly populated user_id');
+    pfgAssert((int)$p5Pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBefore, 'Accountless registration created a users row');
 
-    // Attempting to claim staff-owned reg -> uniform 404
-    $rStaffClaim = p2Http('POST', '/api/auth/claim-legacy', ['registrationCode' => $staffRegCode], $verifiedPart['cookies'], ['X-CSRF-Token' => $verifiedPart['csrf']]);
-    pfgAssert($rStaffClaim['status'] === 404 && (int)($rStaffClaim['json']['count'] ?? -1) === 0, "Staff-owned claim expected uniform 404, got {$rStaffClaim['status']}: {$rStaffClaim['body']}");
-
-    // Claim eligible legacy reg -> 200, code preserved, owner updated
-    $rClaim = p2Http('POST', '/api/auth/claim-legacy', ['registrationCode' => $legCode], $verifiedPart['cookies'], ['X-CSRF-Token' => $verifiedPart['csrf']]);
-    pfgAssert($rClaim['status'] === 200 && (int)($rClaim['json']['count'] ?? -1) === 1, "Claim legacy expected 200 count=1, got {$rClaim['status']}: {$rClaim['body']}");
-
-    $afterRow = $p5Pdo->query('SELECT user_id, registration_code FROM registrations WHERE id = ' . $p5Pdo->quote($legRegId))->fetch(PDO::FETCH_ASSOC);
-    pfgAssert($afterRow['user_id'] === $verifiedPart['id'] && $afterRow['registration_code'] === $legCode, 'Legacy claim did not update owner or mutated registration_code');
-
-    // Cleanup synthetic staff reg so downstream counts stay clean
-    $p5Pdo->prepare('UPDATE registrations SET deleted_at = NOW() WHERE id = :id')->execute([':id' => $staffRegId]);
-
-    return "Claimed {$legCode} cleanly (code preserved, owner re-linked); staff-owned {$staffRegCode} blocked with uniform 404";
+    return "Historical {$legCode} preserved & readable in Admin/RGST; /api/auth/claim-legacy->410; new accountless reg coexists cleanly with user_id=NULL & 0 users created";
 });
 
 // =========================================================================
-// T5-03: Phase 6 Three-Category Registration, Validators, Drafts & Multi-Category (D-09)
+// T5-03: Accountless Three-Category Registration, Validators, Smart Duplicates & Multi-Category (D-09)
 // =========================================================================
-pfgTest('T5-03', 'Phase 6 3-category registration, legacy DELEGATE blocked (400), dup blocked (409), multi-cat allowed (D-09), validators & drafts', function () use ($p5Pdo, &$t503User, &$t503VolRegId, &$t503SliRegId): string {
-    $t503User = p5CreateVerifiedParticipantSession($p5Pdo, 'p5.multicat.' . bin2hex(random_bytes(3)) . '@example.test', 'Kiran Joshi');
+pfgTest('T5-03', 'Accountless 3-category registration: ATTENDEE/VOLUNTEER/SLI (user_id=NULL), legacy DELEGATE (400), exact dup (409), shared-email caregiver (201) & multi-cat', function () use ($p5Pdo, &$t503VolRegId, &$t503SliRegId): string {
+    pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
+    $anon = p5AnonSession();
     $qrBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM qr_credentials')->fetchColumn();
+    $usersBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+    $sharedEmail = 'p5.multicat.' . bin2hex(random_bytes(3)) . '@example.test';
 
-    // 1. Draft save / load (encrypted at rest) / delete
-    $rDraftSave = p2Http('POST', '/api/account/drafts', [
-        'categoryCode' => 'ATTENDEE',
-        'payload'      => ['accommodationFreeText' => 'Draft secret Braille preference', 'attendingDays' => ['DAY_1']],
-    ], $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
-    pfgAssert($rDraftSave['status'] === 200 && !empty($rDraftSave['json']['saved']), 'Draft save failed: ' . $rDraftSave['body']);
-
-    $rawDraftJson = (string)$p5Pdo->query("SELECT payload_json FROM registration_drafts WHERE user_id = " . $p5Pdo->quote($t503User['id']) . " AND category_code = 'ATTENDEE' LIMIT 1")->fetchColumn();
-    pfgAssert(str_contains($rawDraftJson, 'enc:v1:') && !str_contains($rawDraftJson, 'Draft secret Braille'), 'Draft sensitive text was NOT encrypted at rest!');
-
-    $rDraftGet = p2Http('GET', '/api/account/drafts?category=ATTENDEE', null, $t503User['cookies']);
-    pfgAssert($rDraftGet['status'] === 200 && ($rDraftGet['json']['draft']['payload']['accommodationFreeText'] ?? '') === 'Draft secret Braille preference', 'Draft load/decrypt failed: ' . $rDraftGet['body']);
-
-    $rDraftDel = p2Http('DELETE', '/api/account/drafts?category=ATTENDEE', [], $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
-    pfgAssert($rDraftDel['status'] === 200 && !empty($rDraftDel['json']['deleted']), 'Draft delete failed');
+    // 1. Retired /api/account/drafts returns 410 Gone
+    $rDraft = p2Http('POST', '/api/account/drafts', ['categoryCode' => 'ATTENDEE', 'payload' => []]);
+    pfgAssert($rDraft['status'] === 410, "Retired /api/account/drafts expected 410, got {$rDraft['status']}");
 
     // 2. Legacy DELEGATE rejected 400
-    $rLeg = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['categoryCode' => 'DELEGATE']), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    $rLeg = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['categoryCode' => 'DELEGATE']), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rLeg['status'] === 400, "Legacy DELEGATE expected 400, got {$rLeg['status']}");
 
-    // 3. Strict validators: Volunteer age <16 (400), empty attendingDays (400), invalid SLI videoDemoUrl (400)
-    $rYoungVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', ['volunteerDetails' => ['age' => 15]]), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    // 3. Strict validators: Volunteer age <16 (400), empty attendingDays (400), invalid SLI videoDemoUrl (400), invalid email (400)
+    $rYoungVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', ['volunteerDetails' => ['age' => 15]]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rYoungVol['status'] === 400 && !empty($rYoungVol['json']['errors']['age']), "Volunteer age 15 expected 400, got {$rYoungVol['status']}");
 
-    $rNoDays = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['attendingDays' => []]), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    $rNoDays = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['attendingDays' => []]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rNoDays['status'] === 400 && !empty($rNoDays['json']['errors']['attendingDays']), "Empty attendingDays expected 400, got {$rNoDays['status']}");
 
-    $rBadVid = p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['sliDetails' => ['videoDemoUrl' => 'ftp://evil.example/video.mp4']]), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    $rBadVid = p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['sliDetails' => ['videoDemoUrl' => 'ftp://evil.example/video.mp4']]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rBadVid['status'] === 400 && !empty($rBadVid['json']['errors']['videoDemoUrl']), "Invalid videoDemoUrl expected 400, got {$rBadVid['status']}");
 
-    // 4. Submit ATTENDEE -> 201 CONFIRMED
-    $rAtt = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    $rBadEmail = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['email' => 'not-an-email']), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rBadEmail['status'] === 400 && !empty($rBadEmail['json']['errors']['email']), "Invalid email expected 400, got {$rBadEmail['status']}");
+
+    // 4. Submit ATTENDEE -> 201 CONFIRMED (user_id = NULL)
+    $rAtt = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['fullName' => 'Kiran Joshi', 'email' => $sharedEmail]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rAtt['status'] === 201 && ($rAtt['json']['registration']['status'] ?? '') === 'CONFIRMED', "ATTENDEE expected 201 CONFIRMED, got {$rAtt['status']}: {$rAtt['body']}");
+    $attCode = (string)$rAtt['json']['registration']['registrationCode'];
 
-    // 5. Same-category duplicate ATTENDEE -> 409
-    $rAttDup = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
-    pfgAssert($rAttDup['status'] === 409, "Same-category duplicate ATTENDEE expected 409, got {$rAttDup['status']}");
+    // 5. Exact duplicate (same category + email + fullName) -> 409 without leaking existing Registration ID
+    $rAttDup = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['fullName' => 'Kiran Joshi', 'email' => $sharedEmail]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rAttDup['status'] === 409 && !str_contains($rAttDup['body'], $attCode), "Exact duplicate ATTENDEE expected generic 409 without code leak, got {$rAttDup['status']}: {$rAttDup['body']}");
 
-    // 6. Multi-category allowed (D-09): VOLUNTEER -> 201 SUBMITTED, SLI -> 201 SUBMITTED
-    $rVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER'), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    // 6. Shared-email family/caregiver ATTENDEE with different fullName -> 201 ALLOWED
+    $rAttFam = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['fullName' => 'Neha Joshi', 'email' => $sharedEmail]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rAttFam['status'] === 201 && ($rAttFam['json']['registration']['registrationCode'] ?? '') !== $attCode, "Shared-email caregiver ATTENDEE expected 201, got {$rAttFam['status']}: {$rAttFam['body']}");
+
+    // 7. Multi-category allowed (D-09): same person registers as VOLUNTEER -> 201 SUBMITTED and SLI -> 201 SUBMITTED
+    $rVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', ['fullName' => 'Kiran Joshi', 'email' => $sharedEmail]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rVol['status'] === 201 && ($rVol['json']['registration']['status'] ?? '') === 'SUBMITTED', "VOLUNTEER expected 201 SUBMITTED, got {$rVol['status']}: {$rVol['body']}");
     $t503VolRegId = (string)$rVol['json']['registration']['id'];
 
-    $rSli = p2Http('POST', '/api/registrations', p5ValidPayload('SLI'), $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
+    $rSli = p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['fullName' => 'Kiran Joshi', 'email' => $sharedEmail]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rSli['status'] === 201 && ($rSli['json']['registration']['status'] ?? '') === 'SUBMITTED', "SLI expected 201 SUBMITTED, got {$rSli['status']}: {$rSli['body']}");
     $t503SliRegId = (string)$rSli['json']['registration']['id'];
 
-    $qrAfter = (int)$p5Pdo->query('SELECT COUNT(*) FROM qr_credentials')->fetchColumn();
-    pfgAssert($qrAfter === $qrBefore, 'QR credentials created unexpectedly during Phase 6 registration!');
+    // Verify 0 QR rows & 0 users rows created across all 4 submissions
+    pfgAssert((int)$p5Pdo->query('SELECT COUNT(*) FROM qr_credentials')->fetchColumn() === $qrBefore, 'QR credentials created unexpectedly!');
+    pfgAssert((int)$p5Pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBefore, 'Accountless registrations unexpectedly created users rows!');
 
-    return 'Drafts (enc/dec/del), legacy DELEGATE(400), strict validators(400), dup(409), multi-cat ATTENDEE(CONFIRMED)+VOLUNTEER(SUBMITTED)+SLI(SUBMITTED) & 0 QR rows verified';
+    return 'Drafts(410), legacy DELEGATE(400), validators(400), exact dup(409, 0 ID leak), shared-email caregiver(201), multi-cat ATTENDEE+VOLUNTEER+SLI (user_id=NULL, 0 users, 0 QR) verified';
 });
 
 // =========================================================================
-// T5-04: Phase 7 State Machine & Participant Self-Service
+// T5-04: Admin Lifecycle State Machine & Audited Registration Detail Corrections (§12)
 // =========================================================================
-pfgTest('T5-04', 'Phase 7 state machine: SUBMITTED->UNDER_REVIEW->INFO_REQ->RESUBMITTED->APPROVED, illegal 409, WITHDRAWN alert & 0 attendance mutation', function () use ($p5Pdo, $saSess, &$t503User, &$t503VolRegId): string {
+pfgTest('T5-04', 'Admin lifecycle & audited corrections: SUBMITTED->UNDER_REVIEW->INFO_REQ->APPROVED->CANCELLED, illegal 409, audited registrationCorrections & RBAC 403', function () use ($p5Pdo, $saSess, &$t503VolRegId): string {
     $attBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM attendance_records')->fetchColumn();
 
     // 1. Admin: SUBMITTED -> UNDER_REVIEW -> ADDITIONAL_INFO_REQUIRED
@@ -383,25 +305,37 @@ pfgTest('T5-04', 'Phase 7 state machine: SUBMITTED->UNDER_REVIEW->INFO_REQ->RESU
 
     $rInfo = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), [
         'status'        => 'ADDITIONAL_INFO_REQUIRED',
-        'publicMessage' => 'Please clarify your preferred MSU department.',
+        'publicMessage' => 'Please email your preferred MSU department to the Festival Secretariat.',
         'reviewNotes'   => 'INTERNAL_REVIEWER_NOTE_PRIVATE',
     ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rInfo['status'] === 200 && ($rInfo['json']['registration']['status'] ?? '') === 'ADDITIONAL_INFO_REQUIRED', "ADDITIONAL_INFO_REQUIRED failed: {$rInfo['body']}");
 
-    // 2. Participant dashboard quick-edit/resubmit PATCH /api/account/registrations with resubmissionNote -> RESUBMITTED
-    $rResub = p2Http('PATCH', '/api/account/registrations', [
-        'registrationId'   => $t503VolRegId,
-        'organizationName' => 'MSU Baroda Faculty of Social Work',
-        'resubmissionNote' => 'Added MSU department details as requested.',
-    ], $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
-    pfgAssert(
-        $rResub['status'] === 200
-        && !empty($rResub['json']['resubmitted'])
-        && ($rResub['json']['registration']['status'] ?? '') === 'RESUBMITTED',
-        "Participant resubmission failed: {$rResub['status']} {$rResub['body']}"
-    );
+    // 2. Authorized Admin corrects applicant contact/registration details with mandatory correctionReason (audited before/after in admin_actions & audit_logs)
+    $rCorrNoReason = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), [
+        'registrationCorrections' => ['phone' => '+91 98250 99111'],
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rCorrNoReason['status'] === 400, "Correction without correctionReason expected 400, got {$rCorrNoReason['status']}");
 
-    // 3. Admin approves RESUBMITTED -> APPROVED
+    $rCorr = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), [
+        'registrationCorrections' => [
+            'fullName'         => 'Kiran R. Joshi',
+            'phone'            => '+91 98250 99111',
+            'organizationName' => 'MSU Baroda Faculty of Social Work',
+        ],
+        'correctionReason' => 'Applicant emailed Secretariat requesting middle initial and updated phone number',
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert(
+        $rCorr['status'] === 200 && ($rCorr['json']['registration']['full_name'] ?? $rCorr['json']['registration']['fullName'] ?? '') === 'Kiran R. Joshi',
+        "Authorized Admin registrationCorrections failed: {$rCorr['status']} {$rCorr['body']}"
+    );
+    $corrAuditCnt = (int)$p5Pdo->query("SELECT COUNT(*) FROM audit_logs WHERE action = 'REGISTRATION_DETAILS_CORRECTED' AND resource_id = " . $p5Pdo->quote($t503VolRegId))->fetchColumn();
+    $corrActionCnt = (int)$p5Pdo->query("SELECT COUNT(*) FROM admin_actions WHERE action_type = 'REGISTRATION_DETAILS_CORRECTED' AND reason LIKE '%middle initial%'")->fetchColumn();
+    pfgAssert($corrAuditCnt >= 1 && $corrActionCnt >= 1, 'Missing REGISTRATION_DETAILS_CORRECTED audit_logs or admin_actions record!');
+
+    // 3. Admin returns application to UNDER_REVIEW after receiving emailed details, then approves -> APPROVED
+    $rBackUr = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), ['status' => 'UNDER_REVIEW'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rBackUr['status'] === 200 && ($rBackUr['json']['registration']['status'] ?? '') === 'UNDER_REVIEW', "Return to UNDER_REVIEW failed: {$rBackUr['body']}");
+
     $rApp = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), ['status' => 'APPROVED'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rApp['status'] === 200 && ($rApp['json']['registration']['status'] ?? '') === 'APPROVED', "Approval failed: {$rApp['body']}");
 
@@ -413,24 +347,14 @@ pfgTest('T5-04', 'Phase 7 state machine: SUBMITTED->UNDER_REVIEW->INFO_REQ->RESU
     $rIllegal = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), ['status' => 'SUBMITTED'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rIllegal['status'] === 409, "Illegal transition APPROVED->SUBMITTED expected 409, got {$rIllegal['status']}: {$rIllegal['body']}");
 
-    // 5. Assign duty & participant WITHDRAWN -> flags ASSIGNED_PARTICIPANT_WITHDRAWN_ALERT
-    $p5Pdo->prepare("UPDATE registrations SET assignment_status = 'ASSIGNED' WHERE id = :id")->execute([':id' => $t503VolRegId]);
-    $rWith = p2Http('POST', '/api/account/registrations', [
-        'action'         => 'withdraw',
-        'registrationId' => $t503VolRegId,
-        'reason'         => 'Unable to attend due to exam conflict',
-    ], $t503User['cookies'], ['X-CSRF-Token' => $t503User['csrf']]);
-    pfgAssert(
-        $rWith['status'] === 200
-        && !empty($rWith['json']['assignedConflictFlagged'])
-        && ($rWith['json']['transition']['newStatus'] ?? '') === 'WITHDRAWN',
-        "Participant withdraw failed: {$rWith['status']} {$rWith['body']}"
-    );
+    // 5. Admin cancels approved volunteer -> CANCELLED cleanly
+    $rCancel = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($t503VolRegId), [
+        'status'        => 'CANCELLED',
+        'publicMessage' => 'Cancelled upon applicant email request to the Secretariat.',
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rCancel['status'] === 200 && ($rCancel['json']['registration']['status'] ?? '') === 'CANCELLED', "Admin cancel failed: {$rCancel['body']}");
 
-    $alertCnt = (int)$p5Pdo->query("SELECT COUNT(*) FROM audit_logs WHERE action = 'ASSIGNED_PARTICIPANT_WITHDRAWN_ALERT' AND resource_id = " . $p5Pdo->quote($t503VolRegId))->fetchColumn();
-    pfgAssert($alertCnt >= 1, 'Missing ASSIGNED_PARTICIPANT_WITHDRAWN_ALERT audit log!');
-
-    return 'Full lifecycle SUBMITTED->UNDER_REVIEW->INFO_REQ->RESUBMITTED->APPROVED->WITHDRAWN passed; illegal transition 409, assigned withdrawal alerted, 0 attendance rows touched';
+    return 'Lifecycle SUBMITTED->UNDER_REVIEW->INFO_REQ->APPROVED->CANCELLED, audited registrationCorrections (before/after logged), illegal 409 & 0 attendance mutation verified';
 });
 
 // =========================================================================
@@ -532,9 +456,12 @@ pfgTest('T5-06', 'Phase 9 Manual Registration Desk: search, zero sensitive leaks
     $sessB = p2Login($rgstB['username'], $rgstB['password']);
     pfgAssert($sessA['resp']['status'] === 200 && $sessB['resp']['status'] === 200, 'RGST A/B logins failed');
 
-    // Create eligible CONFIRMED Attendee with confidential disclosures + emergency contact + internal review note
-    $partElig = p5CreateVerifiedParticipantSession($p5Pdo, 't5.desk.elig.' . bin2hex(random_bytes(3)) . '@example.test', 'Devika Shah');
+    // Create eligible accountless CONFIRMED Attendee with confidential disclosures + emergency contact + internal review note
+    pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
+    $anon = p5AnonSession();
     $rElig = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', [
+        'fullName'                  => 'Devika Shah',
+        'email'                     => 't5.desk.elig.' . bin2hex(random_bytes(3)) . '@example.test',
         'phone'                     => '+91 98250 77889',
         'isPersonWithDisability'    => 'YES',
         'disabilityCategoryCodes'   => ['BLINDNESS'],
@@ -543,16 +470,23 @@ pfgTest('T5-06', 'Phase 9 Manual Registration Desk: search, zero sensitive leaks
         'accommodationFreeText'     => 'SECRET_ACCOMM_DO_NOT_LEAK',
         'emergencyContactName'      => 'SECRET_EMERGENCY_CONTACT_NAME',
         'emergencyContactPhone'     => '+91 98250 66112',
-    ]), $partElig['cookies'], ['X-CSRF-Token' => $partElig['csrf']]);
+    ]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rElig['status'] === 201, 'Eligible attendee creation failed: ' . $rElig['body']);
     $eligId = (string)$rElig['json']['registration']['id'];
     $eligCode = (string)$rElig['json']['registration']['registrationCode'];
     $p5Pdo->prepare("UPDATE registrations SET review_notes = 'SECRET_REVIEW_NOTE_DO_NOT_LEAK' WHERE id = :id")->execute([':id' => $eligId]);
 
-    // Also create ineligible SUBMITTED Volunteer
-    $rInelig = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER'), $partElig['cookies'], ['X-CSRF-Token' => $partElig['csrf']]);
+    // Also create ineligible SUBMITTED Volunteer + eligible APPROVED SLI to verify RGST desk marks ALL 3 categories!
+    $rInelig = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', ['fullName' => 'Pending Vol Desk']), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
     pfgAssert($rInelig['status'] === 201 && ($rInelig['json']['registration']['status'] ?? '') === 'SUBMITTED', 'Ineligible volunteer creation failed');
     $ineligId = (string)$rInelig['json']['registration']['id'];
+
+    $rDeskSli = p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['fullName' => 'Approved SLI Desk']), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rDeskSli['status'] === 201, 'SLI creation for desk test failed');
+    $deskSliId = (string)$rDeskSli['json']['registration']['id'];
+    p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($deskSliId), ['status' => 'APPROVED'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    $rSliMark = p2Http('POST', '/api/attendance/mark', ['registrationId' => $deskSliId, 'attendanceDateIst' => '2027-01-21', 'venueLabel' => 'Sama Desk 1'], $sessA['cookies'], ['X-CSRF-Token' => $sessA['csrf']]);
+    pfgAssert($rSliMark['status'] === 201, "Approved accountless SLI Day 1 mark failed: {$rSliMark['body']}");
 
     // 1. Search by ID, name, and phone — verify zero sensitive fields leaked
     foreach ([$eligCode, 'Devika Shah', '77889'] as $q) {
@@ -641,110 +575,95 @@ pfgTest('T5-06', 'Phase 9 Manual Registration Desk: search, zero sensitive leaks
 });
 
 // =========================================================================
-// T5-07: Phase 10 Participant Dashboard & Notifications
+// T5-07: Accountless Email-Primary Notifications, Privacy Hygiene & Zero Obsolete Dashboard/Login Links
 // =========================================================================
-pfgTest('T5-07', 'Phase 10 dashboard: 0 IDOR, published announcements (HIGH-05), 0 internal notes, draft session masked (LOW-05), notif read & accomm clear (MED-06)', function () use ($p5Pdo, $saSess): string {
-    $p1 = p5CreateVerifiedParticipantSession($p5Pdo, 't5.dash.p1.' . bin2hex(random_bytes(3)) . '@example.test', 'Participant One');
-    $p2 = p5CreateVerifiedParticipantSession($p5Pdo, 't5.dash.p2.' . bin2hex(random_bytes(3)) . '@example.test', 'Participant Two');
+pfgTest('T5-07', 'Accountless email-primary notifications: confirmation, approval, duty, accommodation & announcement queue cleanly (user_id=NULL, 0 /dashboard links, 0 private leaks)', function () use ($p5Pdo, $saSess, $sinkDir): string {
+    foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $old) {
+        @unlink($old);
+    }
+    pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
+    $anon = p5AnonSession();
+    $p1Email = 't5.email.p1.' . bin2hex(random_bytes(3)) . '@example.test';
 
-    // Register P1 (ATTENDEE w/ accommodation + SLI) and P2 (ATTENDEE)
+    // 1. Accountless Attendee with accommodation + SLI
     $rP1Att = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', [
-        'accommodationTypes'    => ['LARGE_PRINT'],
-        'accommodationFreeText' => 'Large print schedule please',
-    ]), $p1['cookies'], ['X-CSRF-Token' => $p1['csrf']]);
-    pfgAssert($rP1Att['status'] === 201, 'P1 Attendee reg failed');
+        'fullName'                  => 'Email Privacy Attendee',
+        'email'                     => $p1Email,
+        'isPersonWithDisability'    => 'YES',
+        'disabilityCategoryCodes'   => ['LOW_VISION'],
+        'disabilitySelfDescription' => 'SECRET_PRIVATE_DISABILITY_NOTE_T507',
+        'accommodationTypes'        => ['LARGE_PRINT'],
+        'accommodationFreeText'     => 'Large print schedule please',
+    ]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rP1Att['status'] === 201, 'P1 Attendee reg failed: ' . $rP1Att['body']);
     $p1AttId = (string)$rP1Att['json']['registration']['id'];
 
-    $rP1Sli = p2Http('POST', '/api/registrations', p5ValidPayload('SLI'), $p1['cookies'], ['X-CSRF-Token' => $p1['csrf']]);
-    pfgAssert($rP1Sli['status'] === 201, 'P1 SLI reg failed');
+    $rP1Sli = p2Http('POST', '/api/registrations', p5ValidPayload('SLI', [
+        'fullName' => 'Email Privacy SLI',
+        'email'    => $p1Email,
+    ]), $anon['cookies'], ['X-CSRF-Token' => $anon['csrf']]);
+    pfgAssert($rP1Sli['status'] === 201, 'P1 SLI reg failed: ' . $rP1Sli['body']);
     $p1SliId = (string)$rP1Sli['json']['registration']['id'];
 
-    $rP2Att = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $p2['cookies'], ['X-CSRF-Token' => $p2['csrf']]);
-    pfgAssert($rP2Att['status'] === 201, 'P2 Attendee reg failed');
-    $p2AttCode = (string)$rP2Att['json']['registration']['registrationCode'];
-
-    // Set internal review_notes on P1 & approve SLI + assign to a DRAFT session with override_reason
-    $p5Pdo->prepare("UPDATE registrations SET review_notes = 'PRIVATE_ADMIN_NOTE_P1' WHERE id = :id")->execute([':id' => $p1AttId]);
-    p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($p1SliId), ['status' => 'APPROVED'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
-
-    $rDraftSess = p2Http('POST', '/api/admin/programme', [
-        'entity'    => 'session',
-        'title'     => 'CONFIDENTIAL_DRAFT_SESSION_TITLE',
-        'track'     => 'Policy',
-        'dayNumber' => 1,
-        'startsAt'  => '2027-01-21 10:00',
-        'endsAt'    => '2027-01-21 11:30',
-        'status'    => 'DRAFT',
+    // 2. Admin approves SLI (with internal reviewNotes that MUST NOT leak into email) and assigns duty
+    $rApp = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($p1SliId), [
+        'status'        => 'APPROVED',
+        'reviewNotes'   => 'PRIVATE_ADMIN_NOTE_T507',
+        'publicMessage' => 'Welcome to the Vadodara ISL team.',
     ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
-    pfgAssert($rDraftSess['status'] === 201, 'Draft session create failed: ' . $rDraftSess['body']);
-    $draftSessId = (string)$rDraftSess['json']['session']['id'];
+    pfgAssert($rApp['status'] === 200, 'SLI approval failed: ' . $rApp['body']);
 
     $rDuty = p2Http('POST', '/api/admin/assignments', [
         'registrationId' => $p1SliId,
-        'sessionId'      => $draftSessId,
         'roleTitle'      => 'Stage ISL Interpreter',
         'dutyDateIst'    => '2027-01-21',
         'shiftCode'      => 'DAY_1_SHIFT_1',
         'startTime'      => '10:00',
         'endTime'        => '11:30',
     ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
-    pfgAssert($rDuty['status'] === 201, 'SLI draft session duty assign failed: ' . $rDuty['body']);
-    $dutyId = (string)$rDuty['json']['assignment']['id'];
-    $p5Pdo->prepare("UPDATE duty_assignments SET override_reason = 'SECRET_DUTY_OVERRIDE_REASON' WHERE id = :id")->execute([':id' => $dutyId]);
+    pfgAssert($rDuty['status'] === 201, 'SLI duty assign failed: ' . $rDuty['body']);
 
-    // Publish an announcement (HIGH-05)
+    // 3. Admin updates accommodation request (triggers ACCOMMODATION_UPDATE email with recipient_user_id = NULL)
+    $accId = (string)$p5Pdo->query('SELECT id FROM accommodation_requests WHERE registration_id = ' . $p5Pdo->quote($p1AttId) . ' LIMIT 1')->fetchColumn();
+    $rAccUpd = p2Http('PATCH', '/api/admin/accommodations', [
+        'requestId'        => $accId,
+        'status'           => 'ARRANGED',
+        'coordinatorNotes' => 'SECRET_COORD_NOTE_T507',
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rAccUpd['status'] === 200, 'Accommodation update failed: ' . $rAccUpd['body']);
+
+    // 4. Publish an announcement (must succeed cleanly without touching participant accounts)
     $rAnn = p2Http('POST', '/api/admin/announcements', [
-        'title'    => 'Phase17 Published Dashboard Notice',
+        'title'    => 'Phase17 Published Notice',
         'message'  => 'Accessible shuttle buses depart every 15 minutes.',
         'severity' => 'INFO',
         'status'   => 'PUBLISHED',
     ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
     pfgAssert($rAnn['status'] === 201, 'Announcement create failed: ' . $rAnn['body']);
 
-    // Fetch P1 dashboard
-    $rDash = p2Http('GET', '/api/account/dashboard', null, $p1['cookies']);
-    pfgAssert($rDash['status'] === 200, "Dashboard GET failed: {$rDash['body']}");
-    pfgAssert(!str_contains($rDash['body'], $p2AttCode) && !str_contains($rDash['body'], $p2['email']), 'IDOR leak: P2 data appeared in P1 dashboard!');
-    pfgAssert(!str_contains($rDash['body'], 'PRIVATE_ADMIN_NOTE_P1'), 'Internal review_notes leaked to participant dashboard!');
-    pfgAssert(!str_contains($rDash['body'], 'SECRET_DUTY_OVERRIDE_REASON'), 'Internal override_reason leaked to participant dashboard!');
-    pfgAssert(!str_contains($rDash['body'], 'CONFIDENTIAL_DRAFT_SESSION_TITLE'), 'LOW-05 leak: DRAFT session title exposed in participant dashboard!');
-    pfgAssert(str_contains($rDash['body'], 'Phase17 Published Dashboard Notice'), 'HIGH-05 fail: published announcement missing from dashboard!');
-
-    // Verify SLI duty exists with sessionTitle === null
-    $foundMaskedDuty = false;
-    foreach (($rDash['json']['registrations'] ?? []) as $reg) {
-        if ($reg['id'] === $p1SliId && !empty($reg['dutyAssignments'])) {
-            $d0 = $reg['dutyAssignments'][0];
-            pfgAssert($d0['sessionTitle'] === null && $d0['sessionConfirmed'] === false, 'Draft session was not masked on duty assignment');
-            $foundMaskedDuty = true;
+    // 5. Inspect all captured emails sent to $p1Email: verify >=4 emails, ZERO /dashboard links, ZERO /login links, ZERO private leaks!
+    $matchedMails = 0;
+    foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $mf) {
+        $raw = (string)file_get_contents($mf);
+        $dec = json_decode($raw, true);
+        if (!is_array($dec) || strtolower((string)($dec['to'] ?? '')) !== strtolower($p1Email)) {
+            continue;
         }
+        $matchedMails++;
+        $body = strtolower((string)($dec['html'] ?? '') . "\n" . (string)($dec['text'] ?? ''));
+        pfgAssert(!str_contains($body, '/dashboard'), 'Email still contains retired /dashboard link: ' . ($dec['templateCode'] ?? ''));
+        pfgAssert(!str_contains($body, 'participant dashboard'), 'Email still mentions Participant Dashboard: ' . ($dec['templateCode'] ?? ''));
+        pfgAssert(!str_contains($body, 'private_admin_note_t507'), 'Internal reviewNotes leaked into email!');
+        pfgAssert(!str_contains($body, 'secret_private_disability_note_t507'), 'Private disability self-description leaked into email!');
+        pfgAssert(!str_contains($body, 'secret_coord_note_t507'), 'Private coordinatorNotes leaked into email!');
     }
-    pfgAssert($foundMaskedDuty, 'Expected masked duty assignment on P1 SLI registration');
+    pfgAssert($matchedMails >= 4, "Expected >=4 lifecycle emails captured for {$p1Email}, found {$matchedMails}");
 
-    // In-app notifications mark-read PATCH + cross-user 404
-    $rNotifs = p2Http('GET', '/api/account/notifications', null, $p1['cookies']);
-    pfgAssert($rNotifs['status'] === 200 && (int)($rNotifs['json']['unreadCount'] ?? 0) >= 1, 'Expected >=1 unread notification for P1');
-    $firstNotifId = (string)$rNotifs['json']['notifications'][0]['id'];
-    $unreadBefore = (int)$rNotifs['json']['unreadCount'];
+    // 6. Verify notification_queue rows have recipient_user_id IS NULL
+    $nullCount = (int)$p5Pdo->query('SELECT COUNT(*) FROM notification_queue WHERE LOWER(recipient_email) = ' . $p5Pdo->quote(strtolower($p1Email)) . ' AND recipient_user_id IS NULL')->fetchColumn();
+    pfgAssert($nullCount >= 4, "Expected >=4 accountless notification_queue rows with recipient_user_id IS NULL, found {$nullCount}");
 
-    $rCrossNotif = p2Http('PATCH', '/api/account/notifications', ['notificationId' => $firstNotifId], $p2['cookies'], ['X-CSRF-Token' => $p2['csrf']]);
-    pfgAssert($rCrossNotif['status'] === 404, "Cross-user notification PATCH expected 404, got {$rCrossNotif['status']}");
-
-    $rMarkRead = p2Http('PATCH', '/api/account/notifications', ['notificationId' => $firstNotifId], $p1['cookies'], ['X-CSRF-Token' => $p1['csrf']]);
-    pfgAssert($rMarkRead['status'] === 200 && (int)($rMarkRead['json']['unreadCount'] ?? -1) === ($unreadBefore - 1), 'Notification mark-read failed: ' . $rMarkRead['body']);
-
-    // MED-06: clearing accommodations on edit cancels existing REQUESTED accommodation row
-    $rClearAcc = p2Http('PATCH', '/api/account/registrations', [
-        'registrationId'        => $p1AttId,
-        'accommodationTypes'    => [],
-        'accommodationFreeText' => '',
-        'escortAccompanying'    => false,
-    ], $p1['cookies'], ['X-CSRF-Token' => $p1['csrf']]);
-    pfgAssert($rClearAcc['status'] === 200, "Accommodation clear edit failed: {$rClearAcc['body']}");
-    $accStatus = (string)$p5Pdo->query('SELECT status FROM accommodation_requests WHERE registration_id = ' . $p5Pdo->quote($p1AttId) . ' ORDER BY updated_at DESC LIMIT 1')->fetchColumn();
-    pfgAssert($accStatus === 'CANCELLED', "MED-06 failed: expected accommodation status=CANCELLED after clear, got {$accStatus}");
-
-    return 'Owner scoping(0 IDOR), published announcement(HIGH-05), 0 review_notes/override_reason, draft session masked(LOW-05), notif read(200/404) & accomm clear(MED-06) verified';
+    return "Verified {$matchedMails} accountless emails (recipient_user_id=NULL): Attendee confirm, SLI submit/approve/duty, accommodation arranged — 0 /dashboard links, 0 internal/medical leaks";
 });
 
 // =========================================================================
@@ -794,17 +713,14 @@ pfgTest('T5-08', 'Phase 11/12: venues, programme gating & Proposed label, duty o
     pfgAssert(!str_contains($rProgPage['body'], 'HIDDEN_CANCELLED_PROG_XYZ'), 'CANCELLED session leaked onto /programme!');
 
     // 3. Volunteer & SLI duty assignment: unapproved 400, 409 DUTY_OVERLAP, audited override, 2-SLI pairing
-    $volPart = p5CreateVerifiedParticipantSession($p5Pdo, 't5.duty.vol.' . bin2hex(random_bytes(3)) . '@example.test', 'Volunteer Duty');
-    $sli1Part = p5CreateVerifiedParticipantSession($p5Pdo, 't5.duty.sli1.' . bin2hex(random_bytes(3)) . '@example.test', 'SLI One');
-    $sli2Part = p5CreateVerifiedParticipantSession($p5Pdo, 't5.duty.sli2.' . bin2hex(random_bytes(3)) . '@example.test', 'SLI Two');
-    $sli3Part = p5CreateVerifiedParticipantSession($p5Pdo, 't5.duty.sli3.' . bin2hex(random_bytes(3)) . '@example.test', 'SLI Three');
-
+    pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
+    $anonDuty = p5AnonSession();
     $volRegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', [
-        'accommodationTypes' => ['WHEELCHAIR_SEATING'], 'accommodationFreeText' => 'Ramp access needed',
-    ]), $volPart['cookies'], ['X-CSRF-Token' => $volPart['csrf']])['json']['registration']['id'];
-    $sli1RegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('SLI'), $sli1Part['cookies'], ['X-CSRF-Token' => $sli1Part['csrf']])['json']['registration']['id'];
-    $sli2RegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('SLI'), $sli2Part['cookies'], ['X-CSRF-Token' => $sli2Part['csrf']])['json']['registration']['id'];
-    $sli3RegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('SLI'), $sli3Part['cookies'], ['X-CSRF-Token' => $sli3Part['csrf']])['json']['registration']['id'];
+        'fullName' => 'Volunteer Duty', 'accommodationTypes' => ['WHEELCHAIR_SEATING'], 'accommodationFreeText' => 'Ramp access needed',
+    ]), $anonDuty['cookies'], ['X-CSRF-Token' => $anonDuty['csrf']])['json']['registration']['id'];
+    $sli1RegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['fullName' => 'SLI One']), $anonDuty['cookies'], ['X-CSRF-Token' => $anonDuty['csrf']])['json']['registration']['id'];
+    $sli2RegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['fullName' => 'SLI Two']), $anonDuty['cookies'], ['X-CSRF-Token' => $anonDuty['csrf']])['json']['registration']['id'];
+    $sli3RegId = (string)p2Http('POST', '/api/registrations', p5ValidPayload('SLI', ['fullName' => 'SLI Three']), $anonDuty['cookies'], ['X-CSRF-Token' => $anonDuty['csrf']])['json']['registration']['id'];
 
     // Unapproved volunteer assignment rejected 400
     $rUnapp = p2Http('POST', '/api/admin/assignments', [
@@ -924,10 +840,11 @@ pfgTest('T5-08', 'Phase 11/12: venues, programme gating & Proposed label, duty o
 });
 
 // =========================================================================
-// T5-09: Concurrent Full-Registration HTTP Stress Test (10 Parallel Verified Participants)
+// T5-09: Concurrent Accountless Full-Registration HTTP Stress Test (10 Parallel Public Applicants)
 // =========================================================================
-pfgTest('T5-09', 'Concurrent full-registration HTTP stress test: 10 parallel verified participants -> 10/10 HTTP 201 & 10 unique PFG-2027-NNNNNN codes', function () use ($p5Pdo, $root, $phpBin, $tmpDir): string {
+pfgTest('T5-09', 'Concurrent accountless HTTP stress test: 10 parallel applicants -> 10/10 HTTP 201, 10 unique codes, user_id=NULL & 0 users created', function () use ($p5Pdo, $root, $phpBin, $tmpDir): string {
     pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
+    $usersBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
 
     // Boot 4 parallel PHP built-in servers on ports 18091..18094 so HTTP requests truly hit InnoDB concurrently!
     $env = getenv();
@@ -967,18 +884,46 @@ pfgTest('T5-09', 'Concurrent full-registration HTTP stress test: 10 parallel ver
         pfgAssert($ok, "Stress server did not listen on port {$port}");
     }
 
-    // Ephemeral HTTP worker script
+    // Ephemeral accountless HTTP worker script (fetches anonymous CSRF via GET /api/registrations then POSTs at barrier!)
     $workerFile = $tmpDir . DIRECTORY_SEPARATOR . 'stress_http_worker.php';
     file_put_contents($workerFile, <<<'PHP'
 <?php
 declare(strict_types=1);
 $url = $argv[1];
-$cookie = $argv[2];
-$csrf = $argv[3];
-$idem = $argv[4];
-$barrier = (float)$argv[5];
-$idx = (int)$argv[6];
+$email = $argv[2];
+$idem = $argv[3];
+$barrier = (float)$argv[4];
+$idx = (int)$argv[5];
 
+// 1. Obtain anonymous session cookie + CSRF token
+$cookies = [];
+$chGet = curl_init($url);
+curl_setopt_array($chGet, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT        => 15,
+    CURLOPT_HEADERFUNCTION => static function ($ch, string $line) use (&$cookies): int {
+        $t = trim($line);
+        if (stripos($t, 'set-cookie:') === 0) {
+            $semi = explode(';', trim(substr($t, 11)));
+            if (strpos($semi[0], '=') !== false) {
+                [$cn, $cv] = explode('=', $semi[0], 2);
+                $cookies[trim($cn)] = trim($cv);
+            }
+        }
+        return strlen($line);
+    },
+]);
+$getBody = (string)curl_exec($chGet);
+curl_close($chGet);
+$getJson = json_decode($getBody, true);
+$csrf = (string)($getJson['csrfToken'] ?? '');
+$pairs = [];
+foreach ($cookies as $ck => $cv) {
+    $pairs[] = $ck . '=' . $cv;
+}
+$cookieHeader = implode('; ', $pairs);
+
+// 2. Synchronize at barrier and submit accountless POST
 $waitUs = (int)(($barrier - microtime(true)) * 1000000);
 if ($waitUs > 0 && $waitUs < 5000000) {
     usleep($waitUs);
@@ -986,6 +931,8 @@ if ($waitUs > 0 && $waitUs < 5000000) {
 
 $payload = json_encode([
     'categoryCode'          => 'ATTENDEE',
+    'fullName'              => "Stress Attendee {$idx}",
+    'email'                 => $email,
     'phone'                 => sprintf('+91 98250 88%03d', $idx),
     'country'               => 'India',
     'cityDistrict'          => 'Vadodara',
@@ -1009,7 +956,7 @@ curl_setopt_array($ch, [
     CURLOPT_TIMEOUT        => 20,
     CURLOPT_HTTPHEADER     => [
         'Content-Type: application/json',
-        'Cookie: ' . $cookie,
+        'Cookie: ' . $cookieHeader,
         'X-CSRF-Token: ' . $csrf,
         'Idempotency-Key: ' . $idem,
     ],
@@ -1030,26 +977,16 @@ PHP);
 
     try {
         $n = 10;
-        $participants = [];
-        for ($i = 0; $i < $n; $i++) {
-            $participants[$i] = p5CreateVerifiedParticipantSession(
-                $p5Pdo,
-                sprintf('t5.stress.%d.%s@example.test', $i, bin2hex(random_bytes(3))),
-                "Stress Attendee {$i}"
-            );
-        }
-
-        $barrierTs = microtime(true) + 0.6;
+        $barrierTs = microtime(true) + 1.2;
         $t0 = microtime(true);
         $wProcs = [];
         $wPipes = [];
         for ($i = 0; $i < $n; $i++) {
             $port = $ports[$i % count($ports)];
-            $u = $participants[$i];
-            $cookieStr = SESSION_COOKIE_NAME . '=' . $u['cookies'][SESSION_COOKIE_NAME];
+            $email = sprintf('t5.stress.%d.%s@example.test', $i, bin2hex(random_bytes(3)));
             $idem = 't5-stress-' . $i . '-' . bin2hex(random_bytes(4));
             $wp = proc_open(
-                [$phpBin, $workerFile, "http://127.0.0.1:{$port}/api/registrations", $cookieStr, $u['csrf'], $idem, sprintf('%.6f', $barrierTs), (string)$i],
+                [$phpBin, $workerFile, "http://127.0.0.1:{$port}/api/registrations", $email, $idem, sprintf('%.6f', $barrierTs), (string)$i],
                 [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
                 $pipes,
                 $root
@@ -1087,9 +1024,10 @@ PHP);
         foreach ($unique as $c) {
             pfgAssert(preg_match('/^PFG-2027-\d{6,}$/', $c) === 1, "Invalid code format: {$c}");
         }
+        pfgAssert((int)$p5Pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === $usersBefore, 'Concurrent accountless submissions created users rows!');
 
         return sprintf(
-            '10/10 HTTP 201, 10 unique codes (%s..%s), 0 duplicates, 0 errors across 4 parallel servers in %dms',
+            '10/10 accountless HTTP 201, 10 unique codes (%s..%s), 0 duplicates, 0 users created across 4 parallel servers in %dms',
             $unique[0],
             $unique[count($unique) - 1],
             $elapsedMs
@@ -1269,11 +1207,15 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
     pfgAssert($rSaAuthGet['status'] === 200 && ($rSaAuthGet['json']['item']['template_code'] ?? '') === 'PASSWORD_RECOVERY', "T5-10 §5.1: SUPERADMIN GET auth notif expected 200, got {$rSaAuthGet['status']}");
 
     // ---------------------------------------------------------------------
-    // 2. Staff Self-Approval Prevention (§5.3)
+    // 2. Staff Self-Approval Prevention (§5.3 — email match on accountless submission)
     // ---------------------------------------------------------------------
     pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
-    $rSelfReg = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER'), $rmAdm['cookies'], ['X-CSRF-Token' => $rmAdm['csrf']]);
-    pfgAssert($rSelfReg['status'] === 201, "T5-10 §5.3: Staff personal VOLUNTEER registration failed: {$rSelfReg['status']} {$rSelfReg['body']}");
+    $t510Anon = p5AnonSession();
+    $rSelfReg = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', [
+        'fullName' => 'RM Staff Self Reg',
+        'email'    => $rmAdm['user']['email'],
+    ]), $t510Anon['cookies'], ['X-CSRF-Token' => $t510Anon['csrf']]);
+    pfgAssert($rSelfReg['status'] === 201, "T5-10 §5.3: Staff accountless VOLUNTEER registration failed: {$rSelfReg['status']} {$rSelfReg['body']}");
     $selfRegId = (string)$rSelfReg['json']['registration']['id'];
 
     $rSelfApprove = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($selfRegId), [
@@ -1291,11 +1233,10 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
     // ---------------------------------------------------------------------
     // 3. Centralized Registration Launch Gate (§6)
     // ---------------------------------------------------------------------
-    $gatePart = p5CreateVerifiedParticipantSession($p5Pdo, "t510.gate.{$t510Tag}@example.test", 'Gate Tester');
     $setSetting($p5Pdo, 'registration_public_open', '0');
     try {
         $regsBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn();
-        $rClosed = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $gatePart['cookies'], ['X-CSRF-Token' => $gatePart['csrf']]);
+        $rClosed = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $t510Anon['cookies'], ['X-CSRF-Token' => $t510Anon['csrf']]);
         $regsAfter = (int)$p5Pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn();
         pfgAssert(
             $rClosed['status'] === 503 && !empty($rClosed['json']['registrationClosed']) && $regsAfter === $regsBefore,
@@ -1306,10 +1247,12 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
     }
 
     // ---------------------------------------------------------------------
-    // 4. Assigned-Participant Withdrawal Coordinator Alert (§7)
+    // 4. Assigned-Volunteer Admin Cancellation Auto-Cancels Live Duties (§7)
     // ---------------------------------------------------------------------
-    $wPart = p5CreateVerifiedParticipantSession($p5Pdo, "t510.withdraw.{$t510Tag}@example.test", 'Assigned Withdrawer');
-    $rWVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER'), $wPart['cookies'], ['X-CSRF-Token' => $wPart['csrf']]);
+    $rWVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER', [
+        'fullName' => 'Assigned Cancelled Volunteer',
+        'email'    => "t510.withdraw.{$t510Tag}@example.test",
+    ]), $t510Anon['cookies'], ['X-CSRF-Token' => $t510Anon['csrf']]);
     pfgAssert($rWVol['status'] === 201, "T5-10 §7: Volunteer registration failed: {$rWVol['body']}");
     $wVolId = (string)$rWVol['json']['registration']['id'];
 
@@ -1328,26 +1271,21 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
     pfgAssert($rWDuty['status'] === 201, "T5-10 §7: Duty assignment failed: {$rWDuty['body']}");
     $wDutyId = (string)$rWDuty['json']['assignment']['id'];
 
-    $rWDo = p2Http('POST', '/api/account/registrations', [
-        'action'         => 'withdraw',
-        'registrationId' => $wVolId,
-        'reason'         => 'Unexpected schedule emergency',
-    ], $wPart['cookies'], ['X-CSRF-Token' => $wPart['csrf']]);
-    pfgAssert($rWDo['status'] === 200 && !empty($rWDo['json']['assignedConflictFlagged']), "T5-10 §7: Assigned withdrawal failed: {$rWDo['status']} {$rWDo['body']}");
+    $rWDo = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($wVolId), [
+        'status'        => 'CANCELLED',
+        'publicMessage' => 'Volunteer cancelled per Secretariat email',
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rWDo['status'] === 200 && ($rWDo['json']['registration']['status'] ?? '') === 'CANCELLED', "T5-10 §7: Admin cancel assigned volunteer failed: {$rWDo['status']} {$rWDo['body']}");
 
     $dutyStatusAfter = (string)$p5Pdo->query('SELECT status FROM duty_assignments WHERE id = ' . $p5Pdo->quote($wDutyId))->fetchColumn();
     $regAssignAfter = (string)$p5Pdo->query('SELECT assignment_status FROM registrations WHERE id = ' . $p5Pdo->quote($wVolId))->fetchColumn();
-    $coordNotifCnt = (int)$p5Pdo->query(
-        "SELECT COUNT(*) FROM in_app_notifications WHERE event_type = 'assigned_participant_withdrawn' AND entity_id = " . $p5Pdo->quote($wVolId)
-    )->fetchColumn();
     pfgAssert($dutyStatusAfter === 'CANCELLED', "T5-10 §7: Expected duty_assignments.status=CANCELLED, got {$dutyStatusAfter}");
     pfgAssert($regAssignAfter === 'UNASSIGNED', "T5-10 §7: Expected registrations.assignment_status=UNASSIGNED, got {$regAssignAfter}");
-    pfgAssert($coordNotifCnt >= 1, "T5-10 §7: Expected >=1 coordinator in_app_notifications (assigned_participant_withdrawn), got {$coordNotifCnt}");
 
     // ---------------------------------------------------------------------
     // 5. Configurable IST Event-Day Attendance Window (§8)
     // ---------------------------------------------------------------------
-    $rAttGate = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $gatePart['cookies'], ['X-CSRF-Token' => $gatePart['csrf']]);
+    $rAttGate = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE', ['fullName' => 'Gate Window Attendee']), $t510Anon['cookies'], ['X-CSRF-Token' => $t510Anon['csrf']]);
     pfgAssert($rAttGate['status'] === 201, "T5-10 §8: Attendee creation failed: {$rAttGate['body']}");
     $attGateRegId = (string)$rAttGate['json']['registration']['id'];
 
@@ -1395,23 +1333,23 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
         @unlink($oldSink);
     }
 
-    $stalePart = p5CreateVerifiedParticipantSession($p5Pdo, "t510.stale.{$t510Tag}@example.test", 'Stale Token User');
+    $staleStaff = p2CreateTestUser($p5Pdo, 't510_stale_' . $t510Tag, "t510.stale.{$t510Tag}@example.test", 'StaleStaff#2027', 'ADMIN');
     $rawStaleReset = 't510-stale-reset-' . bin2hex(random_bytes(16));
     $p5Pdo->prepare('INSERT INTO password_reset_tokens (id, user_id, email, token_hash, expires_at, used_at, created_at) VALUES (:id, :uid, :em, :th, :exp, :used, :now)')
         ->execute([
             ':id'   => uuid4(),
-            ':uid'  => $stalePart['id'],
-            ':em'   => $stalePart['email'],
+            ':uid'  => $staleStaff['id'],
+            ':em'   => $staleStaff['email'],
             ':th'   => hashToken($rawStaleReset),
             ':exp'  => nowSql(time() - 3600),
             ':used' => nowSql(time() - 1800),
             ':now'  => nowSql(time() - 7200),
         ]);
     $stalePwdQ = pfgEnqueueNotification($p5Pdo, [
-        'to'              => $stalePart['email'],
+        'to'              => $staleStaff['email'],
         'templateCode'    => 'PASSWORD_RECOVERY',
-        'recipientUserId' => $stalePart['id'],
-        'variables'       => ['fullName' => 'Stale Token User'],
+        'recipientUserId' => $staleStaff['id'],
+        'variables'       => ['fullName' => 'Stale Token Staff'],
         'ephemeralVars'   => ['actionUrl' => APP_URL . '/reset-password?token=' . $rawStaleReset],
         'idempotencyKey'  => "t510-stale-pwd-{$t510Tag}",
     ]);
@@ -1421,18 +1359,18 @@ pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), se
     $p5Pdo->prepare("INSERT INTO email_verification_tokens (id, user_id, purpose, target_email, token_hash, expires_at, used_at, created_at) VALUES (:id, :uid, 'SIGNUP_VERIFY', :em, :th, :exp, :used, :now)")
         ->execute([
             ':id'   => uuid4(),
-            ':uid'  => $stalePart['id'],
-            ':em'   => $stalePart['email'],
+            ':uid'  => $staleStaff['id'],
+            ':em'   => $staleStaff['email'],
             ':th'   => hashToken($rawStaleVer),
             ':exp'  => nowSql(time() + 3600),
             ':used' => nowSql(time() - 120),
             ':now'  => nowSql(time() - 600),
         ]);
     $staleVerQ = pfgEnqueueNotification($p5Pdo, [
-        'to'              => $stalePart['email'],
+        'to'              => $staleStaff['email'],
         'templateCode'    => 'ACCOUNT_VERIFICATION',
-        'recipientUserId' => $stalePart['id'],
-        'variables'       => ['fullName' => 'Stale Token User'],
+        'recipientUserId' => $staleStaff['id'],
+        'variables'       => ['fullName' => 'Stale Token Staff'],
         'ephemeralVars'   => ['actionUrl' => APP_URL . '/verify-email?token=' . $rawStaleVer],
         'idempotencyKey'  => "t510-stale-ver-{$t510Tag}",
     ]);

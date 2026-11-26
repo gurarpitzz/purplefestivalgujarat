@@ -48,7 +48,16 @@ try {
         $stmt->execute([':email' => $email]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        $isStaffAccount = false;
         if ($user && !empty($user['is_active'])) {
+            $rp = getUserRolesAndPermissions((string)$user['id'], $pdo);
+            $uRoles = $rp['roles'] ?? [];
+            $isStaffAccount = in_array('SUPERADMIN', $uRoles, true)
+                || in_array('ADMIN', $uRoles, true)
+                || in_array('RGST', $uRoles, true);
+        }
+
+        if ($user && !empty($user['is_active']) && $isStaffAccount) {
             $rawToken = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
             $tokenHash = hashToken($rawToken);
             $now = nowSql();
@@ -205,6 +214,17 @@ try {
                 $targetUserId = (string)$aaRecord['user_id'];
             }
 
+            // CAD-17: Password recovery is strictly restricted to active staff accounts
+            $rpTarget = getUserRolesAndPermissions($targetUserId, $pdo);
+            $tRoles = $rpTarget['roles'] ?? [];
+            $targetIsStaff = in_array('SUPERADMIN', $tRoles, true)
+                || in_array('ADMIN', $tRoles, true)
+                || in_array('RGST', $tRoles, true);
+            if (!$targetIsStaff) {
+                $pdo->rollBack();
+                jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+            }
+
             // Update password while strictly preserving any active 3-hour account lockout
             // (password recovery must never silently bypass an active lockout window).
             $pdo->prepare("
@@ -262,7 +282,7 @@ try {
                     'to'              => (string)$uInfo['email'],
                     'templateCode'    => 'PASSWORD_RESET_CONFIRMATION',
                     'variables'       => [
-                        'fullName'     => (string)($uInfo['full_name'] ?: 'Participant'),
+                        'fullName'     => (string)($uInfo['full_name'] ?: 'Staff Member'),
                         'changedAtIst' => formatIstTimestamp($now),
                     ],
                     'recipientUserId' => $targetUserId,

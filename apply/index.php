@@ -24,47 +24,14 @@ require_once __DIR__ . '/../includes/registration-validators.php';
 $esc = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 
 $pdo = null;
-$currentUser = null;
-$emailVerified = false;
-$activeRegsByCat = [];
-$draftsByCat = [];
-$allowMultiCategory = PFG_ALLOW_MULTI_CATEGORY;
+$registrationOpen = true;
 
 try {
     $pdo = getDb();
-    $allowMultiCategory = pfgIsMultiCategoryAllowed($pdo);
-    $currentUser = getCurrentUser($pdo);
-
-    if (is_array($currentUser) && !empty($currentUser['id'])) {
-        $stmtU = $pdo->prepare('SELECT email_verified_at FROM users WHERE id = :id LIMIT 1');
-        $stmtU->execute([':id' => $currentUser['id']]);
-        $emailVerified = !empty($stmtU->fetchColumn());
-
-        $stmtR = $pdo->prepare(
-            "SELECT id, registration_code, category_code, status, assignment_status, submitted_at
-             FROM registrations
-             WHERE user_id = :uid AND deleted_at IS NULL
-               AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
-             ORDER BY created_at DESC"
-        );
-        $stmtR->execute([':uid' => $currentUser['id']]);
-        foreach ($stmtR->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
-            $cc = strtoupper((string)$r['category_code']);
-            if (!isset($activeRegsByCat[$cc])) {
-                $activeRegsByCat[$cc] = $r;
-            }
-        }
-
-        $stmtD = $pdo->prepare(
-            'SELECT category_code, updated_at FROM registration_drafts WHERE user_id = :uid'
-        );
-        $stmtD->execute([':uid' => $currentUser['id']]);
-        foreach ($stmtD->fetchAll(PDO::FETCH_ASSOC) ?: [] as $d) {
-            $draftsByCat[strtoupper((string)$d['category_code'])] = (string)$d['updated_at'];
-        }
-    }
+    $registrationOpen = pfgIsPublicRegistrationOpen($pdo);
 } catch (Throwable $e) {
     error_log('[/apply] hub load warning: ' . $e->getMessage());
+    $registrationOpen = defined('REGISTRATION_PUBLIC_OPEN') ? (bool)REGISTRATION_PUBLIC_OPEN : false;
 }
 
 // Detect legacy query parameters (?category=DELEGATE, ?category=ACCESSIBLE, ?pathway=PWD, etc.)
@@ -89,7 +56,7 @@ if ($rawLegacyParam !== '' && in_array($rawLegacyParam, $legacyCodes, true)) {
             'body'  => "The earlier \"{$rawLegacyParam}\" category has been unified into our Attendee registration. Choose Attendee below to select your role tags (Student, Professional, Institution/NGO, Parent/Caregiver, Athlete/Coach, Ally, or General Public) along with optional travel, stay, and accessibility preferences.",
         ];
     }
-} elseif (in_array($rawLegacyParam, ['ATTENDEE', 'VOLUNTEER', 'SLI'], true) && $currentUser && $emailVerified) {
+} elseif ($registrationOpen && in_array($rawLegacyParam, ['ATTENDEE', 'VOLUNTEER', 'SLI'], true)) {
     $slug = strtolower($rawLegacyParam);
     header('Location: /apply/' . $slug);
     exit;
@@ -730,40 +697,18 @@ require_once __DIR__ . '/../includes/header.php';
       </div>
     <?php endif; ?>
 
-    <?php if (!$currentUser): ?>
-      <div class="pfg-apply-account">
-        <p class="pfg-apply-account-text">
-          Sign in or create a free verified account to continue.
+    <?php if (!$registrationOpen): ?>
+      <div role="status" aria-live="polite" class="pfg-apply-banner">
+        <h2 class="pfg-apply-banner-title">Public Registration Is Currently Closed</h2>
+        <p class="pfg-apply-banner-body">
+          Registration for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) is not yet open. Please check back once registration opens or contact <a href="mailto:purplefestivalvadodara@gmail.com" style="font-weight:700;text-decoration:underline;">purplefestivalvadodara@gmail.com</a>.
         </p>
-        <div class="pfg-apply-account-actions">
-          <a href="/login?next=<?= rawurlencode('/apply') ?>" class="pfg-apply-btn-outline">
-            Sign In
-          </a>
-          <a href="/register?next=<?= rawurlencode('/apply') ?>" class="pfg-apply-btn-solid">
-            Create Account
-          </a>
-        </div>
-      </div>
-    <?php elseif (!$emailVerified): ?>
-      <div role="alert" class="pfg-apply-alert">
-        <div class="pfg-apply-alert-text">
-          <h2 class="pfg-apply-alert-title">Verify your email before applying</h2>
-          <p class="pfg-apply-alert-body">
-            Signed in as <strong><?= $esc($currentUser['email'] ?? '') ?></strong>. Please verify your email address to receive your official Registration ID.
-          </p>
-        </div>
-        <a href="/verify-email" class="pfg-apply-btn-solid">
-          Verify Email
-        </a>
       </div>
     <?php else: ?>
-      <div class="pfg-apply-signedin">
-        <p class="pfg-apply-signedin-text">
-          Signed in as <strong><?= $esc($currentUser['fullName'] ?? $currentUser['full_name'] ?? $currentUser['email'] ?? '') ?></strong><?php if ($allowMultiCategory): ?> · Up to one active registration per category<?php endif; ?>
+      <div class="pfg-apply-account">
+        <p class="pfg-apply-account-text">
+          <strong>No website account or login required.</strong> Choose your category below to register directly — confirmation and official updates will be sent via email.
         </p>
-        <a href="/dashboard" class="pfg-apply-dash-link">
-          My Dashboard &rarr;
-        </a>
       </div>
     <?php endif; ?>
 
@@ -771,57 +716,13 @@ require_once __DIR__ . '/../includes/header.php';
     <section aria-label="Primary Registration Categories" class="pfg-apply-stack">
       <?php foreach ($primaryBoxes as $box):
           $code = $box['code'];
-          $activeReg = $activeRegsByCat[$code] ?? null;
-          $hasDraft = isset($draftsByCat[$code]);
-          $targetHref = $currentUser
-              ? ($emailVerified ? $box['slug'] : '/verify-email')
-              : '/login?next=' . rawurlencode($box['slug']);
-          $canEdit = $activeReg && (
-              in_array((string)$activeReg['status'], ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true)
-              || ($code === 'ATTENDEE' && (string)$activeReg['status'] === 'CONFIRMED')
-          );
       ?>
         <article data-primary-category="<?= $esc($code) ?>" class="pfg-apply-item">
-          <?php if ($activeReg): ?>
-            <div class="pfg-apply-box-active">
-              <div class="pfg-apply-box-head">
-                <div class="pfg-apply-box-text">
-                  <div class="pfg-apply-box-title-row">
-                    <span class="pfg-apply-box-title"><?= $esc($box['title']) ?></span>
-                    <span class="pfg-apply-pill pfg-apply-pill-status"><?= $esc($activeReg['status']) ?></span>
-                  </div>
-                  <span class="pfg-apply-box-sub"><?= $esc($box['subtitle']) ?></span>
-                </div>
-                <span class="pfg-apply-box-icon" aria-hidden="true">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </span>
-              </div>
-              <div class="pfg-apply-active-foot">
-                <div class="pfg-apply-reg-id">
-                  Registration ID:<code class="pfg-apply-reg-code"><?= $esc($activeReg['registration_code']) ?></code>
-                </div>
-                <div class="pfg-apply-active-links">
-                  <a href="/dashboard" class="pfg-apply-btn-solid">
-                    View in Dashboard
-                  </a>
-                  <?php if ($canEdit): ?>
-                    <a href="<?= $esc($box['slug'] . '?edit=' . rawurlencode((string)$activeReg['id'])) ?>" class="pfg-apply-btn-outline">
-                      Edit
-                    </a>
-                  <?php endif; ?>
-                </div>
-              </div>
-            </div>
-          <?php else: ?>
-            <a href="<?= $esc($targetHref) ?>" class="pfg-apply-box">
+          <?php if ($registrationOpen): ?>
+            <a href="<?= $esc($box['slug']) ?>" class="pfg-apply-box">
               <span class="pfg-apply-box-text">
                 <span class="pfg-apply-box-title-row">
                   <span class="pfg-apply-box-title"><?= $esc($box['title']) ?></span>
-                  <?php if ($hasDraft): ?>
-                    <span class="pfg-apply-pill pfg-apply-pill-draft">Draft Saved</span>
-                  <?php endif; ?>
                 </span>
                 <span class="pfg-apply-box-sub"><?= $esc($box['subtitle']) ?></span>
               </span>
@@ -832,6 +733,18 @@ require_once __DIR__ . '/../includes/header.php';
                 </svg>
               </span>
             </a>
+          <?php else: ?>
+            <div class="pfg-apply-box-active" aria-disabled="true" style="opacity:0.78;">
+              <div class="pfg-apply-box-head">
+                <div class="pfg-apply-box-text">
+                  <div class="pfg-apply-box-title-row">
+                    <span class="pfg-apply-box-title"><?= $esc($box['title']) ?></span>
+                    <span class="pfg-apply-pill pfg-apply-pill-draft">Closed</span>
+                  </div>
+                  <span class="pfg-apply-box-sub"><?= $esc($box['subtitle']) ?></span>
+                </div>
+              </div>
+            </div>
           <?php endif; ?>
         </article>
       <?php endforeach; ?>

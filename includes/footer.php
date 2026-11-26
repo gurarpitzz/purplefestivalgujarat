@@ -20,13 +20,9 @@ if ($footerNavState === 'ADMIN') {
     $exploreLinks[] = ['label' => 'Admin Portal', 'href' => '/admin'];
 } elseif ($footerNavState === 'RGST') {
     $exploreLinks[] = ['label' => 'Registration Desk', 'href' => '/rgst'];
-} elseif ($footerNavState === 'PARTICIPANT') {
-    $exploreLinks[] = ['label' => 'Dashboard', 'href' => '/dashboard'];
-    $exploreLinks[] = ['label' => 'Apply', 'href' => '/apply'];
 } else {
     $exploreLinks[] = ['label' => 'Apply Now', 'href' => '/apply'];
-    $exploreLinks[] = ['label' => 'Login', 'href' => '/login'];
-    $exploreLinks[] = ['label' => 'Register', 'href' => '/register'];
+    $exploreLinks[] = ['label' => 'Staff Login', 'href' => '/staff/login'];
 }
 ?>
   <?php if (empty($hideSiteFooter)): ?>

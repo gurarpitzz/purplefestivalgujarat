@@ -108,8 +108,8 @@ pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean migration & seed initializat
     )->fetchColumn();
     $appliedMigrations = (int)$pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
 
-    pfgAssert(count($tables) === 70, 'Expected 70 tables across migrations 000–012, got ' . count($tables));
-    pfgAssert($appliedMigrations === 13, 'Expected 13 applied migrations (000–012), got ' . $appliedMigrations);
+    pfgAssert(count($tables) === 70, 'Expected 70 tables across migrations 000–013, got ' . count($tables));
+    pfgAssert($appliedMigrations === 14, 'Expected 14 applied migrations (000–013), got ' . $appliedMigrations);
     pfgAssert(in_array('security_rate_limits', $tables, true), 'Missing Phase 2 security_rate_limits table');
     pfgAssert(in_array('schema_migrations', $tables, true), 'Missing Phase 3 schema_migrations table');
     pfgAssert(in_array('registration_number_sequences', $tables, true), 'Missing Phase 3 registration_number_sequences table');
@@ -282,11 +282,20 @@ pfgTest('T1-10', 'Live native PHP 8.2 + MariaDB HTTP routing & containment smoke
         $checks = [
             ['/', 200],
             ['/apply', 200],
-            ['/login', 200],
+            ['/apply/attendee', 200],
+            ['/apply/sli', 200],
+            ['/apply/volunteer', 200],
+            ['/staff/login', 200],
+            ['/login', 302],
+            ['/register', 302],
+            ['/dashboard', 410],
+            ['/verify-email', 410],
             ['/programme', 200],
             ['/accessibility', 200],
             ['/api/auth/me', 200],
             ['/api/registrations', 200],
+            ['/api/auth/signup', 410],
+            ['/api/account/dashboard', 410],
             ['/admin', 302],
             ['/rgst', 302],
             ['/api/admin/overview', 401],
@@ -315,7 +324,7 @@ pfgTest('T1-10', 'Live native PHP 8.2 + MariaDB HTTP routing & containment smoke
                 );
             }
         }
-        return 'All 17 live HTTP checks passed (GET /api/registrations -> 200 w/ strictly 3 PRIMARY categories & 0 legacy exposed; 403 on all 7 internal/doc paths)';
+        return 'All ' . count($checks) . ' live HTTP checks passed (public accountless /apply/* 200, retired participant routes 410/302, 3 PRIMARY categories, 403 on all 7 internal/doc paths)';
     } finally {
         proc_terminate($proc);
         if (isset($pipes[0]) && is_resource($pipes[0])) {

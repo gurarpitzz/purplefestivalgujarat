@@ -19,7 +19,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 
 if (!defined('PFG_REQUIRED_SCHEMA_VERSION')) {
-    define('PFG_REQUIRED_SCHEMA_VERSION', '012_final_release_hardening');
+    define('PFG_REQUIRED_SCHEMA_VERSION', '013_accountless_public_registration');
 }
 
 if (!function_exists('pfgCreateDirectPdo')) {

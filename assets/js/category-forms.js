@@ -1,7 +1,8 @@
 /**
- * Purple Festival Gujarat 2027 — Category Forms Controller (ATTENDEE, VOLUNTEER, SLI)
- * Zero-framework Vanilla JS handling conditional sections, draft save/resume, CSRF,
- * Idempotency-Key submission, inline validation feedback, and zero-QR confirmation screens.
+ * Purple Festival Gujarat 2027 — Accountless Category Forms Controller (ATTENDEE, VOLUNTEER, SLI)
+ * Zero-framework Vanilla JS handling conditional sections, review-before-submit summary,
+ * anonymous session CSRF, accessible honeypot, Idempotency-Key submission, inline validation
+ * feedback, and accountless confirmation screens (zero QR pass, zero dashboard links).
  */
 (function () {
   'use strict';
@@ -40,49 +41,21 @@
     return el ? (el.value || '').trim() : '';
   }
 
-  function setRadioValue(form, name, val) {
-    if (val === null || val === undefined || val === '') return;
-    var el = form.querySelector('input[name="' + name + '"][value="' + CSS.escape(String(val)) + '"]');
-    if (el) {
-      el.checked = true;
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  }
-
-  function setCheckboxValues(form, name, values) {
-    if (!Array.isArray(values)) return;
-    values.forEach(function (v) {
-      var el = form.querySelector('input[name="' + name + '"][value="' + CSS.escape(String(v)) + '"]');
-      if (el) {
-        el.checked = true;
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    });
-  }
-
-  function setFieldValue(form, name, val) {
-    if (val === null || val === undefined) return;
-    var el = form.querySelector('[name="' + name + '"]');
-    if (el && el.type !== 'radio' && el.type !== 'checkbox') {
-      el.value = String(val);
-    }
-  }
-
   function init() {
     var boot = window.__PFG_FORM_BOOT__;
     var form = document.getElementById('pfg-category-form');
     if (!boot || !form) return;
 
     var categoryCode = String(boot.categoryCode || '').toUpperCase();
-    var mode = String(boot.mode || 'create');
-    var registrationId = boot.registrationId || null;
+    var categoryName = String(boot.categoryName || categoryCode);
     var csrfToken = String(boot.csrfToken || '');
     var idempotencyKey = generateIdempotencyKey(categoryCode);
+    var submitting = false;
 
     var errorSummary = document.getElementById('pfg-form-error-summary');
-    var draftStatus = document.getElementById('pfg-draft-status');
+    var reviewBtn = document.getElementById('pfg-btn-review');
     var submitBtn = document.getElementById('pfg-btn-submit');
-    var saveDraftBtn = document.getElementById('pfg-btn-save-draft');
+    var reviewPanel = document.getElementById('pfg-review-panel');
     var confirmationPanel = document.getElementById('pfg-confirmation-panel');
 
     // =========================================================================
@@ -99,7 +72,6 @@
       if (gName) gName.required = needsGuardian;
       if (gRel) gRel.required = needsGuardian;
 
-      // Toggle emergency contact required dynamically for Under-18 Attendees
       var ecReq = (ageGroup === 'UNDER_18');
       var ecBadge = document.getElementById('pfg-emergency-requirement-badge');
       var ecName = document.getElementById('pfg-ec-name');
@@ -186,7 +158,7 @@
     }
 
     // =========================================================================
-    // Build & Hydrate Payload
+    // Collect Accountless Payload
     // =========================================================================
     function collectPayload() {
       var access = window.PfgSharedAccessibility
@@ -195,7 +167,14 @@
 
       var base = Object.assign({
         categoryCode: categoryCode,
+        websiteHp: getFieldValue(form, 'websiteHp'),
+        fullName: getFieldValue(form, 'fullName'),
+        email: getFieldValue(form, 'email').toLowerCase(),
         phone: getFieldValue(form, 'phone'),
+        preferredLanguage: getFieldValue(form, 'preferredLanguage'),
+        cityDistrict: getFieldValue(form, 'cityDistrict'),
+        state: getFieldValue(form, 'state'),
+        country: getFieldValue(form, 'country') || 'India',
         emergencyContactName: getFieldValue(form, 'emergencyContactName'),
         emergencyContactRelationship: getFieldValue(form, 'emergencyContactRelationship'),
         emergencyContactPhone: getFieldValue(form, 'emergencyContactPhone'),
@@ -253,8 +232,6 @@
         var sliAgeStr = getFieldValue(form, 'age');
         var gujVal = getRadioValue(form, 'basedInGujarat');
         var stageVal = getRadioValue(form, 'comfortablePublicStage');
-        base.cityDistrict = getFieldValue(form, 'cityDistrict');
-        base.state = getFieldValue(form, 'state');
         base.sliDetails = {
           age: sliAgeStr !== '' ? Number(sliAgeStr) : '',
           cityDistrict: base.cityDistrict,
@@ -275,159 +252,11 @@
         };
       }
 
-      if (mode === 'edit' && registrationId) {
-        base.registrationId = registrationId;
-      }
       return base;
     }
 
-    function hydrateDraft(data) {
-      if (!data || typeof data !== 'object' || Object.keys(data).length === 0) return;
-
-      setFieldValue(form, 'emergencyContactName', data.emergencyContactName);
-      setFieldValue(form, 'emergencyContactRelationship', data.emergencyContactRelationship);
-      setFieldValue(form, 'emergencyContactPhone', data.emergencyContactPhone);
-
-      if (window.PfgSharedAccessibility) {
-        window.PfgSharedAccessibility.applyPayload(form, data);
-      }
-
-      if (categoryCode === 'ATTENDEE') {
-        setFieldValue(form, 'organizationName', data.organizationName);
-        setFieldValue(form, 'designation', data.designation);
-        setCheckboxValues(form, 'attendingDays[]', data.attendingDays);
-        setCheckboxValues(form, 'interestedTracks[]', data.interestedTracks);
-        var ad = data.attendeeDetails || {};
-        setRadioValue(form, 'ageGroup', ad.ageGroup);
-        setFieldValue(form, 'gender', ad.gender);
-        if (ad.registeringOnBehalf && document.getElementById('pfg-registering-behalf')) {
-          document.getElementById('pfg-registering-behalf').checked = true;
-        }
-        setFieldValue(form, 'guardianName', ad.guardianName);
-        setFieldValue(form, 'guardianRelationship', ad.guardianRelationship);
-        setFieldValue(form, 'guardianPhone', ad.guardianPhone);
-        setCheckboxValues(form, 'selfIdentificationTags[]', ad.selfIdentificationTags);
-        if (typeof ad.paraSportsAthlete === 'boolean') {
-          setRadioValue(form, 'paraSportsAthlete', ad.paraSportsAthlete ? 'yes' : 'no');
-        }
-        setCheckboxValues(form, 'paraSportsEvents[]', ad.paraSportsEvents);
-        setFieldValue(form, 'paraSportsOther', ad.paraSportsOther);
-        if (ad.outstationTravelRequired && document.getElementById('pfg-outstation-toggle')) {
-          document.getElementById('pfg-outstation-toggle').checked = true;
-        }
-        setFieldValue(form, 'arrivalAt', ad.arrivalAt);
-        setFieldValue(form, 'departureAt', ad.departureAt);
-        setFieldValue(form, 'travelMode', ad.travelMode);
-        if (ad.lodgingNeeded && document.getElementById('pfg-lodging-needed')) {
-          document.getElementById('pfg-lodging-needed').checked = true;
-        }
-        if (ad.accessibleRoomNeeded && document.getElementById('pfg-accessible-room')) {
-          document.getElementById('pfg-accessible-room').checked = true;
-        }
-        setFieldValue(form, 'accompanyingCount', ad.accompanyingCount);
-        setFieldValue(form, 'foodPreference', ad.foodPreference);
-        setFieldValue(form, 'dietaryRequirements', ad.dietaryRequirements);
-        syncAttendeeConditionals();
-      } else if (categoryCode === 'VOLUNTEER') {
-        var vd = data.volunteerDetails || {};
-        setFieldValue(form, 'age', vd.age);
-        setFieldValue(form, 'gender', vd.gender);
-        setRadioValue(form, 'msuAffiliation', vd.msuAffiliation);
-        setFieldValue(form, 'msuFacultyDepartment', vd.msuFacultyDepartment);
-        setFieldValue(form, 'institutionName', vd.institutionName);
-        setFieldValue(form, 'crrNumber', vd.crrNumber);
-        setRadioValue(form, 'primaryRole', vd.primaryRole);
-        setCheckboxValues(form, 'secondaryRoles[]', vd.secondaryRoles);
-        setFieldValue(form, 'anchoringExperience', vd.anchoringExperience);
-        setFieldValue(form, 'relevantExperience', vd.relevantExperience);
-        setCheckboxValues(form, 'languagesSpoken[]', vd.languagesSpoken);
-        setFieldValue(form, 'languagesOther', vd.languagesOther);
-        setCheckboxValues(form, 'availabilityShifts[]', vd.availabilityShifts);
-        syncVolunteerConditionals();
-      } else if (categoryCode === 'SLI') {
-        setFieldValue(form, 'cityDistrict', data.cityDistrict);
-        setFieldValue(form, 'state', data.state);
-        var sd = data.sliDetails || {};
-        setFieldValue(form, 'age', sd.age);
-        if (sd.basedInGujarat === true || sd.basedInGujarat === 'yes') {
-          setRadioValue(form, 'basedInGujarat', 'yes');
-        } else if (sd.basedInGujarat === false || sd.basedInGujarat === 'no') {
-          setRadioValue(form, 'basedInGujarat', 'no');
-        }
-        setFieldValue(form, 'professionalAffiliation', sd.professionalAffiliation);
-        setRadioValue(form, 'qualificationCategory', sd.qualificationCategory);
-        setFieldValue(form, 'qualifications', sd.qualifications);
-        setFieldValue(form, 'crrNumber', sd.crrNumber);
-        setRadioValue(form, 'experienceBand', sd.experienceBand);
-        setFieldValue(form, 'trainingInstitute', sd.trainingInstitute);
-        setFieldValue(form, 'videoDemoUrl', sd.videoDemoUrl);
-        if (sd.comfortablePublicStage === true || sd.comfortablePublicStage === 'yes') {
-          setRadioValue(form, 'comfortablePublicStage', 'yes');
-        } else if (sd.comfortablePublicStage === false || sd.comfortablePublicStage === 'no') {
-          setRadioValue(form, 'comfortablePublicStage', 'no');
-        }
-        setCheckboxValues(form, 'availabilityShifts[]', sd.availabilityShifts);
-        setCheckboxValues(form, 'areasOfExpertise[]', sd.areasOfExpertise);
-        setCheckboxValues(form, 'interpretationPreferences[]', sd.interpretationPreferences);
-        setFieldValue(form, 'honorariumOrTravelNotes', sd.honorariumOrTravelNotes);
-        syncSliConditionals();
-      }
-    }
-
-    if (boot.initialDraft && typeof boot.initialDraft === 'object') {
-      hydrateDraft(boot.initialDraft);
-      if (mode === 'create' && Object.keys(boot.initialDraft).length > 0 && draftStatus) {
-        draftStatus.textContent = 'Restored your saved draft.';
-      }
-    }
-
     // =========================================================================
-    // Save Draft (manual + debounced autosave in create mode)
-    // =========================================================================
-    function saveDraft(isManual) {
-      if (mode !== 'create') return Promise.resolve();
-      var payload = collectPayload();
-      return fetch('/api/account/drafts', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken
-        },
-        body: JSON.stringify({
-          categoryCode: categoryCode,
-          payload: payload
-        })
-      })
-        .then(function (res) { return res.json(); })
-        .then(function (json) {
-          if (draftStatus && json && json.saved) {
-            draftStatus.textContent = isManual
-              ? 'Draft saved safely to your account.'
-              : 'Draft autosaved.';
-          }
-        })
-        .catch(function () {
-          if (isManual && draftStatus) {
-            draftStatus.textContent = 'Unable to save draft right now.';
-          }
-        });
-    }
-
-    if (saveDraftBtn) {
-      saveDraftBtn.addEventListener('click', function () { saveDraft(true); });
-    }
-
-    var draftTimer = null;
-    if (mode === 'create') {
-      form.addEventListener('change', function () {
-        if (draftTimer) clearTimeout(draftTimer);
-        draftTimer = setTimeout(function () { saveDraft(false); }, 3500);
-      });
-    }
-
-    // =========================================================================
-    // Validation feedback & Submission
+    // Error & Review Summary Helpers
     // =========================================================================
     function showErrors(mainMessage, errorsMap) {
       if (!errorSummary) return;
@@ -452,42 +281,134 @@
       }
     }
 
-    function renderConfirmation(reg, isEdit, message) {
+    function renderReviewPanel() {
+      if (!reviewPanel) return;
+      clearErrors();
+      var p = collectPayload();
+      var loc = [p.cityDistrict, p.state, p.country].filter(Boolean).join(', ');
+      var accommCount = Array.isArray(p.accommodationTypes) ? p.accommodationTypes.length : 0;
+
+      var rows = [
+        ['Category', categoryName],
+        ['Full Name', p.fullName || 'Not provided'],
+        ['Email Address', p.email || 'Not provided'],
+        ['Mobile / WhatsApp', p.phone || 'Not provided'],
+        ['Location', loc || 'India']
+      ];
+
+      if (categoryCode === 'ATTENDEE' && p.attendeeDetails) {
+        rows.push(['Age Group', p.attendeeDetails.ageGroup || 'Not selected']);
+        rows.push(['Attending Days', (p.attendingDays || []).join(', ') || 'None selected']);
+      } else if (categoryCode === 'VOLUNTEER' && p.volunteerDetails) {
+        rows.push(['Age', p.volunteerDetails.age ? String(p.volunteerDetails.age) : 'Not provided']);
+        rows.push(['Primary Role', p.volunteerDetails.primaryRole || 'Not selected']);
+        rows.push(['Selected Shifts', (p.volunteerDetails.availabilityShifts || []).join(', ') || 'None selected']);
+      } else if (categoryCode === 'SLI' && p.sliDetails) {
+        rows.push(['Age', p.sliDetails.age ? String(p.sliDetails.age) : 'Not provided']);
+        rows.push(['Qualification Tier', p.sliDetails.qualificationCategory || 'Not selected']);
+        rows.push(['Selected Shifts', (p.sliDetails.availabilityShifts || []).join(', ') || 'None selected']);
+      }
+
+      rows.push(['Accessibility Accommodations', accommCount > 0 ? (accommCount + ' option(s) selected (handled confidentially)') : 'None requested']);
+      rows.push(['Required Declarations', (p.consentZeroTolerance && p.consentDataProcessing && p.consentAccuracy) ? 'All accepted' : 'Incomplete — please check declarations']);
+
+      var dlHtml = rows.map(function (pair) {
+        return '<div class="rounded-xl border border-[#DCE5F7] bg-[#FAF9FF] px-4 py-3">' +
+          '<dt class="text-xs font-semibold uppercase tracking-wide text-[#46537C]">' + escHtml(pair[0]) + '</dt>' +
+          '<dd class="mt-1 text-sm font-bold text-[#202D59] break-words">' + escHtml(pair[1]) + '</dd>' +
+        '</div>';
+      }).join('');
+
+      reviewPanel.innerHTML =
+        '<p class="text-xs font-bold uppercase tracking-[0.12em] text-[#5B2A86]">Final Check</p>' +
+        '<h2 id="pfg-review-heading" class="mt-1 text-2xl font-bold text-[#202D59]">Review Your ' + escHtml(categoryName) + ' Details</h2>' +
+        '<p class="mt-1 text-sm text-[#46537C]">Please check your contact email and details carefully before submitting. Your official Registration ID and updates will be sent to this email address.</p>' +
+        '<dl class="mt-5 grid gap-3 sm:grid-cols-2">' + dlHtml + '</dl>' +
+        '<div class="mt-6 flex flex-wrap items-center justify-between gap-3">' +
+          '<button type="button" id="pfg-btn-edit-details" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]">Edit Details</button>' +
+          '<button type="button" id="pfg-btn-confirm-submit" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-7 py-3 text-base font-bold text-white hover:bg-[#8D3BF2] disabled:opacity-50">Confirm &amp; Submit</button>' +
+        '</div>';
+
       form.hidden = true;
-      if (draftStatus) draftStatus.hidden = true;
+      reviewPanel.hidden = false;
+      reviewPanel.focus();
+      reviewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      var editBtn = document.getElementById('pfg-btn-edit-details');
+      var confirmBtn = document.getElementById('pfg-btn-confirm-submit');
+      if (editBtn) {
+        editBtn.addEventListener('click', function () {
+          reviewPanel.hidden = true;
+          form.hidden = false;
+          form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      }
+      if (confirmBtn) {
+        confirmBtn.addEventListener('click', function () {
+          submitRegistration(confirmBtn);
+        });
+      }
+    }
+
+    if (reviewBtn) {
+      reviewBtn.addEventListener('click', renderReviewPanel);
+    }
+
+    // =========================================================================
+    // Accessible Confirmation Screen (Honest Status, Zero QR, Zero Dashboard)
+    // =========================================================================
+    function renderConfirmation(reg, payload) {
+      form.hidden = true;
+      if (reviewPanel) reviewPanel.hidden = true;
       clearErrors();
 
       var regCode = reg && reg.registrationCode ? reg.registrationCode : '';
-      var status = reg && reg.status ? reg.status : (categoryCode === 'ATTENDEE' ? 'CONFIRMED' : 'SUBMITTED');
+      var status = reg && reg.status ? String(reg.status).toUpperCase() : (categoryCode === 'ATTENDEE' ? 'CONFIRMED' : 'SUBMITTED');
       var isConfirmed = status === 'CONFIRMED';
+      var catDisplay = (reg && reg.categoryName) ? reg.categoryName : categoryName;
       var daysList = Array.isArray(reg && reg.attendingDays) ? reg.attendingDays.join(', ') : '';
+      var applicantEmail = payload && payload.email ? payload.email : '';
 
-      var heading = isEdit
-        ? (message || 'Registration Updated Successfully')
-        : (isConfirmed ? 'Your Attendee Registration Is Confirmed!' : 'Application Submitted — Pending Coordinator Review');
+      var statusBadgeText = isConfirmed ? 'Confirmed' : 'Submitted — Pending Coordinator Review';
+      var heading = isConfirmed
+        ? 'Your Attendee Registration Is Confirmed!'
+        : 'Application Submitted — Pending Coordinator Review';
 
       var desc = isConfirmed
-        ? 'Please save your official Registration ID below. At the Vadodara venue (21–23 January 2027), quote your Registration ID or registered name at the Registration Desk for manual check-in. No QR pass is required.'
-        : 'Thank you for applying! Submitting an application does not automatically confirm approval or shift assignment. Our coordinators will review your application and notify you by email and inside your Participant Dashboard.';
+        ? 'Thank you for registering for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara). Please save your official Registration ID below and quote it at the Registration Desk for check-in. No website account or QR pass is required.'
+        : 'Thank you for applying for Purple Festival Gujarat 2027. Submitting an application does not confirm approval or shift assignment. Our coordinators will review your application and communicate the decision and any assignments by email.';
+
+      var emailNotice = applicantEmail
+        ? 'A confirmation email has been queued for delivery to ' + applicantEmail + '. Official updates regarding your registration will be sent to this email address.'
+        : 'A confirmation email has been queued for delivery to your provided email address. Official updates regarding your registration will be sent via email.';
 
       if (confirmationPanel) {
         confirmationPanel.innerHTML =
           '<span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ' +
             (isConfirmed ? 'bg-emerald-100 text-emerald-900' : 'bg-[#F2E9FE] text-[#5B2A86]') + '">' +
-            escHtml(status) +
+            escHtml(statusBadgeText) +
           '</span>' +
           '<h2 class="mt-3 text-2xl font-bold text-[#202D59]">' + escHtml(heading) + '</h2>' +
           '<p class="mt-2 text-sm leading-relaxed text-[#46537C]">' + escHtml(desc) + '</p>' +
           (regCode
             ? '<div class="mt-5 rounded-xl border-2 border-[#202D59]/15 bg-[#F6F5FE] p-4">' +
                 '<p class="text-xs font-bold uppercase tracking-wide text-[#5B2A86]">Official Registration ID</p>' +
-                '<p class="mt-1 font-mono text-2xl font-bold tracking-wider text-[#202D59]">' + escHtml(regCode) + '</p>' +
-                (daysList ? '<p class="mt-2 text-xs text-[#46537C]">Attending Days: <strong>' + escHtml(daysList) + '</strong></p>' : '') +
+                '<p data-registration-code="true" class="mt-1 font-mono text-2xl font-bold tracking-wider text-[#202D59]">' + escHtml(regCode) + '</p>' +
+                '<p class="mt-2 text-xs text-[#46537C]">Category: <strong>' + escHtml(catDisplay) + '</strong> &middot; Status: <strong>' + escHtml(status) + '</strong></p>' +
+                (daysList ? '<p class="mt-1 text-xs text-[#46537C]">Attending Days: <strong>' + escHtml(daysList) + '</strong></p>' : '') +
               '</div>'
             : '') +
+          '<div class="mt-4 rounded-xl border border-[#DCE5F7] bg-[#FAF9FF] p-4 text-sm text-[#202D59]">' +
+            '<p class="font-semibold">Email Communication</p>' +
+            '<p class="mt-1 text-xs leading-relaxed text-[#46537C]">' + escHtml(emailNotice) + '</p>' +
+          '</div>' +
+          '<div class="mt-4 rounded-xl border border-[#DCE5F7] bg-white p-4 text-xs leading-relaxed text-[#46537C]">' +
+            '<p class="font-bold text-[#202D59]">Festival Secretariat Contact</p>' +
+            '<p class="mt-1">Need a correction or have accessibility questions? Email <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalvadodara@gmail.com</a> (quote your Registration ID) or call Radha Tandon (+91 99743 83920) / Satish Kapoor (+91 92117 60202).</p>' +
+          '</div>' +
           '<div class="mt-6 flex flex-wrap gap-3">' +
-            '<a href="/dashboard" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#202D59] px-6 py-3 text-sm font-bold text-white hover:bg-[#5B2A86]">Go to Participant Dashboard</a>' +
-            '<a href="/apply" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]">Back to Category Hub</a>' +
+            '<a href="/" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#202D59] px-6 py-3 text-sm font-bold text-white hover:bg-[#5B2A86]">Return to Homepage</a>' +
+            '<a href="/apply" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]">Register Another Category or Person</a>' +
           '</div>';
         confirmationPanel.hidden = false;
         confirmationPanel.focus();
@@ -495,58 +416,69 @@
       }
     }
 
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
+    function submitRegistration(activeBtn) {
+      if (submitting) return;
+      submitting = true;
       clearErrors();
 
       var payload = collectPayload();
-      var origLabel = submitBtn ? submitBtn.textContent : '';
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = mode === 'edit' ? 'Saving changes...' : 'Submitting...';
+      var btn = activeBtn || submitBtn;
+      var origLabel = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
       }
 
-      var endpoint = mode === 'edit' ? '/api/account/registrations' : '/api/registrations';
-      var httpMethod = mode === 'edit' ? 'PATCH' : 'POST';
-      var headers = {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken
-      };
-      if (mode === 'create') {
-        headers['Idempotency-Key'] = idempotencyKey;
-      }
-
-      fetch(endpoint, {
-        method: httpMethod,
+      fetch('/api/registrations', {
+        method: 'POST',
         credentials: 'same-origin',
-        headers: headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+          'Idempotency-Key': idempotencyKey
+        },
         body: JSON.stringify(payload)
       })
         .then(function (res) {
-          return res.json().then(function (json) {
+          return res.json().catch(function () { return {}; }).then(function (json) {
             return { ok: res.ok, status: res.status, json: json };
           });
         })
         .then(function (result) {
           if (result.ok && result.json && result.json.registration) {
-            renderConfirmation(result.json.registration, mode === 'edit', result.json.message || '');
+            renderConfirmation(result.json.registration, payload);
             return;
           }
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = origLabel;
+          submitting = false;
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = origLabel;
+          }
+          if (reviewPanel && !reviewPanel.hidden) {
+            reviewPanel.hidden = true;
+            form.hidden = false;
           }
           var errMsg = (result.json && result.json.error) || 'Please review the highlighted fields and try again.';
           var errMap = (result.json && result.json.errors) || null;
           showErrors(errMsg, errMap);
         })
         .catch(function () {
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = origLabel;
+          submitting = false;
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = origLabel;
           }
-          showErrors('A network error occurred while submitting. Your progress is safe — please try again.');
+          if (reviewPanel && !reviewPanel.hidden) {
+            reviewPanel.hidden = true;
+            form.hidden = false;
+          }
+          showErrors('A network error occurred while submitting. Please try again.');
         });
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      submitRegistration(submitBtn);
     });
   }
 

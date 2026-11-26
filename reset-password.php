@@ -8,9 +8,9 @@ if (preg_match('/^[A-Za-z0-9_\-]{10,200}$/', $token) !== 1) {
     $token = '';
 }
 
-$pageTitle = 'Reset Password';
-$pageDescription = 'Choose a new password for your Purple Festival Gujarat 2027 account.';
-$extraHeadHtml = '<meta name="referrer" content="no-referrer" /><link rel="stylesheet" href="/assets/css/auth-pages.css" />';
+$pageTitle = 'Reset Staff Password';
+$pageDescription = 'Choose a new password for your Purple Festival Gujarat 2027 staff account.';
+$extraHeadHtml = '<meta name="robots" content="noindex, nofollow" /><meta name="referrer" content="no-referrer" /><link rel="stylesheet" href="/assets/css/auth-pages.css" />';
 $extraFooterHtml = '<script type="application/json" id="auth-page-config">' . pfgSafeJsonForScript(['page' => 'reset', 'token' => $token]) . '</script>'
     . '<script src="/assets/js/auth-pages.js" defer></script>';
 
@@ -59,12 +59,12 @@ require_once __DIR__ . '/includes/header.php';
       </form>
 
       <div id="reset-done" hidden class="pfg-stack">
-        <a class="pfg-btn" href="/login?reset=1">Continue to sign in</a>
+        <a class="pfg-btn" href="/staff/login?reset=1">Continue to Staff Sign In</a>
       </div>
 
       <div class="pfg-links">
         <a href="/forgot-password">Request a new link</a>
-        <a href="/login">Back to sign in</a>
+        <a href="/staff/login">Back to Staff Sign In</a>
       </div>
     </div>
   </main>

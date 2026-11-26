@@ -42,8 +42,8 @@ try {
 
     $input = readRequestInput();
     $redirect = isset($input['redirect']) && is_string($input['redirect'])
-        ? pfgValidateSafeRedirect($input['redirect'], '/login')
-        : '/login';
+        ? pfgValidateSafeRedirect($input['redirect'], '/staff/login')
+        : '/staff/login';
 
     jsonResponse([
         'success'    => true,

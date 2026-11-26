@@ -756,7 +756,7 @@ if (!function_exists('pfgValidateRegistrationPayload')) {
         PDO $pdo,
         string $categoryCode,
         array $body,
-        array $accountProfile,
+        ?array $accountProfile = null,
         bool $isUpdate = false
     ): array {
         $cat = strtoupper(trim($categoryCode));
@@ -771,28 +771,28 @@ if (!function_exists('pfgValidateRegistrationPayload')) {
             ];
         }
 
-        // Identity snapshot comes primarily from authenticated account profile, with safe fallback from payload
-        $fullName = trim((string)($accountProfile['full_name'] ?? $accountProfile['fullName'] ?? $body['fullName'] ?? ''));
-        $email = strtolower(trim((string)($accountProfile['email'] ?? $body['email'] ?? '')));
-        $phone = trim((string)($body['phone'] ?? $accountProfile['phone'] ?? ''));
-        if ($phone === '' && !empty($accountProfile['phone'])) {
-            $phone = trim((string)$accountProfile['phone']);
-        }
-        $country = trim((string)($body['country'] ?? $accountProfile['country'] ?? 'India'));
+        $profile = is_array($accountProfile) ? $accountProfile : [];
+
+        // Accountless public registration: applicant enters personal details directly in the form.
+        $fullName = trim((string)($body['fullName'] ?? $body['full_name'] ?? $profile['full_name'] ?? $profile['fullName'] ?? ''));
+        $email = strtolower(trim((string)($body['email'] ?? $profile['email'] ?? '')));
+        $phone = trim((string)($body['phone'] ?? $profile['phone'] ?? ''));
+        $country = trim((string)($body['country'] ?? $profile['country'] ?? 'India'));
         if ($country === '') {
             $country = 'India';
         }
-        $cityDistrict = trim((string)($body['cityDistrict'] ?? $body['city_district'] ?? $accountProfile['city_district'] ?? ''));
-        $state = trim((string)($body['state'] ?? $accountProfile['state'] ?? ''));
+        $cityDistrict = trim((string)($body['cityDistrict'] ?? $body['city_district'] ?? $profile['city_district'] ?? ''));
+        $state = trim((string)($body['state'] ?? $profile['state'] ?? ''));
+        $preferredLanguage = trim((string)($body['preferredLanguage'] ?? $body['preferred_language'] ?? $profile['preferred_language'] ?? ''));
 
         if (mb_strlen($fullName) < 2 || mb_strlen($fullName) > 200) {
-            $errors['fullName'] = 'Account full name must be between 2 and 200 characters.';
+            $errors['fullName'] = 'Full name is required (2–200 characters).';
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
-            $errors['email'] = 'A valid verified email address is required.';
+            $errors['email'] = 'Please enter a valid email address.';
         }
         if ($phone === '' || !pfgIsValidPhone($phone)) {
-            $errors['phone'] = 'A valid phone number (7–15 digits) is required on your account or form.';
+            $errors['phone'] = 'Please enter a valid phone number (7–15 digits).';
         }
         if (mb_strlen($country) < 2 || mb_strlen($country) > 100) {
             $errors['country'] = 'Country must be between 2 and 100 characters.';
@@ -802,6 +802,9 @@ if (!function_exists('pfgValidateRegistrationPayload')) {
         }
         if ($state !== '' && mb_strlen($state) > 100) {
             $errors['state'] = 'State must not exceed 100 characters.';
+        }
+        if ($preferredLanguage !== '' && mb_strlen($preferredLanguage) > 32) {
+            $errors['preferredLanguage'] = 'Preferred language must not exceed 32 characters.';
         }
 
         $organizationName = trim((string)($body['organizationName'] ?? $body['organization_name'] ?? ''));
@@ -1334,8 +1337,9 @@ if (!function_exists('pfgValidateRegistrationPayload')) {
                 'fullName'         => $fullName,
                 'email'            => $email,
                 'phone'            => $phone,
-                'country'          => $country,
-                'cityDistrict'     => $cityDistrict !== '' ? $cityDistrict : null,
+                'country'           => $country,
+                'preferredLanguage' => $preferredLanguage !== '' ? $preferredLanguage : null,
+                'cityDistrict'      => $cityDistrict !== '' ? $cityDistrict : null,
                 'state'            => $state !== '' ? $state : null,
                 'occupation'       => $occupation,
                 'organizationName' => $organizationName !== '' ? $organizationName : null,

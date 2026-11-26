@@ -110,9 +110,7 @@ function pfgAnnounceBroadcast(PDO $pdo, array $user, array $announcement, array 
                 'entityId'        => (string)$announcement['id'],
                 'idempotencyKey'  => 'announce:' . $announcement['id'] . ':' . $template . ':' . $audience . ':' . $stamp . ':' . substr((string)$r['id'], 0, 8),
                 'priority'        => strtoupper((string)$announcement['severity']) === 'CRITICAL' ? 3 : 5,
-                'createInApp'     => !empty($r['user_id']),
-                'inAppTitle'      => mb_substr((string)$announcement['title'], 0, 190, 'UTF-8'),
-                'inAppMessage'    => mb_substr((string)$announcement['message'], 0, 500, 'UTF-8'),
+                'createInApp'     => false,
             ]);
             if (!empty($q['deduped'])) {
                 $deduped++;

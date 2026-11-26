@@ -354,9 +354,7 @@ try {
                         'entityType'      => 'accommodation_request',
                         'entityId'        => $notifyEntityId,
                         'idempotencyKey'  => 'accomm-upd:' . $notifyEntityId . ':' . $status . ':' . substr(md5($now), 0, 8),
-                        'createInApp'     => true,
-                        'inAppTitle'      => 'Accessibility Arrangement Updated',
-                        'inAppMessage'    => "Your accessibility request for {$regInfo['registration_code']} is now {$status}.",
+                        'createInApp'     => false,
                     ]);
                 }
             } catch (Throwable $mailErr) {

@@ -1,55 +1,41 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * /verify-email -> verify-email.php
+ * RETIRED ROUTE (HTTP 410 Gone) — CAD-17 Accountless Public Registration.
+ */
+
 require_once __DIR__ . '/includes/config.php';
 
-$token = isset($_GET['token']) ? trim((string)$_GET['token']) : '';
-if (preg_match('/^[A-Za-z0-9_\-]{20,200}$/', $token) !== 1) {
-    $token = '';
-}
-
-$pageTitle = 'Verify Your Email';
-$pageDescription = 'Confirm your email address to activate your Purple Festival Gujarat 2027 account.';
-$extraHeadHtml = '<meta name="referrer" content="no-referrer" /><link rel="stylesheet" href="/assets/css/auth-pages.css" />';
-$extraFooterHtml = '<script type="application/json" id="auth-page-config">' . pfgSafeJsonForScript(['page' => 'verify', 'token' => $token]) . '</script>'
-    . '<script src="/assets/js/auth-pages.js" defer></script>';
+http_response_code(410);
+$pageTitle = 'Email Verification No Longer Required';
+$pageDescription = 'Participant account email verification is discontinued for Purple Festival Gujarat 2027.';
+$extraHeadHtml = '<meta name="robots" content="noindex, nofollow" />';
 
 require_once __DIR__ . '/includes/header.php';
 ?>
-  <main id="main-content" tabindex="-1" class="pfg-auth" aria-labelledby="verify-heading">
-    <div class="pfg-auth-card">
-      <p class="pfg-auth-eyebrow">Account verification</p>
-      <h1 id="verify-heading" tabindex="-1"><?= $token !== '' ? 'Confirm your email address' : 'Verify your email address' ?></h1>
-
-      <div id="auth-alert" class="pfg-alert pfg-alert-error" role="alert" tabindex="-1" hidden><span><strong>Error:</strong> <span data-text></span></span></div>
-      <div id="auth-status" class="pfg-alert pfg-alert-success" role="status" aria-live="polite" tabindex="-1" hidden><span><strong>Done:</strong> <span data-text></span></span></div>
-
-      <?php if ($token !== ''): ?>
-        <p class="pfg-auth-lead">Select the button below to confirm this email address and activate your account. The link can only be used once.</p>
-        <button id="verify-confirm" type="button" class="pfg-btn">Confirm my email address</button>
-        <div id="verify-done" hidden class="pfg-stack" style="margin-top:1rem">
-          <a id="verify-done-link" class="pfg-btn" href="/login?verified=1">Continue to sign in</a>
-        </div>
-      <?php else: ?>
-        <p class="pfg-auth-lead">Open the verification link we emailed you to activate your account. Links work once and expire after 30 minutes. If yours has expired or you cannot find it, request a new one below.</p>
-      <?php endif; ?>
-
-      <section id="verify-resend-panel" class="pfg-panel" aria-labelledby="verify-resend-heading"<?= $token !== '' ? ' hidden' : '' ?>>
-        <h2 id="verify-resend-heading" style="margin:0 0 .5rem;font-size:1.125rem;">Send a new verification link</h2>
-        <form id="verify-form" data-auth-form="verify" novalidate>
-          <div class="pfg-field">
-            <label for="verify-email">Email address</label>
-            <input id="verify-email" name="email" type="email" class="pfg-input" autocomplete="email" autocapitalize="none" spellcheck="false" required aria-describedby="verify-email-error" />
-            <p id="verify-email-error" class="pfg-field-error" hidden></p>
-          </div>
-          <button id="verify-resend" type="submit" class="pfg-btn pfg-btn--ghost">Send new link</button>
-        </form>
-      </section>
-
-      <div class="pfg-links">
-        <a href="/login">Back to sign in</a>
-        <a href="/register">Create an account</a>
+<main id="main-content" tabindex="-1" class="min-h-[calc(100vh-76px)] bg-[#FAF9FF] text-[#202D59] focus:outline-none">
+  <div class="mx-auto max-w-[680px] px-5 py-16 sm:px-8">
+    <section aria-labelledby="retired-verify-heading" class="rounded-2xl border-2 border-[#202D59]/15 bg-white p-7 sm:p-10 shadow-xs">
+      <span class="inline-flex items-center rounded-full bg-[#F2E9FE] px-3 py-1 text-xs font-bold text-[#5B2A86]">
+        No Account Required
+      </span>
+      <h1 id="retired-verify-heading" class="mt-3 text-2xl font-bold text-[#202D59]">
+        Participant Email Verification Is No Longer Needed
+      </h1>
+      <p class="mt-3 text-sm leading-relaxed text-[#46537C]">
+        Purple Festival Gujarat 2027 no longer requires participant website accounts or account activation links. Simply choose your category and submit your registration directly — your official Registration ID and updates will be emailed to you.
+      </p>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <a href="/apply" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-6 py-3 text-sm font-bold text-white hover:bg-[#8D3BF2]">
+          Register Now
+        </a>
+        <a href="/" class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]">
+          Return to Homepage
+        </a>
       </div>
-    </div>
-  </main>
+    </section>
+  </div>
+</main>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

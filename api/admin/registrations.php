@@ -898,6 +898,10 @@ try {
         $hasNotesChange = array_key_exists('reviewNotes', $input) || array_key_exists('publicMessage', $input);
         $hasVolunteerAssign = !empty($input['volunteerAssignment']) && is_array($input['volunteerAssignment']);
         $hasSliAssign = !empty($input['sliAssignment']) && is_array($input['sliAssignment']);
+        $hasCorrections = !empty($input['registrationCorrections']) && is_array($input['registrationCorrections']);
+        $correctionReason = isset($input['correctionReason']) && is_string($input['correctionReason'])
+            ? trim($input['correctionReason'])
+            : '';
 
         $stmt = $pdo->prepare('SELECT * FROM registrations WHERE id = :id AND deleted_at IS NULL LIMIT 1');
         $stmt->execute([':id' => $id]);
@@ -909,7 +913,14 @@ try {
         $catUpper = strtoupper((string)$existing['category_code']);
 
         // §5.3 Staff Self-Approval / Self-Modification Prevention
-        if (!empty($existing['user_id']) && (string)$existing['user_id'] === (string)$user['id']) {
+        // Checks both legacy user_id link and direct staff email match (for accountless submissions).
+        $isSelfRegistration = (!empty($existing['user_id']) && (string)$existing['user_id'] === (string)$user['id'])
+            || (
+                !empty($existing['email'])
+                && !empty($user['email'])
+                && strcasecmp(trim((string)$existing['email']), trim((string)$user['email'])) === 0
+            );
+        if ($isSelfRegistration) {
             pfgAdminRecordAudit($pdo, (string)$user['id'], 'SELF_APPROVAL_BLOCKED', 'registration', $id, [
                 'registrationCode' => (string)($existing['registration_code'] ?? ''),
                 'categoryCode'     => $catUpper,
@@ -945,7 +956,10 @@ try {
         if ($credentialAction === 'REVOKE' && !hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE'])) {
             requirePermission(PERMISSIONS['CREDENTIALS_REVOKE'], $user);
         }
-        if (!$hasStatusChange && !$hasNotesChange && !$hasVolunteerAssign && !$hasSliAssign && $credentialAction === '') {
+        if ($hasCorrections && !hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE'])) {
+            requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
+        }
+        if (!$hasStatusChange && !$hasNotesChange && !$hasVolunteerAssign && !$hasSliAssign && !$hasCorrections && $credentialAction === '') {
             requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
         }
 
@@ -1053,10 +1067,100 @@ try {
             }
         }
 
+        // Validate Authorized Admin Registration Corrections (§12) BEFORE any DB write
+        $validatedCorrections = [];
+        $correctionBefore = [];
+        $correctionAfter = [];
+        if ($hasCorrections) {
+            if (mb_strlen($correctionReason, 'UTF-8') < 3) {
+                jsonResponse(['error' => 'A correctionReason (at least 3 characters) is required when modifying registration details.'], 400);
+            }
+            if (mb_strlen($correctionReason, 'UTF-8') > 1000) {
+                jsonResponse(['error' => 'correctionReason must not exceed 1000 characters.'], 400);
+            }
+            $rc = $input['registrationCorrections'];
+            $fieldMap = [
+                'fullName'         => ['col' => 'full_name', 'min' => 2, 'max' => 200],
+                'email'            => ['col' => 'email', 'email' => true, 'max' => 255],
+                'phone'            => ['col' => 'phone', 'phone' => true, 'max' => 40],
+                'cityDistrict'     => ['col' => 'city_district', 'min' => 0, 'max' => 120],
+                'state'            => ['col' => 'state', 'min' => 0, 'max' => 100],
+                'country'          => ['col' => 'country', 'min' => 2, 'max' => 100],
+                'organizationName' => ['col' => 'organization_name', 'min' => 0, 'max' => 200],
+                'designation'      => ['col' => 'designation', 'min' => 0, 'max' => 150],
+            ];
+            foreach ($fieldMap as $apiKey => $spec) {
+                if (!array_key_exists($apiKey, $rc)) {
+                    continue;
+                }
+                $val = $rc[$apiKey];
+                if ($val === null) {
+                    if (($spec['min'] ?? 0) > 0 || !empty($spec['email']) || !empty($spec['phone'])) {
+                        jsonResponse(['error' => "{$apiKey} cannot be empty."], 400);
+                    }
+                    $clean = null;
+                } elseif (!is_string($val)) {
+                    jsonResponse(['error' => "{$apiKey} must be a string."], 400);
+                } else {
+                    $clean = trim($val);
+                    if (!empty($spec['email'])) {
+                        $clean = strtolower($clean);
+                        if (!filter_var($clean, FILTER_VALIDATE_EMAIL) || strlen($clean) > $spec['max']) {
+                            jsonResponse(['error' => 'Please enter a valid email address.'], 400);
+                        }
+                    } elseif (!empty($spec['phone'])) {
+                        $digits = preg_replace('/\D/', '', $clean) ?? '';
+                        if (!preg_match('/^\+?[0-9\s\-()]{7,20}$/', $clean) || strlen($digits) < 7 || strlen($digits) > 15) {
+                            jsonResponse(['error' => 'Please enter a valid phone number (7–15 digits).'], 400);
+                        }
+                    } else {
+                        $len = mb_strlen($clean, 'UTF-8');
+                        if ($len < ($spec['min'] ?? 0) || $len > $spec['max']) {
+                            jsonResponse(['error' => "{$apiKey} length must be between " . ($spec['min'] ?? 0) . " and {$spec['max']} characters."], 400);
+                        }
+                        if ($clean === '' && ($spec['min'] ?? 0) === 0) {
+                            $clean = null;
+                        }
+                    }
+                }
+                $col = $spec['col'];
+                $prevVal = $existing[$col] ?? null;
+                if ($prevVal !== $clean) {
+                    $validatedCorrections[$col] = $clean;
+                    $correctionBefore[$apiKey] = $prevVal;
+                    $correctionAfter[$apiKey] = $clean;
+                }
+            }
+            if (array_key_exists('attendingDays', $rc)) {
+                if (!is_array($rc['attendingDays'])) {
+                    jsonResponse(['error' => 'attendingDays must be an array.'], 400);
+                }
+                $cleanDays = [];
+                foreach ($rc['attendingDays'] as $d) {
+                    $du = strtoupper(trim((string)$d));
+                    if (!in_array($du, ['DAY_1', 'DAY_2', 'DAY_3'], true)) {
+                        jsonResponse(['error' => "Invalid attending day: {$d}"], 400);
+                    }
+                    if (!in_array($du, $cleanDays, true)) {
+                        $cleanDays[] = $du;
+                    }
+                }
+                $encodedDays = jsonEncode($cleanDays);
+                if (($existing['attending_days'] ?? '[]') !== $encodedDays) {
+                    $validatedCorrections['attending_days'] = $encodedDays;
+                    $correctionBefore['attendingDays'] = jsonDecode($existing['attending_days'] ?? '[]', []);
+                    $correctionAfter['attendingDays'] = $cleanDays;
+                }
+            }
+        }
+
         $beforeState = [
             'status'      => $existing['status'],
             'reviewNotes' => $existing['review_notes'],
         ];
+        if (!empty($correctionBefore)) {
+            $beforeState['corrections'] = $correctionBefore;
+        }
 
         $now = nowSql();
         $nextStatus = $statusChanged ? $newStatus : $prevStatus;
@@ -1082,6 +1186,11 @@ try {
             if ($hasPublicNoteCol && $publicMessage !== null) {
                 $sets .= ', public_review_note = :pub';
                 $upParams[':pub'] = $publicMessage !== '' ? $publicMessage : null;
+            }
+            foreach ($validatedCorrections as $col => $val) {
+                $pKey = ':corr_' . $col;
+                $sets .= ", `{$col}` = {$pKey}";
+                $upParams[$pKey] = $val;
             }
             $pdo->prepare("UPDATE registrations SET {$sets} WHERE id = :id")->execute($upParams);
 
@@ -1328,9 +1437,7 @@ try {
                     'entityType'      => 'registration',
                     'entityId'        => (string)$updatedReg['id'],
                     'idempotencyKey'  => 'admin-reg:' . $updatedReg['id'] . ':' . $notificationKeySuffix,
-                    'createInApp'     => true,
-                    'inAppTitle'      => "Registration Update ({$updatedReg['registration_code']})",
-                    'inAppMessage'    => "Your {$catUpper} registration ({$updatedReg['registration_code']}) has been updated to {$updatedReg['status']}.",
+                    'createInApp'     => false,
                 ]);
                 if (MAIL_DRIVER === 'file' && empty($qInfo['deduped'])) {
                     pfgDispatchQueuedIdNow($pdo, (string)$qInfo['queueId']);
@@ -1355,12 +1462,13 @@ try {
                 ':target_id'    => $updatedReg['user_id'] ?? null,
                 ':action_type'  => $credentialAction !== ''
                     ? "CREDENTIAL_{$credentialAction}"
-                    : ($statusChanged ? "REGISTRATION_STATUS_{$nextStatus}" : 'REGISTRATION_UPDATED'),
-                ':reason'       => $reviewNotes ?? ($input['revocationReason'] ?? null),
+                    : ($statusChanged ? "REGISTRATION_STATUS_{$nextStatus}" : (!empty($correctionAfter) ? 'REGISTRATION_DETAILS_CORRECTED' : 'REGISTRATION_UPDATED')),
+                ':reason'       => $correctionReason !== '' ? $correctionReason : ($reviewNotes ?? ($input['revocationReason'] ?? null)),
                 ':before_state' => jsonEncode($beforeState),
                 ':after_state'  => jsonEncode([
                     'status'              => $updatedReg['status'],
                     'reviewNotes'         => $updatedReg['review_notes'],
+                    'corrections'         => !empty($correctionAfter) ? $correctionAfter : null,
                     'volunteerAssignment' => $input['volunteerAssignment'] ?? null,
                     'sliAssignment'       => $input['sliAssignment'] ?? null,
                     'credentialResult'    => $credentialResult,
@@ -1374,13 +1482,15 @@ try {
         pfgAdminRecordAudit(
             $pdo,
             (string)$user['id'],
-            $statusChanged ? "REGISTRATION_{$nextStatus}" : 'REGISTRATION_UPDATED',
+            $statusChanged ? "REGISTRATION_{$nextStatus}" : (!empty($correctionAfter) ? 'REGISTRATION_DETAILS_CORRECTED' : 'REGISTRATION_UPDATED'),
             'registration',
             $id,
             [
                 'registrationCode' => $updatedReg['registration_code'],
                 'previousStatus'   => $existing['status'],
                 'newStatus'        => $updatedReg['status'],
+                'correctedFields'  => array_keys($correctionAfter),
+                'correctionReason' => $correctionReason !== '' ? $correctionReason : null,
                 'credentialAction' => $credentialAction ?: null,
                 'dutiesCancelled'  => $dutiesCancelled,
             ]

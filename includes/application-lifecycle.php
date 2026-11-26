@@ -190,7 +190,7 @@ if (!function_exists('pfgGetTransitionNotificationSpec')) {
                         'registrationCode' => $regCode,
                         'categoryName'     => $catName,
                         'status'           => 'APPROVED',
-                        'dutyDetails'      => $safePub !== '' ? $safePub : 'Your venue and shift assignment will be shared in your Participant Dashboard.',
+                        'dutyDetails'      => $safePub !== '' ? $safePub : 'Your venue, shift, and reporting instructions will be sent to you via email.',
                     ],
                     'inAppTitle'   => "Volunteer Application Approved ({$regCode})",
                     'inAppMessage' => $safePub !== '' ? $safePub : "Congratulations! Your Volunteer application ({$regCode}) has been approved.",
@@ -223,7 +223,7 @@ if (!function_exists('pfgGetTransitionNotificationSpec')) {
                         'fullName'         => $fullName,
                         'registrationCode' => $regCode,
                         'categoryName'     => $catName,
-                        'requestedDetails' => $safePub !== '' ? $safePub : 'Please sign in to your Participant Dashboard to review and update your Volunteer application.',
+                        'requestedDetails' => $safePub !== '' ? $safePub : 'Please reply to this email or write to purplefestivalvadodara@gmail.com quoting your Registration ID to provide the requested clarification.',
                     ],
                     'inAppTitle'   => "Additional Information Needed ({$regCode})",
                     'inAppMessage' => $safePub !== '' ? $safePub : "Coordinators requested additional information for your Volunteer application ({$regCode}).",
@@ -252,7 +252,7 @@ if (!function_exists('pfgGetTransitionNotificationSpec')) {
                         'registrationCode' => $regCode,
                         'categoryName'     => $catName,
                         'status'           => 'APPROVED',
-                        'dutyDetails'      => $safePub !== '' ? $safePub : 'Your assigned venue and interpretation sessions will appear in your Participant Dashboard.',
+                        'dutyDetails'      => $safePub !== '' ? $safePub : 'Your assigned venue, interpretation sessions, and reporting instructions will be sent to you via email.',
                     ],
                     'inAppTitle'   => "SLI Application Approved ({$regCode})",
                     'inAppMessage' => $safePub !== '' ? $safePub : "Congratulations! Your Sign Language Interpreter application ({$regCode}) has been approved.",
@@ -285,7 +285,7 @@ if (!function_exists('pfgGetTransitionNotificationSpec')) {
                         'fullName'         => $fullName,
                         'registrationCode' => $regCode,
                         'categoryName'     => $catName,
-                        'requestedDetails' => $safePub !== '' ? $safePub : 'Please sign in to your Participant Dashboard to provide the requested clarification for your SLI application.',
+                        'requestedDetails' => $safePub !== '' ? $safePub : 'Please reply to this email or write to purplefestivalvadodara@gmail.com quoting your Registration ID to provide the requested clarification.',
                     ],
                     'inAppTitle'   => "Additional Information Needed ({$regCode})",
                     'inAppMessage' => $safePub !== '' ? $safePub : "Coordinators requested additional information for your SLI application ({$regCode}).",
@@ -470,27 +470,9 @@ if (!function_exists('pfgTransitionRegistrationStatus')) {
                     'entityType'      => 'registration',
                     'entityId'        => $regId,
                     'idempotencyKey'  => 'lifecycle:' . $regId . ':' . $nextStatus . ':' . $historyId,
-                    'createInApp'     => true,
-                    'inAppTitle'      => $notifSpec['inAppTitle'],
-                    'inAppMessage'    => $notifSpec['inAppMessage'],
-                    'inAppActionUrl'  => '/dashboard',
+                    'createInApp'     => false,
                 ]);
                 $notificationQueueId = (string)($qRes['queueId'] ?? '');
-            } elseif ($recipientUserId !== null && in_array($nextStatus, ['UNDER_REVIEW', 'RESUBMITTED'], true)) {
-                pfgCreateInAppNotification($pdo, [
-                    'userId'         => $recipientUserId,
-                    'eventType'      => 'registration.status_' . strtolower($nextStatus),
-                    'title'          => $nextStatus === 'UNDER_REVIEW'
-                        ? "Application Under Review ({$regCode})"
-                        : "Application Resubmitted ({$regCode})",
-                    'message'        => $nextStatus === 'UNDER_REVIEW'
-                        ? "Your {$categoryCode} application ({$regCode}) is now being reviewed by our coordinators."
-                        : "Your updated {$categoryCode} application ({$regCode}) has been resubmitted for coordinator review.",
-                    'actionUrl'      => '/dashboard',
-                    'entityType'     => 'registration',
-                    'entityId'       => $regId,
-                    'idempotencyKey' => 'inapp:lifecycle:' . $regId . ':' . $nextStatus . ':' . $historyId,
-                ]);
             }
 
             if ($startedTx) {
