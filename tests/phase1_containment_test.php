@@ -106,18 +106,19 @@ pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean migration & seed initializat
         "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
     )->fetchColumn();
 
-    pfgAssert(count($tables) === 62, 'Expected 62 tables (57 core + security_rate_limits + schema_migrations + registration_number_sequences + attendance_records + attendance_correction_logs), got ' . count($tables));
+    pfgAssert(count($tables) === 63, 'Expected 63 tables (57 core + security_rate_limits + schema_migrations + registration_number_sequences + attendance_records + attendance_correction_logs + in_app_notifications), got ' . count($tables));
     pfgAssert(in_array('security_rate_limits', $tables, true), 'Missing Phase 2 security_rate_limits table');
     pfgAssert(in_array('schema_migrations', $tables, true), 'Missing Phase 3 schema_migrations table');
     pfgAssert(in_array('registration_number_sequences', $tables, true), 'Missing Phase 3 registration_number_sequences table');
     pfgAssert(in_array('attendance_records', $tables, true), 'Missing Phase 3 attendance_records table');
+    pfgAssert(in_array('in_app_notifications', $tables, true), 'Missing Phase 4 in_app_notifications table');
     pfgAssert($edCount === 1, 'Expected 1 active festival edition, got ' . $edCount);
     pfgAssert($catCount === 8 && $primaryCatCount === 3, "Expected 8 active categories (3 PRIMARY), got {$catCount} ({$primaryCatCount} PRIMARY)");
     pfgAssert($partnerCount === 11, 'Expected 11 seeded partners, got ' . $partnerCount);
-    pfgAssert($fkCount >= 60, 'Expected >= 60 enforced foreign keys, got ' . $fkCount);
+    pfgAssert($fkCount >= 64, 'Expected >= 64 enforced foreign keys, got ' . $fkCount);
 
     return sprintf(
-        'Fresh MariaDB pfg27_test migrated (%d migrations) & seeded: 62 tables, %d FKs, 1 active edition, 8 categories (3 PRIMARY), 11 partners',
+        'Fresh MariaDB pfg27_test migrated (%d migrations) & seeded: 63 tables, %d FKs, 1 active edition, 8 categories (3 PRIMARY), 11 partners',
         count($migResult['appliedNow']),
         $fkCount
     );

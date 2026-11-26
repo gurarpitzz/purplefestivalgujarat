@@ -19,7 +19,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 
 if (!defined('PFG_REQUIRED_SCHEMA_VERSION')) {
-    define('PFG_REQUIRED_SCHEMA_VERSION', '005_phase3_referential_integrity_and_indexes');
+    define('PFG_REQUIRED_SCHEMA_VERSION', '006_phase4_notifications_and_delivery_tracking');
 }
 
 if (!function_exists('pfgCreateDirectPdo')) {
@@ -247,6 +247,20 @@ if (!function_exists('pfgEnsureMigrationsTable')) {
     }
 }
 
+if (!function_exists('pfgComputeMigrationChecksum')) {
+    /**
+     * Computes a cross-platform (Windows CRLF / Bluehost Linux LF) normalized SHA-256 checksum
+     * so line-ending conversions during Git/cPanel deployment never cause false checksum drift,
+     * while any actual SQL/PHP content modification still triggers immediate tamper detection.
+     */
+    function pfgComputeMigrationChecksum(string $filePath): string
+    {
+        $raw = (string)file_get_contents($filePath);
+        $normalized = rtrim(str_replace(["\r\n", "\r"], "\n", $raw), "\n");
+        return hash('sha256', $normalized);
+    }
+}
+
 if (!function_exists('pfgDiscoverMigrations')) {
     /**
      * Discovers all ordered forward migrations (`.sql` and `.php`) in `database/migrations/`,
@@ -280,7 +294,7 @@ if (!function_exists('pfgDiscoverMigrations')) {
                 'type'     => strtolower($m[2]),
                 'filename' => $file,
                 'path'     => $fullPath,
-                'checksum' => hash_file('sha256', $fullPath) ?: '',
+                'checksum' => pfgComputeMigrationChecksum($fullPath),
             ];
         }
 

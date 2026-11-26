@@ -191,8 +191,39 @@ if (!defined('MAIL_SINK_DIR')) {
 if (!defined('RESEND_API_KEY')) {
     define('RESEND_API_KEY', pfgEnv('RESEND_API_KEY', ''));
 }
+if (!defined('RESEND_WEBHOOK_SECRET')) {
+    define('RESEND_WEBHOOK_SECRET', pfgEnv('RESEND_WEBHOOK_SECRET', ''));
+}
+if (!defined('MAIL_FROM_NAME')) {
+    define('MAIL_FROM_NAME', pfgEnv('MAIL_FROM_NAME', 'Purple Festival Gujarat 2027'));
+}
+if (!defined('MAIL_FROM_ADDRESS')) {
+    define('MAIL_FROM_ADDRESS', pfgEnv('MAIL_FROM_ADDRESS', 'noreply@purplefestivalgujarat.com'));
+}
+if (!defined('MAIL_REPLY_TO')) {
+    define('MAIL_REPLY_TO', pfgEnv('MAIL_REPLY_TO', 'purplefestivalvadodara@gmail.com'));
+}
 if (!defined('EMAIL_FROM')) {
-    define('EMAIL_FROM', pfgEnv('EMAIL_FROM', 'Purple Festival Gujarat 2027 <noreply@purplefestivalgujarat.com>'));
+    $configuredFrom = trim(pfgEnv('EMAIL_FROM', ''));
+    define('EMAIL_FROM', $configuredFrom !== '' ? $configuredFrom : (MAIL_FROM_NAME . ' <' . MAIL_FROM_ADDRESS . '>'));
+}
+if (!defined('NOTIFICATION_BATCH_LIMIT')) {
+    define('NOTIFICATION_BATCH_LIMIT', max(1, min(200, (int)pfgEnv('NOTIFICATION_BATCH_LIMIT', '25'))));
+}
+if (!defined('NOTIFICATION_MAX_SECONDS')) {
+    define('NOTIFICATION_MAX_SECONDS', max(5, min(300, (int)pfgEnv('NOTIFICATION_MAX_SECONDS', '45'))));
+}
+if (!defined('NOTIFICATION_LOCK_TTL_SECONDS')) {
+    define('NOTIFICATION_LOCK_TTL_SECONDS', max(30, min(900, (int)pfgEnv('NOTIFICATION_LOCK_TTL_SECONDS', '120'))));
+}
+if (!defined('NOTIFICATION_PROVIDER_TIMEOUT')) {
+    define('NOTIFICATION_PROVIDER_TIMEOUT', max(3, min(30, (int)pfgEnv('NOTIFICATION_PROVIDER_TIMEOUT', '12'))));
+}
+if (!defined('NOTIFICATION_MAX_ATTEMPTS')) {
+    define('NOTIFICATION_MAX_ATTEMPTS', max(1, min(10, (int)pfgEnv('NOTIFICATION_MAX_ATTEMPTS', '5'))));
+}
+if (!defined('NOTIFICATION_SUPPORT_EMAIL')) {
+    define('NOTIFICATION_SUPPORT_EMAIL', pfgEnv('NOTIFICATION_SUPPORT_EMAIL', MAIL_REPLY_TO));
 }
 
 // ============================================================================

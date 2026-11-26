@@ -883,36 +883,94 @@ try {
             $credentialResult = ['action' => 'REVOKED'];
         }
 
-        // Send clean confirmation / approval email (with Registration ID & duty details, ZERO QR pass per D-01)
-        if ($transitionedToApproved) {
-            try {
-                $dutyDetails = null;
-                if ($updatedVolunteer) {
-                    $dutyDetails = [
-                        'Department' => $updatedVolunteer['assignedDepartment'] ?? null,
-                        'Venue'      => $updatedVolunteer['assignedVenue'] ?? null,
-                        'Shift'      => $updatedVolunteer['assignedShift'] ?? null,
-                        'Reporting'  => $updatedVolunteer['reportingTime'] ?? null,
-                    ];
-                } elseif ($updatedSli) {
-                    $dutyDetails = [
-                        'Assigned Venue'    => $updatedSli['assignedVenue'] ?? null,
-                        'Duty Times'        => $updatedSli['dutyTimes'] ?? null,
-                        'Assigned Sessions' => $updatedSli['assignedSessions'] ?? null,
-                    ];
-                }
+        // Phase 4C/4M Transactional Outbox: persist admin review/assignment notification inside the same committed flow
+        // (Zero QR issuance per D-01; never exposes internal review notes in email)
+        $catUpper = strtoupper((string)$updatedReg['category_code']);
+        $prevStatus = (string)$existing['status'];
+        $statusChanged = ($nextStatus !== $prevStatus);
+        $dutyDetails = null;
+        if ($updatedVolunteer) {
+            $dutyDetails = [
+                'Department' => $updatedVolunteer['assignedDepartment'] ?? null,
+                'Venue'      => $updatedVolunteer['assignedVenue'] ?? null,
+                'Shift'      => $updatedVolunteer['assignedShift'] ?? null,
+                'Reporting'  => $updatedVolunteer['reportingTime'] ?? null,
+            ];
+        } elseif ($updatedSli) {
+            $dutyDetails = [
+                'Assigned Venue'    => $updatedSli['assignedVenue'] ?? null,
+                'Duty Times'        => $updatedSli['dutyTimes'] ?? null,
+                'Assigned Sessions' => $updatedSli['assignedSessions'] ?? null,
+            ];
+        }
 
-                $emailDeliveryResult = sendRegistrationConfirmationEmail($pdo, [
-                    'to'               => (string)$updatedReg['email'],
-                    'fullName'         => (string)$updatedReg['full_name'],
-                    'registrationCode' => (string)$updatedReg['registration_code'],
-                    'categoryName'     => (string)$updatedReg['category_code'],
-                    'status'           => (string)$updatedReg['status'],
-                    'recipientUserId'  => $updatedReg['user_id'] ?? null,
-                    'dutyDetails'      => $dutyDetails,
+        $notificationTemplate = null;
+        $notificationKeySuffix = null;
+        if ($statusChanged) {
+            if ($catUpper === 'VOLUNTEER') {
+                $notificationTemplate = match ($nextStatus) {
+                    'APPROVED', 'CONFIRMED'    => 'VOLUNTEER_APPLICATION_APPROVED',
+                    'REJECTED'                 => 'VOLUNTEER_APPLICATION_REJECTED',
+                    'WAITLISTED'               => 'VOLUNTEER_APPLICATION_WAITLISTED',
+                    'ADDITIONAL_INFO_REQUIRED' => 'VOLUNTEER_INFO_REQUESTED',
+                    default                    => null,
+                };
+            } elseif ($catUpper === 'SLI') {
+                $notificationTemplate = match ($nextStatus) {
+                    'APPROVED', 'CONFIRMED'    => 'SLI_APPLICATION_APPROVED',
+                    'REJECTED'                 => 'SLI_APPLICATION_REJECTED',
+                    'WAITLISTED'               => 'SLI_APPLICATION_WAITLISTED',
+                    'ADDITIONAL_INFO_REQUIRED' => 'SLI_INFO_REQUESTED',
+                    default                    => null,
+                };
+            } else {
+                $notificationTemplate = match ($nextStatus) {
+                    'APPROVED', 'CONFIRMED' => 'ATTENDEE_REGISTRATION_CONFIRMED',
+                    'CANCELLED'             => 'ATTENDEE_REGISTRATION_CANCELLED',
+                    default                 => null,
+                };
+            }
+            $notificationKeySuffix = 'status:' . $nextStatus;
+        } elseif ($hasVolunteerAssign && $updatedVolunteer) {
+            $notificationTemplate = !empty($existingVol['assigned_venue']) || !empty($existingVol['assigned_shift'])
+                ? 'VOLUNTEER_ASSIGNMENT_UPDATED'
+                : 'VOLUNTEER_ASSIGNMENT_CREATED';
+            $notificationKeySuffix = 'vol-assign:' . md5(jsonEncode($dutyDetails));
+        } elseif ($hasSliAssign && $updatedSli) {
+            $notificationTemplate = !empty($existingSli['assigned_venue']) || !empty($existingSli['duty_times'])
+                ? 'SLI_ASSIGNMENT_UPDATED'
+                : 'SLI_ASSIGNMENT_CREATED';
+            $notificationKeySuffix = 'sli-assign:' . md5(jsonEncode($dutyDetails));
+        }
+
+        if ($notificationTemplate !== null && !empty($updatedReg['email'])) {
+            try {
+                $qInfo = pfgEnqueueNotification($pdo, [
+                    'to'              => (string)$updatedReg['email'],
+                    'templateCode'    => $notificationTemplate,
+                    'variables'       => [
+                        'fullName'         => (string)$updatedReg['full_name'],
+                        'registrationCode' => (string)$updatedReg['registration_code'],
+                        'categoryName'     => $catUpper,
+                        'status'           => (string)$updatedReg['status'],
+                        'dutyDetails'      => $dutyDetails,
+                    ],
+                    'recipientUserId' => $updatedReg['user_id'] ?? null,
+                    'entityType'      => 'registration',
+                    'entityId'        => (string)$updatedReg['id'],
+                    'idempotencyKey'  => 'admin-reg:' . $updatedReg['id'] . ':' . $notificationKeySuffix,
+                    'createInApp'     => true,
+                    'inAppTitle'      => "Registration Update ({$updatedReg['registration_code']})",
+                    'inAppMessage'    => "Your {$catUpper} registration ({$updatedReg['registration_code']}) has been updated to {$updatedReg['status']}.",
                 ]);
+                if (MAIL_DRIVER === 'file' && empty($qInfo['deduped'])) {
+                    pfgDispatchQueuedIdNow($pdo, (string)$qInfo['queueId']);
+                    $emailDeliveryResult = ['queueId' => $qInfo['queueId'], 'status' => 'CAPTURED_LOCAL'];
+                } else {
+                    $emailDeliveryResult = ['queueId' => $qInfo['queueId'], 'status' => (string)$qInfo['status']];
+                }
             } catch (Throwable $e) {
-                error_log('/api/admin/registrations.php email send error: ' . $e->getMessage());
+                error_log('/api/admin/registrations.php notification enqueue error: ' . $e->getMessage());
             }
         }
 

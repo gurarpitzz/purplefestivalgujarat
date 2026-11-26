@@ -10,6 +10,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/database.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/notification-service.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
@@ -282,6 +283,35 @@ try {
                 ]);
             }
         } catch (Throwable $e) {
+        }
+
+        // Privacy-safe participant update notification (status only; NEVER includes coordinator notes or diagnoses in email)
+        if ($status !== (string)$existing['status']) {
+            try {
+                $rSt = $pdo->prepare('SELECT full_name, email, registration_code, user_id FROM registrations WHERE id = :rid LIMIT 1');
+                $rSt->execute([':rid' => $targetRegId]);
+                $regInfo = $rSt->fetch(PDO::FETCH_ASSOC);
+                if ($regInfo && !empty($regInfo['email'])) {
+                    pfgEnqueueNotification($pdo, [
+                        'to'              => (string)$regInfo['email'],
+                        'templateCode'    => 'ACCESSIBILITY_ARRANGEMENT_UPDATED',
+                        'variables'       => [
+                            'fullName'          => (string)$regInfo['full_name'],
+                            'registrationCode'  => (string)$regInfo['registration_code'],
+                            'arrangementStatus' => $status,
+                        ],
+                        'recipientUserId' => $regInfo['user_id'] ?? null,
+                        'entityType'      => 'accommodation_request',
+                        'entityId'        => $targetReqId,
+                        'idempotencyKey'  => 'accomm-upd:' . $targetReqId . ':' . $status . ':' . substr(md5($now), 0, 8),
+                        'createInApp'     => true,
+                        'inAppTitle'      => 'Accessibility Arrangement Updated',
+                        'inAppMessage'    => "Your accessibility request for {$regInfo['registration_code']} is now {$status}.",
+                    ]);
+                }
+            } catch (Throwable $mailErr) {
+                error_log('/api/admin/accommodations.php notification enqueue warning: ' . $mailErr->getMessage());
+            }
         }
 
         // Record admin action & audit log

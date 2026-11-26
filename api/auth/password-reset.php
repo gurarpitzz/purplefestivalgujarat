@@ -84,20 +84,23 @@ try {
             ]);
 
             $resetUrl = APP_URL . '/login?resetToken=' . rawurlencode($rawToken);
-            $safeName = htmlspecialchars((string)$user['full_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $safeUrl = htmlspecialchars($resetUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-            // Deliver via mailer without persisting rawToken or resetUrl in notification_queue.payload
+            // Phase 4L Secure Ephemeral Delivery: actionUrl encrypted in ephemeral_secret_enc & wiped immediately upon handoff;
+            // NEVER persisted in notification_queue.payload or notification_delivery_logs.
             sendFestivalEmail($pdo, [
                 'to'              => (string)$user['email'],
-                'subject'         => 'Reset your Purple Festival Gujarat 2027 password',
-                'html'            => "<p>Dear {$safeName},</p><p>Use the link below within 1 hour to reset your password:</p><p><a href=\"{$safeUrl}\">Reset Password</a></p><p>If you did not request this, you can safely ignore this email.</p>",
-                'text'            => "Dear {$user['full_name']},\n\nReset your password within 1 hour using this link:\n{$resetUrl}\n\nIf you did not request this, ignore this email.",
-                'templateCode'    => 'PASSWORD_RESET',
-                'recipientUserId' => (string)$user['id'],
-                'metadata'        => [
-                    'expiresAt' => $expiresAt,
+                'templateCode'    => 'PASSWORD_RECOVERY',
+                'variables'       => [
+                    'fullName'      => (string)($user['full_name'] ?: 'Participant'),
+                    'expiresInText' => '1 hour',
                 ],
+                'ephemeralVars'   => [
+                    'actionUrl' => $resetUrl,
+                ],
+                'recipientUserId' => (string)$user['id'],
+                'entityType'      => 'user',
+                'entityId'        => (string)$user['id'],
+                'priority'        => 1,
             ]);
 
             logAudit([
@@ -190,6 +193,29 @@ try {
             'resourceType' => 'user',
             'resourceId'   => $targetUserId,
         ]);
+
+        // Send password reset confirmation email (Phase 4K Template #5)
+        try {
+            $uStmt = $pdo->prepare('SELECT email, full_name FROM users WHERE id = :uid LIMIT 1');
+            $uStmt->execute([':uid' => $targetUserId]);
+            $uInfo = $uStmt->fetch(PDO::FETCH_ASSOC);
+            if ($uInfo && !empty($uInfo['email'])) {
+                sendFestivalEmail($pdo, [
+                    'to'              => (string)$uInfo['email'],
+                    'templateCode'    => 'PASSWORD_RESET_CONFIRMATION',
+                    'variables'       => [
+                        'fullName'     => (string)($uInfo['full_name'] ?: 'Participant'),
+                        'changedAtIst' => formatIstTimestamp($now),
+                    ],
+                    'recipientUserId' => $targetUserId,
+                    'entityType'      => 'user',
+                    'entityId'        => $targetUserId,
+                    'priority'        => 2,
+                ]);
+            }
+        } catch (Throwable $mailErr) {
+            error_log('/api/auth/password-reset confirmation email warning: ' . $mailErr->getMessage());
+        }
 
         jsonResponse([
             'success' => true,

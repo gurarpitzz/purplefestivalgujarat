@@ -111,41 +111,8 @@ function pfgCreateUserSessionCompat(PDO $pdo, string $userId, ?string $ipAddress
     }
 }
 
-function pfgQueueNotificationCompat(
-    PDO $pdo,
-    string $templateCode,
-    ?string $recipientUserId,
-    string $recipientEmail,
-    string $subject,
-    array $variables
-): void {
-    $now = nowSql();
-    $safeVars = function_exists('pfgScrubSensitiveArray') ? pfgScrubSensitiveArray($variables) : $variables;
-    $payloadJson = jsonEncode($safeVars);
-
-    try {
-        $stmt = $pdo->prepare(
-            "INSERT INTO notification_queue (
-                id, template_code, event_type, channel, recipient_user_id, recipient_email, subject, payload, status, provider, attempts, max_attempts, created_at, updated_at
-             ) VALUES (
-                :id, :template_code, :event_type, 'EMAIL', :recipient_user_id, :recipient_email, :subject, :payload, 'QUEUED', 'queue', 0, 3, :created_at, :updated_at
-             )"
-        );
-        $stmt->execute([
-            ':id'                => uuid4(),
-            ':template_code'     => $templateCode,
-            ':event_type'        => $templateCode,
-            ':recipient_user_id' => $recipientUserId,
-            ':recipient_email'   => $recipientEmail,
-            ':subject'           => $subject,
-            ':payload'           => $payloadJson,
-            ':created_at'        => $now,
-            ':updated_at'        => $now,
-        ]);
-    } catch (Throwable $e) {
-        error_log('[Registrations] notification_queue insert skipped: ' . $e->getMessage());
-    }
-}
+// Dead duplicate helper pfgQueueNotificationCompat() removed in Phase 4A; all notifications
+// now route through the canonical transactional outbox in includes/notification-service.php.
 
 function pfgRecordAuditCompat(
     PDO $pdo,
@@ -1157,6 +1124,50 @@ try {
         $qrPass = null;
         $qrEmailed = false;
         $emailResult = null;
+        $outboxQueueIds = [];
+
+        // Phase 4C Transactional Outbox: persist notification event inside the SAME transaction as the registration!
+        // If registration rolls back, zero notification is queued; if email delivery later fails, registration remains committed.
+        if ($shouldSendConfirmationEmail) {
+            $qRes = pfgEnqueueNotification($pdo, [
+                'to'              => $normalizedEmail,
+                'templateCode'    => 'ATTENDEE_REGISTRATION_CONFIRMED',
+                'variables'       => [
+                    'fullName'         => $fullName,
+                    'registrationCode' => $registrationCode,
+                    'categoryName'     => (string)$category['name'],
+                    'status'           => $status,
+                ],
+                'recipientUserId' => $userId,
+                'entityType'      => 'registration',
+                'entityId'        => $registrationId,
+                'idempotencyKey'  => 'reg-confirm:' . $registrationId,
+                'createInApp'     => true,
+                'inAppTitle'      => "Registration Confirmed ({$registrationCode})",
+                'inAppMessage'    => "Your {$category['name']} registration ({$registrationCode}) is confirmed.",
+            ]);
+            $outboxQueueIds[] = (string)$qRes['queueId'];
+        } elseif (!empty($category['requires_approval'])) {
+            $appTpl = $categoryCode === 'SLI' ? 'SLI_APPLICATION_RECEIVED' : 'VOLUNTEER_APPLICATION_RECEIVED';
+            $qRes = pfgEnqueueNotification($pdo, [
+                'to'              => $normalizedEmail,
+                'templateCode'    => $appTpl,
+                'variables'       => [
+                    'fullName'         => $fullName,
+                    'registrationCode' => $registrationCode,
+                    'categoryName'     => (string)$category['name'],
+                    'status'           => 'SUBMITTED',
+                ],
+                'recipientUserId' => $userId,
+                'entityType'      => 'registration',
+                'entityId'        => $registrationId,
+                'idempotencyKey'  => 'app-received:' . $registrationId,
+                'createInApp'     => true,
+                'inAppTitle'      => "Application Received ({$registrationCode})",
+                'inAppMessage'    => "Your {$category['name']} application ({$registrationCode}) is submitted and pending review.",
+            ]);
+            $outboxQueueIds[] = (string)$qRes['queueId'];
+        }
 
         $pdo->commit();
     } catch (Throwable $txErr) {
@@ -1166,25 +1177,26 @@ try {
         throw $txErr;
     }
 
-    if ($shouldSendConfirmationEmail) {
-        $emailResult = sendRegistrationConfirmationEmail($pdo, [
-            'to'               => $normalizedEmail,
-            'fullName'         => $fullName,
-            'registrationCode' => $registrationCode,
-            'categoryName'     => (string)$category['name'],
-            'status'           => $status,
-            'recipientUserId'  => $userId,
-            'idempotencyKey'   => 'reg-confirm:' . $registrationId,
-        ]);
-    } elseif (!empty($category['requires_approval'])) {
-        $emailResult = sendApplicationReceivedEmail($pdo, [
-            'to'               => $normalizedEmail,
-            'fullName'         => $fullName,
-            'registrationCode' => $registrationCode,
-            'categoryName'     => (string)$category['name'],
-            'recipientUserId'  => $userId,
-            'idempotencyKey'   => 'app-received:' . $registrationId,
-        ]);
+    // Post-commit best-effort dispatch of ONLY this registration's outbox item(s) in local file-sink mode;
+    // in production/Resend mode, the cPanel CLI cron worker dispatches asynchronously.
+    // Failure here NEVER corrupts or rolls back the committed registration.
+    if (!empty($outboxQueueIds)) {
+        try {
+            if (MAIL_DRIVER === 'file') {
+                $dispatched = 0;
+                foreach ($outboxQueueIds as $qid) {
+                    if (pfgDispatchQueuedIdNow($pdo, $qid) !== null) {
+                        $dispatched++;
+                    }
+                }
+                $emailResult = ['queued' => count($outboxQueueIds), 'status' => 'CAPTURED_LOCAL', 'processed' => $dispatched];
+            } else {
+                $emailResult = ['queued' => count($outboxQueueIds), 'status' => 'QUEUED'];
+            }
+        } catch (Throwable $mailErr) {
+            error_log('[Registrations] Post-commit notification dispatch warning: ' . $mailErr->getMessage());
+            $emailResult = ['queued' => count($outboxQueueIds), 'status' => 'QUEUED'];
+        }
     }
 
     pfgRecordAuditCompat(
