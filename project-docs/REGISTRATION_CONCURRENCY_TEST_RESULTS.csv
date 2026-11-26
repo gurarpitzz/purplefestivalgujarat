@@ -1,0 +1,5 @@
+Concurrency Level (Parallel PHP Processes),Requested Allocations,Succeeded,Unique Registration IDs,Duplicate Count,Failed Count,Min Registration ID,Max Registration ID,Wall Duration (ms),Database Engine,Status
+10,10,10,10,0,0,PFG-2027-000001,PFG-2027-000010,369,MariaDB 10.4.32 InnoDB (AUTO_INCREMENT sequence),PASS
+25,25,25,25,0,0,PFG-2027-000011,PFG-2027-000035,511,MariaDB 10.4.32 InnoDB (AUTO_INCREMENT sequence),PASS
+50,50,50,50,0,0,PFG-2027-000036,PFG-2027-000085,744,MariaDB 10.4.32 InnoDB (AUTO_INCREMENT sequence),PASS
+100,100,100,100,0,0,PFG-2027-000086,PFG-2027-000185,1264,MariaDB 10.4.32 InnoDB (AUTO_INCREMENT sequence),PASS

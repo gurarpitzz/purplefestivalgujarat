@@ -75,16 +75,16 @@ pfgTest('T1-01', 'PHP syntax lint across 100% of project .php files', function (
     return "Linted {$checked} PHP files with PHP " . PHP_VERSION . " — 0 syntax errors";
 });
 
-// T1-02: Isolated MariaDB pfg27_test fresh initialization (57 tables + active edition)
-pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean schema & seed initialization', function () use ($root): string {
+// T1-02: Isolated MariaDB pfg27_test clean migration & seed initialization (controlled CLI runner — zero per-request DDL)
+pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean migration & seed initialization', function () use ($root): string {
     require_once $root . '/includes/config.php';
+    require_once $root . '/includes/migrations.php';
+    require_once $root . '/database/seed.php';
     require_once $root . '/includes/database.php';
 
     // Reset pfg27_test tables cleanly (isolated test DB ONLY!)
     pfgAssert(DB_NAME === 'pfg27_test', 'Safety abort: DB_NAME must be pfg27_test');
-    $bootstrapPdo = new PDO('mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=pfg27_test;charset=utf8mb4', DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    ]);
+    $bootstrapPdo = pfgCreateDirectPdo('pfg27_test');
     $bootstrapPdo->exec('SET FOREIGN_KEY_CHECKS = 0');
     $existingTables = $bootstrapPdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
     foreach ($existingTables as $tbl) {
@@ -92,19 +92,35 @@ pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean schema & seed initialization
     }
     $bootstrapPdo->exec('SET FOREIGN_KEY_CHECKS = 1');
 
+    // Run controlled versioned migrations + safe reference seeder (Phase 3B/3C replaces per-request DDL)
+    $migResult = pfgRunMigrations($bootstrapPdo);
+    pfgRunSafeReferenceSeed($bootstrapPdo);
+
     $pdo = getDb(true);
     $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
     $edCount = (int)$pdo->query('SELECT COUNT(*) FROM festival_editions WHERE is_active = 1')->fetchColumn();
     $catCount = (int)$pdo->query('SELECT COUNT(*) FROM registration_categories WHERE is_active = 1')->fetchColumn();
-    $partnerCount = (int)$pdo->query('SELECT COUNT(*) FROM partners WHERE status = \'PUBLISHED\'')->fetchColumn();
+    $primaryCatCount = (int)$pdo->query("SELECT COUNT(*) FROM registration_categories WHERE category_tier = 'PRIMARY'")->fetchColumn();
+    $partnerCount = (int)$pdo->query("SELECT COUNT(*) FROM partners WHERE status = 'PUBLISHED'")->fetchColumn();
+    $fkCount = (int)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
+    )->fetchColumn();
 
-    pfgAssert(count($tables) === 58, 'Expected 58 tables (57 schema + security_rate_limits), got ' . count($tables));
+    pfgAssert(count($tables) === 62, 'Expected 62 tables (57 core + security_rate_limits + schema_migrations + registration_number_sequences + attendance_records + attendance_correction_logs), got ' . count($tables));
     pfgAssert(in_array('security_rate_limits', $tables, true), 'Missing Phase 2 security_rate_limits table');
+    pfgAssert(in_array('schema_migrations', $tables, true), 'Missing Phase 3 schema_migrations table');
+    pfgAssert(in_array('registration_number_sequences', $tables, true), 'Missing Phase 3 registration_number_sequences table');
+    pfgAssert(in_array('attendance_records', $tables, true), 'Missing Phase 3 attendance_records table');
     pfgAssert($edCount === 1, 'Expected 1 active festival edition, got ' . $edCount);
-    pfgAssert($catCount === 8, 'Expected 8 active categories, got ' . $catCount);
+    pfgAssert($catCount === 8 && $primaryCatCount === 3, "Expected 8 active categories (3 PRIMARY), got {$catCount} ({$primaryCatCount} PRIMARY)");
     pfgAssert($partnerCount === 11, 'Expected 11 seeded partners, got ' . $partnerCount);
+    pfgAssert($fkCount >= 60, 'Expected >= 60 enforced foreign keys, got ' . $fkCount);
 
-    return "Fresh MariaDB pfg27_test initialized: 58 tables (57 core + security_rate_limits), 1 active edition, 8 categories, 11 partners";
+    return sprintf(
+        'Fresh MariaDB pfg27_test migrated (%d migrations) & seeded: 62 tables, %d FKs, 1 active edition, 8 categories (3 PRIMARY), 11 partners',
+        count($migResult['appliedNow']),
+        $fkCount
+    );
 });
 
 // T1-03: Fail-closed when AUTH_SECRET / QR_SIGNING_SECRET missing

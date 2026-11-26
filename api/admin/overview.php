@@ -169,29 +169,28 @@ try {
         $dailyTrendMap[$dateKey] = ($dailyTrendMap[$dateKey] ?? 0) + 1;
     }
 
-    // 2. Accommodation requests summary (merging accommodation_requests and registration_accommodations)
+    // 2. Accommodation requests summary (canonical `accommodation_requests` ONLY, excluding soft-deleted registrations — FND-39)
     $accommByReg = [];
     $accommRowsAll = [];
 
-    foreach (['accommodation_requests', 'registration_accommodations'] as $tableName) {
-        try {
-            $stmtAc = $pdo->query("SELECT id, registration_id, status FROM {$tableName}");
-            $rows = $stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : [];
-            foreach ($rows as $row) {
-                $rid = (string)($row['registration_id'] ?? '');
-                $id = (string)($row['id'] ?? '');
-                $key = $rid !== '' ? $rid : $id;
-                if ($key !== '' && !isset($accommByReg[$key])) {
-                    $accommByReg[$key] = strtoupper(trim((string)($row['status'] ?? 'REQUESTED')));
-                    $accommRowsAll[] = [
-                        'id'             => $id,
-                        'registrationId' => $rid,
-                        'status'         => $accommByReg[$key],
-                    ];
-                }
-            }
-        } catch (Throwable $e) {
-            // Table may not exist yet in edge environments
+    $stmtAc = $pdo->query("
+        SELECT a.id, a.registration_id, a.status
+        FROM accommodation_requests a
+        INNER JOIN registrations r ON a.registration_id = r.id
+        WHERE r.deleted_at IS NULL
+    ");
+    $rows = $stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : [];
+    foreach ($rows as $row) {
+        $rid = (string)($row['registration_id'] ?? '');
+        $id = (string)($row['id'] ?? '');
+        $key = $rid !== '' ? $rid : $id;
+        if ($key !== '' && !isset($accommByReg[$key])) {
+            $accommByReg[$key] = strtoupper(trim((string)($row['status'] ?? 'REQUESTED')));
+            $accommRowsAll[] = [
+                'id'             => $id,
+                'registrationId' => $rid,
+                'status'         => $accommByReg[$key],
+            ];
         }
     }
 
@@ -224,17 +223,19 @@ try {
         'declined'           => $declinedCount,
     ];
 
-    // 3. Check-ins & Attendance breakdown
+    // 3. Check-ins & Attendance breakdown (excluding soft-deleted registrations — FND-39)
     $stmtCheckins = $pdo->query("
         SELECT
-            id,
-            registration_id,
-            venue_label,
-            checkin_date_ist,
-            method,
-            checked_in_at
-        FROM checkins
-        ORDER BY checked_in_at DESC
+            c.id,
+            c.registration_id,
+            c.venue_label,
+            c.checkin_date_ist,
+            c.method,
+            c.checked_in_at
+        FROM checkins c
+        INNER JOIN registrations r ON c.registration_id = r.id
+        WHERE r.deleted_at IS NULL
+        ORDER BY c.checked_in_at DESC
     ");
     $allCheckins = $stmtCheckins ? $stmtCheckins->fetchAll(PDO::FETCH_ASSOC) : [];
 
@@ -292,6 +293,7 @@ try {
             c.checked_in_at
         FROM checkins c
         INNER JOIN registrations r ON c.registration_id = r.id
+        WHERE r.deleted_at IS NULL
         ORDER BY c.checked_in_at DESC
         LIMIT 20
     ");
@@ -311,7 +313,7 @@ try {
         ];
     }
 
-    // 4. Payment reconciliation (combining payment_orders and payments)
+    // 4. Payment reconciliation (canonical `payment_orders` ONLY, excluding soft-deleted registrations)
     $paymentReconciliation = [
         'capturedOrders'     => 0,
         'capturedRevenueInr' => 0,
@@ -323,53 +325,44 @@ try {
         'byStatus'           => [],
     ];
 
-    $seenPaymentIds = [];
     $statusAgg = [];
-    foreach (['payment_orders', 'payments'] as $payTable) {
-        try {
-            $stmtPay = $pdo->query("SELECT id, status, amount_inr, discount_inr, net_amount_inr FROM {$payTable}");
-            $payRows = $stmtPay ? $stmtPay->fetchAll(PDO::FETCH_ASSOC) : [];
-            foreach ($payRows as $pr) {
-                $pid = (string)($pr['id'] ?? '');
-                if ($pid !== '' && isset($seenPaymentIds[$pid])) {
-                    continue;
-                }
-                if ($pid !== '') {
-                    $seenPaymentIds[$pid] = true;
-                }
-                $st = strtoupper(trim((string)($pr['status'] ?? 'PENDING')));
-                $amt = (int)($pr['amount_inr'] ?? 0);
-                $disc = (int)($pr['discount_inr'] ?? 0);
-                $net = (int)($pr['net_amount_inr'] ?? 0);
+    $stmtPay = $pdo->query("
+        SELECT p.id, p.status, p.amount_inr, p.discount_inr, p.net_amount_inr
+        FROM payment_orders p
+        INNER JOIN registrations r ON p.registration_id = r.id
+        WHERE r.deleted_at IS NULL
+    ");
+    $payRows = $stmtPay ? $stmtPay->fetchAll(PDO::FETCH_ASSOC) : [];
+    foreach ($payRows as $pr) {
+        $st = strtoupper(trim((string)($pr['status'] ?? 'PENDING')));
+        $amt = (int)($pr['amount_inr'] ?? 0);
+        $disc = (int)($pr['discount_inr'] ?? 0);
+        $net = (int)($pr['net_amount_inr'] ?? 0);
 
-                if (!isset($statusAgg[$st])) {
-                    $statusAgg[$st] = [
-                        'status'      => $st,
-                        'count'       => 0,
-                        'grossInr'    => 0,
-                        'discountInr' => 0,
-                        'netInr'      => 0,
-                    ];
-                }
-                $statusAgg[$st]['count']++;
-                $statusAgg[$st]['grossInr'] += $amt;
-                $statusAgg[$st]['discountInr'] += $disc;
-                $statusAgg[$st]['netInr'] += $net;
+        if (!isset($statusAgg[$st])) {
+            $statusAgg[$st] = [
+                'status'      => $st,
+                'count'       => 0,
+                'grossInr'    => 0,
+                'discountInr' => 0,
+                'netInr'      => 0,
+            ];
+        }
+        $statusAgg[$st]['count']++;
+        $statusAgg[$st]['grossInr'] += $amt;
+        $statusAgg[$st]['discountInr'] += $disc;
+        $statusAgg[$st]['netInr'] += $net;
 
-                $paymentReconciliation['totalDiscountInr'] += $disc;
-                if ($st === 'CAPTURED' || $st === 'PAID' || $st === 'COMPLETED') {
-                    $paymentReconciliation['capturedOrders']++;
-                    $paymentReconciliation['capturedRevenueInr'] += $net;
-                } elseif ($st === 'PENDING' || $st === 'AUTHORIZED') {
-                    $paymentReconciliation['pendingOrders']++;
-                    $paymentReconciliation['pendingAmountInr'] += $net;
-                } elseif ($st === 'REFUNDED' || $st === 'PARTIALLY_REFUNDED') {
-                    $paymentReconciliation['refundedOrders']++;
-                    $paymentReconciliation['refundedAmountInr'] += $net;
-                }
-            }
-        } catch (Throwable $e) {
-            // Ignore if table not created
+        $paymentReconciliation['totalDiscountInr'] += $disc;
+        if ($st === 'CAPTURED' || $st === 'PAID' || $st === 'COMPLETED') {
+            $paymentReconciliation['capturedOrders']++;
+            $paymentReconciliation['capturedRevenueInr'] += $net;
+        } elseif ($st === 'PENDING' || $st === 'AUTHORIZED') {
+            $paymentReconciliation['pendingOrders']++;
+            $paymentReconciliation['pendingAmountInr'] += $net;
+        } elseif ($st === 'REFUNDED' || $st === 'PARTIALLY_REFUNDED') {
+            $paymentReconciliation['refundedOrders']++;
+            $paymentReconciliation['refundedAmountInr'] += $net;
         }
     }
     $paymentReconciliation['byStatus'] = array_values($statusAgg);

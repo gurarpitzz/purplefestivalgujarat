@@ -11,7 +11,7 @@ require_once __DIR__ . '/../../includes/database.php';
 if (file_exists(__DIR__ . '/../../includes/auth.php')) {
     require_once __DIR__ . '/../../includes/auth.php';
 }
-require_once __DIR__ . '/../../includes/qr-service.php';
+require_once __DIR__ . '/../../includes/registration-id.php';
 require_once __DIR__ . '/../../includes/mailer.php';
 
 if (!function_exists('pfgRegJson')) {
@@ -120,30 +120,30 @@ function pfgQueueNotificationCompat(
     array $variables
 ): void {
     $now = nowSql();
-    $payloadJson = jsonEncode($variables);
+    $safeVars = function_exists('pfgScrubSensitiveArray') ? pfgScrubSensitiveArray($variables) : $variables;
+    $payloadJson = jsonEncode($safeVars);
 
-    foreach (['notification_queue', 'notification_jobs'] as $table) {
-        try {
-            $stmt = $pdo->prepare(
-                "INSERT INTO {$table} (
-                    id, template_code, recipient_user_id, recipient_email, subject, payload, status, attempts, max_attempts, created_at, updated_at
-                 ) VALUES (
-                    :id, :template_code, :recipient_user_id, :recipient_email, :subject, :payload, 'QUEUED', 0, 3, :created_at, :updated_at
-                 )"
-            );
-            $stmt->execute([
-                ':id'                => uuid4(),
-                ':template_code'     => $templateCode,
-                ':recipient_user_id' => $recipientUserId,
-                ':recipient_email'   => $recipientEmail,
-                ':subject'           => $subject,
-                ':payload'           => $payloadJson,
-                ':created_at'        => $now,
-                ':updated_at'        => $now,
-            ]);
-        } catch (Throwable $e) {
-            // Ignore if table doesn't exist
-        }
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO notification_queue (
+                id, template_code, event_type, channel, recipient_user_id, recipient_email, subject, payload, status, provider, attempts, max_attempts, created_at, updated_at
+             ) VALUES (
+                :id, :template_code, :event_type, 'EMAIL', :recipient_user_id, :recipient_email, :subject, :payload, 'QUEUED', 'queue', 0, 3, :created_at, :updated_at
+             )"
+        );
+        $stmt->execute([
+            ':id'                => uuid4(),
+            ':template_code'     => $templateCode,
+            ':event_type'        => $templateCode,
+            ':recipient_user_id' => $recipientUserId,
+            ':recipient_email'   => $recipientEmail,
+            ':subject'           => $subject,
+            ':payload'           => $payloadJson,
+            ':created_at'        => $now,
+            ':updated_at'        => $now,
+        ]);
+    } catch (Throwable $e) {
+        error_log('[Registrations] notification_queue insert skipped: ' . $e->getMessage());
     }
 }
 
@@ -299,42 +299,23 @@ if ($method === 'GET') {
             $stmtSli->execute([':rid' => $regId]);
             $sliApp = $stmtSli->fetch(PDO::FETCH_ASSOC) ?: null;
 
-            $delDetail = null;
-            foreach (['delegate_details', 'delegate_profiles'] as $delTable) {
-                try {
-                    $stmtDel = $pdo->prepare("SELECT * FROM {$delTable} WHERE registration_id = :rid LIMIT 1");
-                    $stmtDel->execute([':rid' => $regId]);
-                    $delDetail = $stmtDel->fetch(PDO::FETCH_ASSOC) ?: null;
-                    if ($delDetail) {
-                        break;
-                    }
-                } catch (Throwable $e) {
-                    // ignore
-                }
-            }
+            $stmtDel = $pdo->prepare('SELECT * FROM delegate_details WHERE registration_id = :rid LIMIT 1');
+            $stmtDel->execute([':rid' => $regId]);
+            $delDetail = $stmtDel->fetch(PDO::FETCH_ASSOC) ?: null;
 
             $accommReqs = [];
-            foreach (['accommodation_requests', 'registration_accommodations'] as $accTable) {
-                try {
-                    $stmtAccomm = $pdo->prepare("SELECT * FROM {$accTable} WHERE registration_id = :rid ORDER BY created_at DESC");
-                    $stmtAccomm->execute([':rid' => $regId]);
-                    $rows = $stmtAccomm->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                    if (!empty($rows)) {
-                        foreach ($rows as $r) {
-                            $accommReqs[] = [
-                                'id'              => (string)$r['id'],
-                                'registrationId'  => (string)$r['registration_id'],
-                                'selectedTypes'   => jsonDecode($r['selected_types'] ?? '[]', []),
-                                'freeTextDetails' => $r['free_text_details'] ?? $r['notes'] ?? null,
-                                'status'          => (string)($r['status'] ?? 'REQUESTED'),
-                                'createdAt'       => (string)$r['created_at'],
-                            ];
-                        }
-                        break;
-                    }
-                } catch (Throwable $e) {
-                    // ignore
-                }
+            $stmtAccomm = $pdo->prepare('SELECT * FROM accommodation_requests WHERE registration_id = :rid ORDER BY created_at DESC');
+            $stmtAccomm->execute([':rid' => $regId]);
+            $rows = $stmtAccomm->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            foreach ($rows as $r) {
+                $accommReqs[] = [
+                    'id'              => (string)$r['id'],
+                    'registrationId'  => (string)$r['registration_id'],
+                    'selectedTypes'   => jsonDecode($r['selected_types'] ?? '[]', []),
+                    'freeTextDetails' => pfgDecryptValue($r['free_text_details'] ?? $r['notes'] ?? null, 'data'),
+                    'status'          => (string)($r['status'] ?? 'REQUESTED'),
+                    'createdAt'       => (string)$r['created_at'],
+                ];
             }
 
             $stmtChk = $pdo->prepare('SELECT * FROM checkins WHERE registration_id = :rid ORDER BY checked_in_at DESC');
@@ -528,13 +509,21 @@ try {
     $ipAddress = getClientIp();
     $userAgent = getClientUserAgent();
 
+    // Optional Idempotency-Key (header or request payload) for safe retriable submissions (Phase 3I)
+    $rawIdempotencyKey = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? $body['idempotencyKey'] ?? $body['idempotency_key'] ?? ''));
+    $idempotencyKey = $rawIdempotencyKey !== '' ? substr(preg_replace('/[^A-Za-z0-9_\-:.]/', '', $rawIdempotencyKey) ?? '', 0, 128) : null;
+    if ($idempotencyKey === '') {
+        $idempotencyKey = null;
+    }
+
     // 2. Identity & ownership protection (FND-07):
     // NEVER allow an unauthenticated caller to attach a new registration to ANY existing user record
     // (participant or staff) and NEVER leak existingRegistrationCode to unauthenticated requests.
     $currentUser = function_exists('getCurrentUser') ? getCurrentUser() : null;
     $normalizedEmail = strtolower($email);
     $userId = '';
-    $sessionCreated = false;
+    $needsNewUser = false;
+    $passwordHash = null;
 
     if (is_array($currentUser) && !empty($currentUser['id'])) {
         requireCsrfToken($currentUser);
@@ -545,6 +534,52 @@ try {
         }
         $userId = (string)$currentUser['id'];
     } else {
+        // Check idempotency replay FIRST before rejecting existing email (only if exact email + key match)
+        if ($idempotencyKey !== null) {
+            $stmtIdem = $pdo->prepare(
+                'SELECT * FROM registrations WHERE edition_id = :eid AND idempotency_key = :ikey AND LOWER(email) = :email AND deleted_at IS NULL LIMIT 1'
+            );
+            $stmtIdem->execute([
+                ':eid'   => $edition['id'],
+                ':ikey'  => $idempotencyKey,
+                ':email' => $normalizedEmail,
+            ]);
+            $idemReg = $stmtIdem->fetch(PDO::FETCH_ASSOC);
+            if ($idemReg) {
+                pfgRegJson([
+                    'registration' => [
+                        'id'                     => (string)$idemReg['id'],
+                        'registrationCode'       => (string)$idemReg['registration_code'],
+                        'editionId'              => (string)$idemReg['edition_id'],
+                        'userId'                 => (string)$idemReg['user_id'],
+                        'categoryId'             => (string)$idemReg['category_id'],
+                        'categoryCode'           => (string)$idemReg['category_code'],
+                        'status'                 => (string)$idemReg['status'],
+                        'paymentStatus'          => (string)$idemReg['payment_status'],
+                        'fullName'               => (string)$idemReg['full_name'],
+                        'email'                  => (string)$idemReg['email'],
+                        'phone'                  => (string)$idemReg['phone'],
+                        'country'                => (string)$idemReg['country'],
+                        'occupation'             => $idemReg['occupation'] ?? null,
+                        'organizationName'       => $idemReg['organization_name'] ?? null,
+                        'designation'            => $idemReg['designation'] ?? null,
+                        'isPersonWithDisability' => (string)$idemReg['is_person_with_disability'],
+                        'attendingDays'          => jsonDecode($idemReg['attending_days'] ?? '[]', []),
+                        'interestedTracks'       => jsonDecode($idemReg['interested_tracks'] ?? '[]', []),
+                        'submittedAt'            => (string)($idemReg['submitted_at'] ?? $idemReg['created_at']),
+                        'createdAt'              => (string)$idemReg['created_at'],
+                    ],
+                    'category' => [
+                        'code'             => (string)$category['code'],
+                        'name'             => (string)$category['name'],
+                        'requiresApproval' => !empty($category['requires_approval']),
+                        'requiresPayment'  => !empty($category['requires_payment']),
+                    ],
+                    'idempotentReplay' => true,
+                ], 200);
+            }
+        }
+
         $stmtUser = $pdo->prepare('SELECT id, is_active, deleted_at FROM users WHERE LOWER(email) = :email LIMIT 1');
         $stmtUser->execute([':email' => $normalizedEmail]);
         $existingUser = $stmtUser->fetch(PDO::FETCH_ASSOC);
@@ -563,117 +598,104 @@ try {
             pfgRegJson([
                 'error' => 'Unable to complete registration with this email address. If you already registered or hold an account, please contact the festival secretariat.',
             ], 409);
-        } else {
-            $passwordHash = null;
-            if ($password !== '') {
-                $passwordHash = function_exists('hashPassword')
-                    ? hashPassword($password)
-                    : password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-            }
+        }
 
-            $userId = uuid4();
-            $now = nowSql();
+        $needsNewUser = true;
+        $userId = uuid4();
+        if ($password !== '') {
+            $passwordHash = function_exists('hashPassword')
+                ? hashPassword($password)
+                : password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+        }
+    }
 
-            $stmtInsUser = $pdo->prepare(
-                'INSERT INTO users (id, email, password_hash, full_name, phone, country, is_active, created_at, updated_at)
-                 VALUES (:id, :email, :password_hash, :full_name, :phone, :country, 1, :created_at, :updated_at)'
-            );
-            $stmtInsUser->execute([
-                ':id'            => $userId,
-                ':email'         => $normalizedEmail,
-                ':password_hash' => $passwordHash,
-                ':full_name'     => $fullName,
-                ':phone'         => $phone,
-                ':country'       => $country,
-                ':created_at'    => $now,
-                ':updated_at'    => $now,
-            ]);
-
-            $stmtRole = $pdo->prepare("SELECT * FROM roles WHERE code = 'PARTICIPANT' LIMIT 1");
-            $stmtRole->execute();
-            $participantRole = $stmtRole->fetch(PDO::FETCH_ASSOC);
-
-            if (!$participantRole) {
-                $roleId = uuid4();
-                $stmtInsRole = $pdo->prepare(
-                    "INSERT INTO roles (id, code, name, description, created_at)
-                     VALUES (:id, 'PARTICIPANT', 'Participant', 'Festival participant account.', :created_at)"
-                );
-                $stmtInsRole->execute([
-                    ':id'         => $roleId,
-                    ':created_at' => $now,
-                ]);
-            } else {
-                $roleId = (string)$participantRole['id'];
-            }
-
-            try {
-                $stmtUr = $pdo->prepare(
-                    'INSERT INTO user_roles (id, user_id, role_id, assigned_at)
-                     VALUES (:id, :user_id, :role_id, :assigned_at)'
-                );
-                $stmtUr->execute([
-                    ':id'          => uuid4(),
-                    ':user_id'     => $userId,
-                    ':role_id'     => $roleId,
-                    ':assigned_at' => $now,
-                ]);
-            } catch (Throwable $e) {
-                // Ignore duplicate user_roles constraint
-            }
+    // Authenticated idempotency replay check
+    if (!$needsNewUser && $idempotencyKey !== null) {
+        $stmtIdem = $pdo->prepare(
+            'SELECT * FROM registrations WHERE edition_id = :eid AND idempotency_key = :ikey AND user_id = :uid AND deleted_at IS NULL LIMIT 1'
+        );
+        $stmtIdem->execute([
+            ':eid'  => $edition['id'],
+            ':ikey' => $idempotencyKey,
+            ':uid'  => $userId,
+        ]);
+        $idemReg = $stmtIdem->fetch(PDO::FETCH_ASSOC);
+        if ($idemReg) {
+            pfgRegJson([
+                'registration' => [
+                    'id'                     => (string)$idemReg['id'],
+                    'registrationCode'       => (string)$idemReg['registration_code'],
+                    'editionId'              => (string)$idemReg['edition_id'],
+                    'userId'                 => (string)$idemReg['user_id'],
+                    'categoryId'             => (string)$idemReg['category_id'],
+                    'categoryCode'           => (string)$idemReg['category_code'],
+                    'status'                 => (string)$idemReg['status'],
+                    'paymentStatus'          => (string)$idemReg['payment_status'],
+                    'fullName'               => (string)$idemReg['full_name'],
+                    'email'                  => (string)$idemReg['email'],
+                    'phone'                  => (string)$idemReg['phone'],
+                    'country'                => (string)$idemReg['country'],
+                    'occupation'             => $idemReg['occupation'] ?? null,
+                    'organizationName'       => $idemReg['organization_name'] ?? null,
+                    'designation'            => $idemReg['designation'] ?? null,
+                    'isPersonWithDisability' => (string)$idemReg['is_person_with_disability'],
+                    'attendingDays'          => jsonDecode($idemReg['attending_days'] ?? '[]', []),
+                    'interestedTracks'       => jsonDecode($idemReg['interested_tracks'] ?? '[]', []),
+                    'submittedAt'            => (string)($idemReg['submitted_at'] ?? $idemReg['created_at']),
+                    'createdAt'              => (string)$idemReg['created_at'],
+                ],
+                'category' => [
+                    'code'             => (string)$category['code'],
+                    'name'             => (string)$category['name'],
+                    'requiresApproval' => !empty($category['requires_approval']),
+                    'requiresPayment'  => !empty($category['requires_payment']),
+                ],
+                'idempotentReplay' => true,
+            ], 200);
         }
     }
 
     // 3. Prevent duplicate active registration in the SAME category for this edition
-    $stmtDup = $pdo->prepare(
-        "SELECT * FROM registrations
-         WHERE user_id = :uid
-           AND edition_id = :eid
-           AND category_code = :ccode
-           AND deleted_at IS NULL
-           AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
-         LIMIT 1"
-    );
-    $stmtDup->execute([
-        ':uid'   => $userId,
-        ':eid'   => $edition['id'],
-        ':ccode' => $categoryCode,
-    ]);
-    $duplicateReg = $stmtDup->fetch(PDO::FETCH_ASSOC);
+    if (!$needsNewUser) {
+        $stmtDup = $pdo->prepare(
+            "SELECT * FROM registrations
+             WHERE user_id = :uid
+               AND edition_id = :eid
+               AND category_code = :ccode
+               AND deleted_at IS NULL
+               AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
+             LIMIT 1"
+        );
+        $stmtDup->execute([
+            ':uid'   => $userId,
+            ':eid'   => $edition['id'],
+            ':ccode' => $categoryCode,
+        ]);
+        $duplicateReg = $stmtDup->fetch(PDO::FETCH_ASSOC);
 
-    if ($duplicateReg) {
-        $dupPayload = [
-            'error' => "You already have an active {$category['name']} registration. You can still register for a different role under your account.",
-        ];
-        if (is_array($currentUser) && !empty($currentUser['id'])) {
-            $dupPayload['existingRegistrationCode'] = (string)$duplicateReg['registration_code'];
+        if ($duplicateReg) {
+            $dupPayload = [
+                'error' => "You already have an active {$category['name']} registration. You can still register for a different role under your account.",
+            ];
+            if (is_array($currentUser) && !empty($currentUser['id'])) {
+                $dupPayload['existingRegistrationCode'] = (string)$duplicateReg['registration_code'];
+            }
+            pfgRegJson($dupPayload, 409);
         }
-        pfgRegJson($dupPayload, 409);
     }
 
-    // 4. Server-side coupon validation & fee calculation
+    // 4. Server-side coupon validation & fee calculation (canonical `coupons` table ONLY)
     $feeAmountInr = (int)($category['fee_amount_inr'] ?? 0);
     $discountInr = 0;
     $appliedCoupon = null;
 
     if ($couponCode !== '') {
         $normalizedCouponCode = strtoupper($couponCode);
-        $coupon = null;
-
-        foreach (['coupons', 'coupon_codes'] as $cTable) {
-            try {
-                $stmtC = $pdo->prepare(
-                    "SELECT * FROM {$cTable} WHERE UPPER(code) = :code AND (edition_id = :eid OR edition_id IS NULL) LIMIT 1"
-                );
-                $stmtC->execute([':code' => $normalizedCouponCode, ':eid' => $edition['id']]);
-                $coupon = $stmtC->fetch(PDO::FETCH_ASSOC) ?: null;
-                if ($coupon) {
-                    break;
-                }
-            } catch (Throwable $e) {
-                // ignore
-            }
-        }
+        $stmtC = $pdo->prepare(
+            'SELECT * FROM coupons WHERE UPPER(code) = :code AND (edition_id = :eid OR edition_id IS NULL) LIMIT 1'
+        );
+        $stmtC->execute([':code' => $normalizedCouponCode, ':eid' => $edition['id']]);
+        $coupon = $stmtC->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if (!$coupon || empty($coupon['is_active'])) {
             pfgRegJson(['error' => 'The coupon code entered is invalid or inactive.'], 400);
@@ -708,14 +730,16 @@ try {
             ], 400);
         }
 
-        $stmtRed = $pdo->prepare(
-            'SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id = :cid AND user_id = :uid'
-        );
-        $stmtRed->execute([':cid' => $coupon['id'], ':uid' => $userId]);
-        $userRedemptionCount = (int)$stmtRed->fetchColumn();
-        $maxPerUser = isset($coupon['max_uses_per_user']) ? (int)$coupon['max_uses_per_user'] : 1;
-        if ($userRedemptionCount >= max(1, $maxPerUser)) {
-            pfgRegJson(['error' => 'You have already used this coupon code.'], 400);
+        if (!$needsNewUser) {
+            $stmtRed = $pdo->prepare(
+                'SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id = :cid AND user_id = :uid'
+            );
+            $stmtRed->execute([':cid' => $coupon['id'], ':uid' => $userId]);
+            $userRedemptionCount = (int)$stmtRed->fetchColumn();
+            $maxPerUser = isset($coupon['max_uses_per_user']) ? (int)$coupon['max_uses_per_user'] : 1;
+            if ($userRedemptionCount >= max(1, $maxPerUser)) {
+                pfgRegJson(['error' => 'You have already used this coupon code.'], 400);
+            }
         }
 
         $discountType = strtoupper((string)($coupon['discount_type'] ?? 'PERCENTAGE'));
@@ -736,44 +760,92 @@ try {
     // 5. Determine initial registration status & payment status
     $status = 'CONFIRMED';
     $paymentStatus = 'NOT_REQUIRED';
-    $shouldIssueQr = true;
+    $shouldSendConfirmationEmail = true;
 
     if (!empty($category['requires_approval'])) {
         $status = 'SUBMITTED';
         $paymentStatus = 'NOT_REQUIRED';
-        $shouldIssueQr = false;
+        $shouldSendConfirmationEmail = false;
     } elseif (!empty($category['requires_payment']) && $netAmountInr > 0) {
         $status = 'SUBMITTED';
         $paymentStatus = 'PENDING';
-        $shouldIssueQr = false;
+        $shouldSendConfirmationEmail = false;
     }
 
-    $registrationCode = generateUniqueRegistrationCode($pdo);
+    // 6. Atomically allocate next monotonic Registration ID BEFORE the outer registration transaction
+    //    so rolled-back transactions NEVER reuse a number and server restarts preserve the high-water mark.
+    $registrationCode = allocateNextRegistrationCode($pdo, (string)$edition['id']);
     $registrationId = uuid4();
     $now = nowSql();
 
-    // 6. Execute database writes inside a PDO transaction
+    // 7. Execute ALL registration writes (including new user creation & role assignment — FND-21)
+    //    inside ONE single atomic PDO transaction against CANONICAL tables ONLY.
     $pdo->beginTransaction();
 
     try {
+        if ($needsNewUser) {
+            $stmtInsUser = $pdo->prepare(
+                "INSERT INTO users (id, email, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at)
+                 VALUES (:id, :email, :password_hash, :full_name, :phone, :country, 1, 'ACTIVE', :created_at, :updated_at)"
+            );
+            $stmtInsUser->execute([
+                ':id'            => $userId,
+                ':email'         => $normalizedEmail,
+                ':password_hash' => $passwordHash,
+                ':full_name'     => $fullName,
+                ':phone'         => $phone,
+                ':country'       => $country,
+                ':created_at'    => $now,
+                ':updated_at'    => $now,
+            ]);
+
+            $stmtRole = $pdo->prepare("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1");
+            $stmtRole->execute();
+            $roleId = (string)$stmtRole->fetchColumn();
+
+            if ($roleId === '') {
+                $roleId = uuid4();
+                $stmtInsRole = $pdo->prepare(
+                    "INSERT INTO roles (id, code, name, description, created_at)
+                     VALUES (:id, 'PARTICIPANT', 'Participant', 'Festival participant account.', :created_at)"
+                );
+                $stmtInsRole->execute([
+                    ':id'         => $roleId,
+                    ':created_at' => $now,
+                ]);
+            }
+
+            $stmtUr = $pdo->prepare(
+                'INSERT IGNORE INTO user_roles (id, user_id, role_id, assigned_at)
+                 VALUES (:id, :user_id, :role_id, :assigned_at)'
+            );
+            $stmtUr->execute([
+                ':id'          => uuid4(),
+                ':user_id'     => $userId,
+                ':role_id'     => $roleId,
+                ':assigned_at' => $now,
+            ]);
+        }
+
         $stmtInsReg = $pdo->prepare(
-            'INSERT INTO registrations (
-                id, registration_code, edition_id, user_id, category_id, category_code,
-                status, payment_status, full_name, email, phone, country,
+            "INSERT INTO registrations (
+                id, registration_code, idempotency_key, edition_id, user_id, category_id, category_code,
+                status, payment_status, assignment_status, full_name, email, phone, country,
                 occupation, organization_name, designation, is_person_with_disability,
                 attending_days, interested_tracks, coupon_code, fee_amount_inr, discount_inr, net_amount_inr,
                 submitted_at, created_at, updated_at
              ) VALUES (
-                :id, :registration_code, :edition_id, :user_id, :category_id, :category_code,
-                :status, :payment_status, :full_name, :email, :phone, :country,
+                :id, :registration_code, :idempotency_key, :edition_id, :user_id, :category_id, :category_code,
+                :status, :payment_status, 'UNASSIGNED', :full_name, :email, :phone, :country,
                 :occupation, :organization_name, :designation, :is_person_with_disability,
                 :attending_days, :interested_tracks, :coupon_code, :fee_amount_inr, :discount_inr, :net_amount_inr,
                 :submitted_at, :created_at, :updated_at
-             )'
+             )"
         );
         $stmtInsReg->execute([
             ':id'                        => $registrationId,
             ':registration_code'         => $registrationCode,
+            ':idempotency_key'           => $idempotencyKey,
             ':edition_id'                => $edition['id'],
             ':user_id'                   => $userId,
             ':category_id'               => $category['id'],
@@ -840,24 +912,18 @@ try {
                 ':created_at'                 => $now,
             ];
 
-            foreach (['delegate_details', 'delegate_profiles'] as $delTable) {
-                try {
-                    $stmtDel = $pdo->prepare(
-                        "INSERT INTO {$delTable} (
-                            id, registration_id, gender, age, city_state, para_sports_interests,
-                            outstation_travel_required, accommodation_needed, food_preference,
-                            emergency_contact_name, emergency_contact_phone, guardian_name, created_at
-                         ) VALUES (
-                            :id, :registration_id, :gender, :age, :city_state, :para_sports_interests,
-                            :outstation_travel_required, :accommodation_needed, :food_preference,
-                            :emergency_contact_name, :emergency_contact_phone, :guardian_name, :created_at
-                         )"
-                    );
-                    $stmtDel->execute(array_merge([':id' => uuid4()], $delParams));
-                } catch (Throwable $e) {
-                    // ignore if table variant unavailable
-                }
-            }
+            $stmtDel = $pdo->prepare(
+                'INSERT INTO delegate_details (
+                    id, registration_id, gender, age, city_state, para_sports_interests,
+                    outstation_travel_required, accommodation_needed, food_preference,
+                    emergency_contact_name, emergency_contact_phone, guardian_name, created_at
+                 ) VALUES (
+                    :id, :registration_id, :gender, :age, :city_state, :para_sports_interests,
+                    :outstation_travel_required, :accommodation_needed, :food_preference,
+                    :emergency_contact_name, :emergency_contact_phone, :guardian_name, :created_at
+                 )'
+            );
+            $stmtDel->execute(array_merge([':id' => uuid4()], $delParams));
         }
 
         if ($categoryCode === 'VOLUNTEER') {
@@ -966,7 +1032,7 @@ try {
             ]);
         }
 
-        // Protected Disability Disclosure Tables (encrypted free-text — FND-11)
+        // Protected Disability Disclosure (canonical `participant_disability_disclosures` ONLY — encrypted free-text)
         $encryptedDisabilityDesc = $disabilitySelfDescription !== ''
             ? pfgEncryptValue($disabilitySelfDescription, 'data')
             : null;
@@ -983,116 +1049,92 @@ try {
                 $matchedCats = $stmtDisLookup->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
                 if (!empty($matchedCats)) {
+                    $stmtInsDis = $pdo->prepare(
+                        'INSERT INTO participant_disability_disclosures (
+                            id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
+                         ) VALUES (
+                            :id, :registration_id, :disability_category_id, :disability_code, :category_code, :self_description, :notes, :created_at
+                         )'
+                    );
                     foreach ($matchedCats as $idx => $mc) {
                         $selfDesc = ($idx === 0 && $encryptedDisabilityDesc !== null) ? $encryptedDisabilityDesc : null;
-                        foreach (['registration_disabilities', 'participant_disability_disclosures'] as $disTable) {
-                            try {
-                                $stmtInsDis = $pdo->prepare(
-                                    "INSERT INTO {$disTable} (
-                                        id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
-                                     ) VALUES (
-                                        :id, :registration_id, :disability_category_id, :disability_code, :category_code, :self_description, :notes, :created_at
-                                     )"
-                                );
-                                $stmtInsDis->execute([
-                                    ':id'                     => uuid4(),
-                                    ':registration_id'        => $registrationId,
-                                    ':disability_category_id' => $mc['id'],
-                                    ':disability_code'        => $mc['code'],
-                                    ':category_code'          => $mc['code'],
-                                    ':self_description'       => $selfDesc,
-                                    ':notes'                  => $selfDesc,
-                                    ':created_at'             => $now,
-                                ]);
-                            } catch (Throwable $e) {
-                                // ignore if table variant unavailable
-                            }
-                        }
+                        $stmtInsDis->execute([
+                            ':id'                     => uuid4(),
+                            ':registration_id'        => $registrationId,
+                            ':disability_category_id' => $mc['id'],
+                            ':disability_code'        => $mc['code'],
+                            ':category_code'          => $mc['code'],
+                            ':self_description'       => $selfDesc,
+                            ':notes'                  => $selfDesc,
+                            ':created_at'             => $now,
+                        ]);
                     }
                 } else {
+                    $stmtInsDis = $pdo->prepare(
+                        'INSERT INTO participant_disability_disclosures (
+                            id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
+                         ) VALUES (
+                            :id, :registration_id, NULL, :disability_code, :category_code, :self_description, :notes, :created_at
+                         )'
+                    );
                     foreach ($disabilityCategoryCodes as $idx => $dCode) {
                         $selfDesc = ($idx === 0 && $encryptedDisabilityDesc !== null) ? $encryptedDisabilityDesc : null;
-                        foreach (['registration_disabilities', 'participant_disability_disclosures'] as $disTable) {
-                            try {
-                                $stmtInsDis = $pdo->prepare(
-                                    "INSERT INTO {$disTable} (
-                                        id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
-                                     ) VALUES (
-                                        :id, :registration_id, NULL, :disability_code, :category_code, :self_description, :notes, :created_at
-                                     )"
-                                );
-                                $stmtInsDis->execute([
-                                    ':id'               => uuid4(),
-                                    ':registration_id'  => $registrationId,
-                                    ':disability_code'  => $dCode,
-                                    ':category_code'    => $dCode,
-                                    ':self_description' => $selfDesc,
-                                    ':notes'            => $selfDesc,
-                                    ':created_at'       => $now,
-                                ]);
-                            } catch (Throwable $e) {
-                                // ignore
-                            }
-                        }
-                    }
-                }
-            } else {
-                foreach (['registration_disabilities', 'participant_disability_disclosures'] as $disTable) {
-                    try {
-                        $stmtInsDis = $pdo->prepare(
-                            "INSERT INTO {$disTable} (
-                                id, registration_id, disability_category_id, self_description, notes, created_at
-                             ) VALUES (
-                                :id, :registration_id, NULL, :self_description, :notes, :created_at
-                             )"
-                        );
                         $stmtInsDis->execute([
                             ':id'               => uuid4(),
                             ':registration_id'  => $registrationId,
-                            ':self_description' => $encryptedDisabilityDesc,
-                            ':notes'            => $encryptedDisabilityDesc,
+                            ':disability_code'  => $dCode,
+                            ':category_code'    => $dCode,
+                            ':self_description' => $selfDesc,
+                            ':notes'            => $selfDesc,
                             ':created_at'       => $now,
                         ]);
-                    } catch (Throwable $e) {
-                        // ignore
                     }
                 }
+            } else {
+                $stmtInsDis = $pdo->prepare(
+                    'INSERT INTO participant_disability_disclosures (
+                        id, registration_id, disability_category_id, self_description, notes, created_at
+                     ) VALUES (
+                        :id, :registration_id, NULL, :self_description, :notes, :created_at
+                     )'
+                );
+                $stmtInsDis->execute([
+                    ':id'               => uuid4(),
+                    ':registration_id'  => $registrationId,
+                    ':self_description' => $encryptedDisabilityDesc,
+                    ':notes'            => $encryptedDisabilityDesc,
+                    ':created_at'       => $now,
+                ]);
             }
         }
 
-        // Protected Accommodation Requests Tables (encrypted free-text — FND-11)
+        // Protected Accommodation Requests (canonical `accommodation_requests` ONLY — encrypted free-text)
         if (!empty($accommodationTypes) || $accommodationFreeText !== '') {
             $firstCode = !empty($accommodationTypes) ? (string)$accommodationTypes[0] : null;
             $encryptedAccommText = $accommodationFreeText !== ''
                 ? pfgEncryptValue($accommodationFreeText, 'data')
                 : null;
-            foreach (['registration_accommodations', 'accommodation_requests'] as $accTable) {
-                try {
-                    $stmtInsAcc = $pdo->prepare(
-                        "INSERT INTO {$accTable} (
-                            id, registration_id, user_id, accommodation_code, selected_types, free_text_details, notes, status, created_at, updated_at
-                         ) VALUES (
-                            :id, :registration_id, :user_id, :accommodation_code, :selected_types, :free_text_details, :notes, 'REQUESTED', :created_at, :updated_at
-                         )"
-                    );
-                    $stmtInsAcc->execute([
-                        ':id'                 => uuid4(),
-                        ':registration_id'    => $registrationId,
-                        ':user_id'            => $userId,
-                        ':accommodation_code' => $firstCode,
-                        ':selected_types'     => jsonEncode($accommodationTypes),
-                        ':free_text_details'  => $encryptedAccommText,
-                        ':notes'              => $encryptedAccommText,
-                        ':created_at'         => $now,
-                        ':updated_at'         => $now,
-                    ]);
-                } catch (Throwable $e) {
-                    // ignore
-                }
-            }
+            $stmtInsAcc = $pdo->prepare(
+                "INSERT INTO accommodation_requests (
+                    id, registration_id, user_id, accommodation_code, selected_types, free_text_details, notes, status, created_at, updated_at
+                 ) VALUES (
+                    :id, :registration_id, :user_id, :accommodation_code, :selected_types, :free_text_details, :notes, 'REQUESTED', :created_at, :updated_at
+                 )"
+            );
+            $stmtInsAcc->execute([
+                ':id'                 => uuid4(),
+                ':registration_id'    => $registrationId,
+                ':user_id'            => $userId,
+                ':accommodation_code' => $firstCode,
+                ':selected_types'     => jsonEncode($accommodationTypes),
+                ':free_text_details'  => $encryptedAccommText,
+                ':notes'              => $encryptedAccommText,
+                ':created_at'         => $now,
+                ':updated_at'         => $now,
+            ]);
         }
 
-        // Coupon redemption record
+        // Coupon redemption record (canonical `coupons` table ONLY)
         if ($appliedCoupon) {
             $stmtInsRed = $pdo->prepare(
                 'INSERT INTO coupon_redemptions (id, coupon_id, registration_id, user_id, discount_applied_inr, redeemed_at)
@@ -1107,19 +1149,8 @@ try {
                 ':redeemed_at'          => $now,
             ]);
 
-            foreach (['coupons', 'coupon_codes'] as $cTable) {
-                try {
-                    $stmtUpdC = $pdo->prepare(
-                        "UPDATE {$cTable} SET used_count = used_count + 1 WHERE id = :id OR UPPER(code) = :code"
-                    );
-                    $stmtUpdC->execute([
-                        ':id'   => $appliedCoupon['id'],
-                        ':code' => strtoupper((string)$appliedCoupon['code']),
-                    ]);
-                } catch (Throwable $e) {
-                    // ignore
-                }
-            }
+            $stmtUpdC = $pdo->prepare('UPDATE coupons SET used_count = used_count + 1 WHERE id = :id');
+            $stmtUpdC->execute([':id' => $appliedCoupon['id']]);
         }
 
         // D-01: Participant QR entry credential issuance is discontinued; Registration ID is the official identifier.
@@ -1135,7 +1166,7 @@ try {
         throw $txErr;
     }
 
-    if ($shouldIssueQr) {
+    if ($shouldSendConfirmationEmail) {
         $emailResult = sendRegistrationConfirmationEmail($pdo, [
             'to'               => $normalizedEmail,
             'fullName'         => $fullName,
@@ -1143,6 +1174,7 @@ try {
             'categoryName'     => (string)$category['name'],
             'status'           => $status,
             'recipientUserId'  => $userId,
+            'idempotencyKey'   => 'reg-confirm:' . $registrationId,
         ]);
     } elseif (!empty($category['requires_approval'])) {
         $emailResult = sendApplicationReceivedEmail($pdo, [
@@ -1151,6 +1183,7 @@ try {
             'registrationCode' => $registrationCode,
             'categoryName'     => (string)$category['name'],
             'recipientUserId'  => $userId,
+            'idempotencyKey'   => 'app-received:' . $registrationId,
         ]);
     }
 

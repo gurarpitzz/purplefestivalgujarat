@@ -58,33 +58,6 @@ try {
         ]);
         $rows = $reqStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // Also merge any rows stored in registration_accommodations not already in accommodation_requests
-        $seenIds = [];
-        foreach ($rows as $row) {
-            $seenIds[(string)$row['id']] = true;
-        }
-        try {
-            $regAccStmt = $pdo->prepare(
-                'SELECT a.id, a.registration_id, a.selected_types, a.accommodation_code,
-                        a.free_text_details, a.notes, a.coordinator_notes, a.status, a.created_at, a.updated_at,
-                        r.registration_code, r.category_code
-                 FROM registration_accommodations a
-                 INNER JOIN registrations r ON r.id = a.registration_id
-                 WHERE r.user_id = :reg_user_id AND r.deleted_at IS NULL
-                 ORDER BY a.created_at DESC'
-            );
-            $regAccStmt->execute([':reg_user_id' => $user['id']]);
-            $extraRows = $regAccStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            foreach ($extraRows as $er) {
-                if (!isset($seenIds[(string)$er['id']])) {
-                    $rows[] = $er;
-                    $seenIds[(string)$er['id']] = true;
-                }
-            }
-        } catch (Throwable $e) {
-            // Ignore if table not queried
-        }
-
         $requests = array_map(static function (array $r): array {
             $selected = jsonDecode($r['selected_types'] ?? '[]', []);
             if (!is_array($selected)) {
@@ -199,33 +172,6 @@ try {
             ':created_at'         => $now,
             ':updated_at'         => $now,
         ]);
-
-        // Mirror to registration_accommodations so both tables remain synchronized
-        try {
-            $mirrorStmt = $pdo->prepare(
-                'INSERT INTO registration_accommodations (
-                    id, registration_id, user_id, accommodation_code, selected_types,
-                    free_text_details, notes, status, created_at, updated_at
-                ) VALUES (
-                    :id, :registration_id, :user_id, :accommodation_code, :selected_types,
-                    :free_text_details, :notes, :status, :created_at, :updated_at
-                )'
-            );
-            $mirrorStmt->execute([
-                ':id'                 => $reqId,
-                ':registration_id'    => $reg['id'],
-                ':user_id'            => $user['id'],
-                ':accommodation_code' => $primaryCode,
-                ':selected_types'     => $selectedJson,
-                ':free_text_details'  => $encryptedDetails,
-                ':notes'              => $encryptedDetails,
-                ':status'             => 'REQUESTED',
-                ':created_at'         => $now,
-                ':updated_at'         => $now,
-            ]);
-        } catch (Throwable $e) {
-            // Non-fatal if mirror table insert is skipped
-        }
 
         if (function_exists('logAudit')) {
             logAudit(

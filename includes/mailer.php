@@ -22,12 +22,37 @@ if (!function_exists('sendFestivalEmail')) {
         $html = (string)($options['html'] ?? '');
         $text = (string)($options['text'] ?? strip_tags($html));
         $templateCode = trim((string)($options['templateCode'] ?? 'CUSTOM_EMAIL'));
+        $eventType = trim((string)($options['eventType'] ?? $templateCode));
+        $channel = strtoupper(trim((string)($options['channel'] ?? 'EMAIL')));
+        $idempotencyKey = isset($options['idempotencyKey']) && trim((string)$options['idempotencyKey']) !== ''
+            ? substr(trim((string)$options['idempotencyKey']), 0, 128)
+            : null;
         $recipientUserId = isset($options['recipientUserId']) && $options['recipientUserId'] !== ''
             ? (string)$options['recipientUserId']
             : null;
         $metadata = isset($options['metadata']) && is_array($options['metadata'])
             ? $options['metadata']
             : [];
+
+        if ($idempotencyKey !== null) {
+            try {
+                $dupStmt = $pdo->prepare('SELECT status, provider, provider_message_id FROM notification_queue WHERE idempotency_key = :ikey LIMIT 1');
+                $dupStmt->execute([':ikey' => $idempotencyKey]);
+                $existingNotif = $dupStmt->fetch(PDO::FETCH_ASSOC);
+                if ($existingNotif) {
+                    return [
+                        'sent'      => in_array((string)$existingNotif['status'], ['PROVIDER_ACCEPTED', 'DELIVERED', 'CAPTURED_LOCAL', 'SENT'], true),
+                        'provider'  => (string)($existingNotif['provider'] ?? 'queue'),
+                        'messageId' => $existingNotif['provider_message_id'] ?? null,
+                        'status'    => (string)$existingNotif['status'],
+                        'error'     => null,
+                        'deduped'   => true,
+                    ];
+                }
+            } catch (Throwable $e) {
+                // proceed if lookup fails
+            }
+        }
 
         if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
             return [
@@ -122,10 +147,12 @@ if (!function_exists('sendFestivalEmail')) {
                 if ($resp !== false && $httpCode >= 200 && $httpCode < 300) {
                     $decoded = json_decode((string)$resp, true);
                     $sent = true;
-                    $status = 'SENT';
+                    // Phase 3K honest delivery state: API 2xx = PROVIDER_ACCEPTED (not yet webhook-confirmed DELIVERED)
+                    $status = 'PROVIDER_ACCEPTED';
                     $messageId = is_array($decoded) && isset($decoded['id']) ? (string)$decoded['id'] : null;
                 } else {
                     $errMsg = $curlErr !== '' ? $curlErr : "Resend HTTP {$httpCode}: " . (string)$resp;
+                    $status = 'FAILED';
                     error_log('[Mailer] Resend API failure: ' . $errMsg);
                 }
             }
@@ -141,7 +168,10 @@ if (!function_exists('sendFestivalEmail')) {
             if ($mailOk) {
                 $provider = 'php_mail';
                 $sent = true;
-                $status = 'SENT';
+                $status = 'PROVIDER_ACCEPTED';
+            } else {
+                $status = 'FAILED';
+                $errMsg = 'Local PHP mail() returned false.';
             }
         }
 
@@ -153,14 +183,18 @@ if (!function_exists('sendFestivalEmail')) {
 
         try {
             $now = nowSql();
+            $acceptedAt = in_array($status, ['PROVIDER_ACCEPTED', 'CAPTURED_LOCAL'], true) ? $now : null;
+            $failedAt = $status === 'FAILED' ? $now : null;
             $stmt = $pdo->prepare(
                 'INSERT INTO notification_queue
-                (id, template_code, recipient_user_id, recipient_email, subject, payload, status, provider, provider_message_id, sent_at, created_at, updated_at)
-                VALUES (:id, :template_code, :uid, :email, :subject, :payload, :status, :provider, :msg_id, :sent_at, :created_at, :updated_at)'
+                (id, template_code, event_type, channel, recipient_user_id, recipient_email, subject, payload, status, provider, provider_message_id, idempotency_key, attempts, last_error, sent_at, provider_accepted_at, failed_at, created_at, updated_at)
+                VALUES (:id, :template_code, :event_type, :channel, :uid, :email, :subject, :payload, :status, :provider, :msg_id, :ikey, :attempts, :lerr, :sent_at, :accepted_at, :failed_at, :created_at, :updated_at)'
             );
             $stmt->execute([
                 ':id'            => uuid4(),
                 ':template_code' => $templateCode,
+                ':event_type'    => $eventType,
+                ':channel'       => $channel,
                 ':uid'           => $recipientUserId,
                 ':email'         => $to,
                 ':subject'       => $subject,
@@ -168,32 +202,17 @@ if (!function_exists('sendFestivalEmail')) {
                 ':status'        => $status,
                 ':provider'      => $provider,
                 ':msg_id'        => $messageId,
+                ':ikey'          => $idempotencyKey,
+                ':attempts'      => $status === 'QUEUED' ? 0 : 1,
+                ':lerr'          => $errMsg,
                 ':sent_at'       => $sent ? $now : null,
+                ':accepted_at'   => $acceptedAt,
+                ':failed_at'     => $failedAt,
                 ':created_at'    => $now,
                 ':updated_at'    => $now,
             ]);
         } catch (Throwable $e) {
-            try {
-                $now = nowSql();
-                $fallbackStmt = $pdo->prepare(
-                    'INSERT INTO notification_queue
-                    (id, template_code, recipient_user_id, recipient_email, subject, payload, status, created_at, updated_at)
-                    VALUES (:id, :template_code, :uid, :email, :subject, :payload, :status, :created_at, :updated_at)'
-                );
-                $fallbackStmt->execute([
-                    ':id'            => uuid4(),
-                    ':template_code' => $templateCode,
-                    ':uid'           => $recipientUserId,
-                    ':email'         => $to,
-                    ':subject'       => $subject,
-                    ':payload'       => $queuePayload,
-                    ':status'        => $status,
-                    ':created_at'    => $now,
-                    ':updated_at'    => $now,
-                ]);
-            } catch (Throwable $e2) {
-                error_log('[Mailer] notification_queue insert skipped: ' . $e2->getMessage());
-            }
+            error_log('[Mailer] notification_queue insert failed: ' . $e->getMessage());
         }
 
         return [
@@ -275,6 +294,8 @@ if (!function_exists('sendRegistrationConfirmationEmail')) {
             'html'            => $html,
             'text'            => $text,
             'templateCode'    => 'REGISTRATION_CONFIRMED',
+            'eventType'       => 'REGISTRATION_CONFIRMED',
+            'idempotencyKey'  => $params['idempotencyKey'] ?? null,
             'recipientUserId' => $recipientUserId,
             'metadata'        => [
                 'registrationCode' => $registrationCode,
@@ -337,6 +358,8 @@ if (!function_exists('sendApplicationReceivedEmail')) {
             'html'            => $html,
             'text'            => $text,
             'templateCode'    => 'APPLICATION_SUBMITTED',
+            'eventType'       => 'APPLICATION_SUBMITTED',
+            'idempotencyKey'  => $params['idempotencyKey'] ?? null,
             'recipientUserId' => $recipientUserId,
             'metadata'        => [
                 'registrationCode' => $registrationCode,

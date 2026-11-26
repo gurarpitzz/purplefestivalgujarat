@@ -61,94 +61,89 @@ try {
         } catch (Throwable $e) {
         }
 
-        // Gather accommodation requests across accommodation_requests and registration_accommodations
+        // Gather accommodation requests strictly from canonical `accommodation_requests` table
         $groupedByReg = [];
 
-        foreach (['accommodation_requests', 'registration_accommodations'] as $tableName) {
-            try {
-                $stmt = $pdo->query("
-                    SELECT
-                        a.id,
-                        a.registration_id,
-                        a.user_id,
-                        a.accommodation_code,
-                        a.selected_types,
-                        a.free_text_details,
-                        a.notes,
-                        a.coordinator_notes,
-                        a.assigned_to_user_id,
-                        a.status,
-                        a.created_at,
-                        a.updated_at,
-                        r.registration_code,
-                        r.full_name,
-                        r.email,
-                        r.phone,
-                        r.category_code,
-                        r.status AS registration_status,
-                        r.attending_days
-                    FROM {$tableName} a
-                    INNER JOIN registrations r ON a.registration_id = r.id
-                    WHERE r.deleted_at IS NULL
-                    ORDER BY a.updated_at DESC
-                ");
-                $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $stmt = $pdo->query("
+            SELECT
+                a.id,
+                a.registration_id,
+                a.user_id,
+                a.accommodation_code,
+                a.selected_types,
+                a.free_text_details,
+                a.notes,
+                a.coordinator_notes,
+                a.assigned_to_user_id,
+                a.status,
+                a.created_at,
+                a.updated_at,
+                r.registration_code,
+                r.full_name,
+                r.email,
+                r.phone,
+                r.category_code,
+                r.status AS registration_status,
+                r.attending_days
+            FROM accommodation_requests a
+            INNER JOIN registrations r ON a.registration_id = r.id
+            WHERE r.deleted_at IS NULL
+            ORDER BY a.updated_at DESC
+        ");
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-                foreach ($rows as $row) {
-                    $regId = (string)$row['registration_id'];
-                    $rowId = (string)$row['id'];
-                    $types = jsonDecode($row['selected_types'] ?? '[]', []);
-                    if (!is_array($types)) {
-                        $types = [];
-                    }
-                    if (!empty($row['accommodation_code']) && !in_array((string)$row['accommodation_code'], $types, true)) {
-                        $types[] = (string)$row['accommodation_code'];
-                    }
+        foreach ($rows as $row) {
+            $regId = (string)$row['registration_id'];
+            $rowId = (string)$row['id'];
+            $types = jsonDecode($row['selected_types'] ?? '[]', []);
+            if (!is_array($types)) {
+                $types = [];
+            }
+            if (!empty($row['accommodation_code']) && !in_array((string)$row['accommodation_code'], $types, true)) {
+                $types[] = (string)$row['accommodation_code'];
+            }
 
-                    $assign = $assignmentsByReq[$rowId] ?? $assignmentsByReq[$regId] ?? null;
-                    $rawCoordNotes = $assign['coordinatorNotes']
-                        ?? $row['coordinator_notes']
-                        ?? '';
-                    $coordNotes = pfgDecryptValue($rawCoordNotes !== '' ? (string)$rawCoordNotes : null, 'data') ?? '';
-                    $assignedUser = $assign['assignedToUserId']
-                        ?? $row['assigned_to_user_id']
-                        ?? null;
-                    $freeText = pfgDecryptValue($row['free_text_details'] ?? $row['notes'] ?? null, 'data');
+            $assign = $assignmentsByReq[$rowId] ?? $assignmentsByReq[$regId] ?? null;
+            $rawCoordNotes = $assign['coordinatorNotes']
+                ?? $row['coordinator_notes']
+                ?? '';
+            $coordNotes = pfgDecryptValue($rawCoordNotes !== '' ? (string)$rawCoordNotes : null, 'data') ?? '';
+            $assignedUser = $assign['assignedToUserId']
+                ?? $row['assigned_to_user_id']
+                ?? null;
+            $freeText = pfgDecryptValue($row['free_text_details'] ?? $row['notes'] ?? null, 'data');
 
-                    if (!isset($groupedByReg[$regId])) {
-                        $groupedByReg[$regId] = [
-                            'id'                 => $rowId,
-                            'registrationId'     => $regId,
-                            'userId'             => (string)($row['user_id'] ?? ''),
-                            'registrationCode'   => (string)$row['registration_code'],
-                            'fullName'           => (string)$row['full_name'],
-                            'email'              => (string)$row['email'],
-                            'phone'              => (string)$row['phone'],
-                            'categoryCode'       => (string)$row['category_code'],
-                            'registrationStatus' => (string)$row['registration_status'],
-                            'attendingDays'      => jsonDecode($row['attending_days'] ?? '[]', []),
-                            'selectedTypes'      => $types,
-                            'freeTextDetails'    => $freeText,
-                            'status'             => strtoupper(trim((string)($row['status'] ?? 'REQUESTED'))),
-                            'coordinatorNotes'   => (string)$coordNotes,
-                            'assignedToUserId'   => $assignedUser,
-                            'createdAt'          => (string)($row['created_at'] ?? ''),
-                            'updatedAt'          => (string)($row['updated_at'] ?? ''),
-                        ];
-                    } else {
-                        $groupedByReg[$regId]['selectedTypes'] = array_values(array_unique(array_merge(
-                            $groupedByReg[$regId]['selectedTypes'],
-                            $types
-                        )));
-                        if (($groupedByReg[$regId]['freeTextDetails'] === null || $groupedByReg[$regId]['freeTextDetails'] === '') && $freeText) {
-                            $groupedByReg[$regId]['freeTextDetails'] = $freeText;
-                        }
-                        if ($groupedByReg[$regId]['coordinatorNotes'] === '' && $coordNotes !== '') {
-                            $groupedByReg[$regId]['coordinatorNotes'] = (string)$coordNotes;
-                        }
-                    }
+            if (!isset($groupedByReg[$regId])) {
+                $groupedByReg[$regId] = [
+                    'id'                 => $rowId,
+                    'registrationId'     => $regId,
+                    'userId'             => (string)($row['user_id'] ?? ''),
+                    'registrationCode'   => (string)$row['registration_code'],
+                    'fullName'           => (string)$row['full_name'],
+                    'email'              => (string)$row['email'],
+                    'phone'              => (string)$row['phone'],
+                    'categoryCode'       => (string)$row['category_code'],
+                    'registrationStatus' => (string)$row['registration_status'],
+                    'attendingDays'      => jsonDecode($row['attending_days'] ?? '[]', []),
+                    'selectedTypes'      => $types,
+                    'freeTextDetails'    => $freeText,
+                    'status'             => strtoupper(trim((string)($row['status'] ?? 'REQUESTED'))),
+                    'coordinatorNotes'   => (string)$coordNotes,
+                    'assignedToUserId'   => $assignedUser,
+                    'createdAt'          => (string)($row['created_at'] ?? ''),
+                    'updatedAt'          => (string)($row['updated_at'] ?? ''),
+                ];
+            } else {
+                $groupedByReg[$regId]['selectedTypes'] = array_values(array_unique(array_merge(
+                    $groupedByReg[$regId]['selectedTypes'],
+                    $types
+                )));
+                if (($groupedByReg[$regId]['freeTextDetails'] === null || $groupedByReg[$regId]['freeTextDetails'] === '') && $freeText) {
+                    $groupedByReg[$regId]['freeTextDetails'] = $freeText;
                 }
-            } catch (Throwable $e) {
+                if ($groupedByReg[$regId]['coordinatorNotes'] === '' && $coordNotes !== '') {
+                    $groupedByReg[$regId]['coordinatorNotes'] = (string)$coordNotes;
+                }
             }
         }
 
@@ -216,20 +211,10 @@ try {
             jsonResponse(['error' => 'Valid requestId and status (REQUESTED, IN_PROGRESS, ARRANGED, ASSIGNED, COMPLETED, DECLINED) are required.'], 400);
         }
 
-        // Locate existing request in either accommodation_requests or registration_accommodations
-        $existing = null;
-        foreach (['accommodation_requests', 'registration_accommodations'] as $tbl) {
-            try {
-                $st = $pdo->prepare("SELECT * FROM {$tbl} WHERE id = :id OR registration_id = :rid LIMIT 1");
-                $st->execute([':id' => $requestId, ':rid' => $requestId]);
-                $found = $st->fetch(PDO::FETCH_ASSOC);
-                if ($found) {
-                    $existing = $found;
-                    break;
-                }
-            } catch (Throwable $e) {
-            }
-        }
+        // Locate existing request in canonical `accommodation_requests` table
+        $st = $pdo->prepare('SELECT * FROM accommodation_requests WHERE id = :id OR registration_id = :rid LIMIT 1');
+        $st->execute([':id' => $requestId, ':rid' => $requestId]);
+        $existing = $st->fetch(PDO::FETCH_ASSOC) ?: null;
 
         if (!$existing) {
             jsonResponse(['error' => 'Accommodation request not found.'], 404);
@@ -242,28 +227,23 @@ try {
             ? pfgEncryptValue($coordinatorNotes, 'data')
             : $coordinatorNotes;
 
-        // Update both accommodation_requests and registration_accommodations so tables stay in sync
-        foreach (['accommodation_requests', 'registration_accommodations'] as $tbl) {
-            try {
-                $up = $pdo->prepare("
-                    UPDATE {$tbl}
-                    SET status = :status,
-                        coordinator_notes = COALESCE(:notes, coordinator_notes),
-                        assigned_to_user_id = :uid,
-                        updated_at = :now
-                    WHERE id = :id OR registration_id = :rid
-                ");
-                $up->execute([
-                    ':status' => $status,
-                    ':notes'  => $encryptedNotes,
-                    ':uid'    => $user['id'],
-                    ':now'    => $now,
-                    ':id'     => $targetReqId,
-                    ':rid'    => $targetRegId,
-                ]);
-            } catch (Throwable $e) {
-            }
-        }
+        // Update canonical `accommodation_requests` table ONLY (no dual-write to legacy registration_accommodations)
+        $up = $pdo->prepare("
+            UPDATE accommodation_requests
+            SET status = :status,
+                coordinator_notes = COALESCE(:notes, coordinator_notes),
+                assigned_to_user_id = :uid,
+                updated_at = :now
+            WHERE id = :id OR registration_id = :rid
+        ");
+        $up->execute([
+            ':status' => $status,
+            ':notes'  => $encryptedNotes,
+            ':uid'    => $user['id'],
+            ':now'    => $now,
+            ':id'     => $targetReqId,
+            ':rid'    => $targetRegId,
+        ]);
 
         // Upsert into accommodation_assignments
         try {

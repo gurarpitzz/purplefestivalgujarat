@@ -2,17 +2,17 @@
 
 **Purpose:** Live decision register grouped strictly by the phase each decision blocks, with recommended options and concrete implications. **No recommendation is silently approved — explicit Project Owner sign-off is required before implementing blocked logic.**
 
-> **Important Execution Note:** **Phase 1 (Security Containment & Local Docker Dev/Test Environment)** and **Phase 2 (Core P0 Security & Authorization Remediation)** require **only** your Phase 1 authorization + `D-20` (MFA policy) & `D-21` (staging data check). None of the later product decisions (`D-02`–`D-27`) block fixing P0 vulnerabilities or standing up the local test stack!
+> **Current Status (Post-Phase 3):** Phases 1, 2, and 3 are implemented and verified locally (`45/45` PHP/MariaDB + `26/26` Apache `2.4.58` PASS) using the confirmed native XAMPP/Bluehost PHP + MySQL stack (zero Docker). `D-01` and `D-20` are **CONFIRMED** (`CAD-12`, `CAD-13`). Remaining owner decisions below govern staging data disposition (`D-21`), domain confirmation (`D-22`), and Phase 5–18 product rules.
 
 ---
 
-## Group A — Immediate Decisions (Blocking Phase 1 / Phase 2 / Phase 3)
+## Group A — Immediate / Recently Confirmed Decisions (Phases 1–3)
 
-| ID | Decision Topic | Blocks Phase(s) | Recommended Option | Implications / Trade-Offs | Status |
+| ID | Decision Topic | Blocks Phase(s) | Recommended / Confirmed Option | Implications / Trade-Offs | Status |
 |---|---|---|---|---|---|
-| **D-21** | **Existing Staging Participant Data Disposition** | Phase 1, Phase 3, Phase 5 | **Check & Confirm:** If staging DB holds only QA test rows -> start clean on new schema; if real participant rows exist -> preserve all rows and implement verified-email account claim flow (`Strategy 1`). | Prevents data loss AND prevents account takeover if real participants registered on staging. | `REQUIRES OWNER APPROVAL` |
-| **D-20** | **Administrative MFA Enforcement Policy** | Phase 2 | Mandatory TOTP MFA for `SUPERADMIN` (with encrypted secrets + recovery codes); strongly recommended / optional for `ADMIN`; optional for `RGST`. | Protects sensitive disability disclosures, staff creation, and CMS against credential theft. | `REQUIRES OWNER APPROVAL` |
-| **D-01** | **New Participant QR Credential Issuance & Email QR Images** | Phase 3, Phase 4, Phase 9, Phase 13 | **Cease new participant QR credential issuance and remove QR images from registration emails**; retain Registration IDs (`PFG-2027-000001`), archive `qr_credentials` read-only, and keep `qrcode-gen.js` solely for Admin TOTP MFA. | Immediately eliminates `api.qrserver.com` P0 privacy leak and unnecessary credential complexity now that desk QR scanning is retired. | `REQUIRES OWNER APPROVAL` |
+| **D-21** | **Existing Staging Participant Data Disposition** | Staging Migration, Phase 5 | **Check & Confirm:** Inspect live Bluehost staging DB before authorized migration; if QA-only -> clean migration; if real participants exist -> preserve all rows (Phase 3 migrations are already non-destructive) and implement verified-email claim flow in Phase 5. | Prevents data loss AND prevents account takeover if real participants registered on staging. | `REQUIRES OWNER APPROVAL` |
+| **D-20** | **Administrative MFA Enforcement Policy** | Phase 2 (Implemented) | **CONFIRMED (`CAD-12`):** Mandatory TOTP MFA for `SUPERADMIN` and `ADMIN`; optional MFA for `RGST`; 160-bit AES-256-GCM encrypted secrets, replay guard, 8 single-use hashed recovery codes. | Implemented & verified locally in Phase 2 (`T2-06`–`T2-10`). | `CONFIRMED` |
+| **D-01** | **New Participant QR Credential Issuance & Email QR Images** | Phase 2, Phase 3, Phase 4, Phase 9 | **CONFIRMED (`CAD-13`):** Permanently discontinue new participant event-entry QR issuance & email QR images; retain atomic Registration IDs (`PFG-2027-000001`), preserve historical QR tables read-only, decouple `attendance_records`, and retain `qrcode-gen.js` solely for Admin TOTP MFA. | Implemented & verified locally in Phases 2 & 3 (`T2-19`, `T3-05`, `T3-10`). | `CONFIRMED` |
 
 ---
 

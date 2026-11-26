@@ -221,32 +221,26 @@ try {
                 jsonResponse(['error' => 'Registration not found.'], 404);
             }
 
-            // Delegate details
+            // Delegate details (canonical `delegate_details` ONLY)
             $delegateRow = null;
-            foreach (['delegate_details', 'delegate_profiles'] as $delTable) {
-                try {
-                    $stDel = $pdo->prepare("SELECT * FROM {$delTable} WHERE registration_id = :rid LIMIT 1");
-                    $stDel->execute([':rid' => $singleId]);
-                    $found = $stDel->fetch(PDO::FETCH_ASSOC);
-                    if ($found) {
-                        $delegateRow = [
-                            'id'                       => (string)$found['id'],
-                            'registrationId'           => (string)$found['registration_id'],
-                            'gender'                   => $found['gender'] ?? null,
-                            'age'                      => isset($found['age']) ? (int)$found['age'] : null,
-                            'cityState'                => $found['city_state'] ?? null,
-                            'paraSportsInterests'      => jsonDecode($found['para_sports_interests'] ?? '[]', []),
-                            'outstationTravelRequired' => !empty($found['outstation_travel_required']),
-                            'accommodationNeeded'      => !empty($found['accommodation_needed']),
-                            'foodPreference'           => $found['food_preference'] ?? null,
-                            'emergencyContactName'     => $found['emergency_contact_name'] ?? null,
-                            'emergencyContactPhone'    => $found['emergency_contact_phone'] ?? null,
-                            'guardianName'             => $found['guardian_name'] ?? null,
-                        ];
-                        break;
-                    }
-                } catch (Throwable $e) {
-                }
+            $stDel = $pdo->prepare('SELECT * FROM delegate_details WHERE registration_id = :rid LIMIT 1');
+            $stDel->execute([':rid' => $singleId]);
+            $found = $stDel->fetch(PDO::FETCH_ASSOC);
+            if ($found) {
+                $delegateRow = [
+                    'id'                       => (string)$found['id'],
+                    'registrationId'           => (string)$found['registration_id'],
+                    'gender'                   => $found['gender'] ?? null,
+                    'age'                      => isset($found['age']) ? (int)$found['age'] : null,
+                    'cityState'                => $found['city_state'] ?? null,
+                    'paraSportsInterests'      => jsonDecode($found['para_sports_interests'] ?? '[]', []),
+                    'outstationTravelRequired' => !empty($found['outstation_travel_required']),
+                    'accommodationNeeded'      => !empty($found['accommodation_needed']),
+                    'foodPreference'           => $found['food_preference'] ?? null,
+                    'emergencyContactName'     => $found['emergency_contact_name'] ?? null,
+                    'emergencyContactPhone'    => $found['emergency_contact_phone'] ?? null,
+                    'guardianName'             => $found['guardian_name'] ?? null,
+                ];
             }
 
             // Volunteer details
@@ -287,95 +281,68 @@ try {
                 ];
             }, $chkRows);
 
-            // Payments
+            // Payments (canonical `payment_orders` ONLY)
             $paymentOrders = [];
             if ($canReadPayments) {
-                foreach (['payment_orders', 'payments'] as $payTbl) {
-                    try {
-                        $stPay = $pdo->prepare("SELECT * FROM {$payTbl} WHERE registration_id = :rid ORDER BY created_at DESC");
-                        $stPay->execute([':rid' => $singleId]);
-                        $pRows = $stPay->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        if (count($pRows) > 0) {
-                            foreach ($pRows as $pr) {
-                                $paymentOrders[] = [
-                                    'id'              => (string)$pr['id'],
-                                    'registrationId'  => (string)$pr['registration_id'],
-                                    'provider'        => (string)($pr['provider'] ?? 'RAZORPAY'),
-                                    'providerOrderId' => (string)($pr['provider_order_id'] ?? ''),
-                                    'amountInr'       => (int)($pr['amount_inr'] ?? 0),
-                                    'discountInr'     => (int)($pr['discount_inr'] ?? 0),
-                                    'netAmountInr'    => (int)($pr['net_amount_inr'] ?? 0),
-                                    'status'          => (string)($pr['status'] ?? 'PENDING'),
-                                    'createdAt'       => (string)($pr['created_at'] ?? ''),
-                                ];
-                            }
-                            break;
-                        }
-                    } catch (Throwable $e) {
-                    }
+                $stPay = $pdo->prepare('SELECT * FROM payment_orders WHERE registration_id = :rid ORDER BY created_at DESC');
+                $stPay->execute([':rid' => $singleId]);
+                $pRows = $stPay->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach ($pRows as $pr) {
+                    $paymentOrders[] = [
+                        'id'              => (string)$pr['id'],
+                        'registrationId'  => (string)$pr['registration_id'],
+                        'provider'        => (string)($pr['provider'] ?? 'RAZORPAY'),
+                        'providerOrderId' => (string)($pr['provider_order_id'] ?? ''),
+                        'amountInr'       => (int)($pr['amount_inr'] ?? 0),
+                        'discountInr'     => (int)($pr['discount_inr'] ?? 0),
+                        'netAmountInr'    => (int)($pr['net_amount_inr'] ?? 0),
+                        'status'          => (string)($pr['status'] ?? 'PENDING'),
+                        'createdAt'       => (string)($pr['created_at'] ?? ''),
+                    ];
                 }
             }
 
-            // Accommodations & Disability Disclosures (only when permitted)
+            // Accommodations & Disability Disclosures (canonical tables ONLY, when permitted)
             $accommodations = null;
             $disabilityDisclosures = null;
 
             if ($canReadAccomm) {
-                $accommMap = [];
-                foreach (['accommodation_requests', 'registration_accommodations'] as $acTbl) {
-                    try {
-                        $stAc = $pdo->prepare("SELECT * FROM {$acTbl} WHERE registration_id = :rid");
-                        $stAc->execute([':rid' => $singleId]);
-                        $aRows = $stAc->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        foreach ($aRows as $ar) {
-                            $aid = (string)$ar['id'];
-                            if (!isset($accommMap[$aid])) {
-                                $types = jsonDecode($ar['selected_types'] ?? '[]', []);
-                                if (empty($types) && !empty($ar['accommodation_code'])) {
-                                    $types = [(string)$ar['accommodation_code']];
-                                }
-                                $accommMap[$aid] = [
-                                    'id'               => $aid,
-                                    'registrationId'   => (string)$ar['registration_id'],
-                                    'selectedTypes'    => $types,
-                                    'freeTextDetails'  => pfgDecryptValue($ar['free_text_details'] ?? $ar['notes'] ?? null, 'data'),
-                                    'status'           => (string)($ar['status'] ?? 'REQUESTED'),
-                                    'coordinatorNotes' => pfgDecryptValue($ar['coordinator_notes'] ?? null, 'data'),
-                                    'updatedAt'        => $ar['updated_at'] ?? null,
-                                ];
-                            }
-                        }
-                    } catch (Throwable $e) {
+                $accommodations = [];
+                $stAc = $pdo->prepare('SELECT * FROM accommodation_requests WHERE registration_id = :rid ORDER BY created_at DESC');
+                $stAc->execute([':rid' => $singleId]);
+                foreach ($stAc->fetchAll(PDO::FETCH_ASSOC) ?: [] as $ar) {
+                    $types = jsonDecode($ar['selected_types'] ?? '[]', []);
+                    if (empty($types) && !empty($ar['accommodation_code'])) {
+                        $types = [(string)$ar['accommodation_code']];
                     }
+                    $accommodations[] = [
+                        'id'               => (string)$ar['id'],
+                        'registrationId'   => (string)$ar['registration_id'],
+                        'selectedTypes'    => $types,
+                        'freeTextDetails'  => pfgDecryptValue($ar['free_text_details'] ?? $ar['notes'] ?? null, 'data'),
+                        'status'           => (string)($ar['status'] ?? 'REQUESTED'),
+                        'coordinatorNotes' => pfgDecryptValue($ar['coordinator_notes'] ?? null, 'data'),
+                        'updatedAt'        => $ar['updated_at'] ?? null,
+                    ];
                 }
-                $accommodations = array_values($accommMap);
 
                 $disclosures = [];
-                foreach (['participant_disability_disclosures', 'registration_disabilities'] as $disTbl) {
-                    try {
-                        $stDis = $pdo->prepare("
-                            SELECT d.id, d.self_description, d.notes, d.disability_code,
-                                   dc.code AS category_code, dc.name AS category_name, dc.rpwd_group
-                            FROM {$disTbl} d
-                            LEFT JOIN disability_categories dc ON d.disability_category_id = dc.id OR d.disability_code = dc.code
-                            WHERE d.registration_id = :rid
-                        ");
-                        $stDis->execute([':rid' => $singleId]);
-                        $dRows = $stDis->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                        if (count($dRows) > 0) {
-                            foreach ($dRows as $dr) {
-                                $disclosures[] = [
-                                    'id'              => (string)$dr['id'],
-                                    'selfDescription' => pfgDecryptValue($dr['self_description'] ?? $dr['notes'] ?? null, 'data'),
-                                    'categoryCode'    => $dr['category_code'] ?? $dr['disability_code'] ?? null,
-                                    'categoryName'    => $dr['category_name'] ?? $dr['disability_code'] ?? null,
-                                    'rpwdGroup'       => $dr['rpwd_group'] ?? null,
-                                ];
-                            }
-                            break;
-                        }
-                    } catch (Throwable $e) {
-                    }
+                $stDis = $pdo->prepare('
+                    SELECT d.id, d.self_description, d.notes, d.disability_code,
+                           dc.code AS category_code, dc.name AS category_name, dc.rpwd_group
+                    FROM participant_disability_disclosures d
+                    LEFT JOIN disability_categories dc ON d.disability_category_id = dc.id OR d.disability_code = dc.code
+                    WHERE d.registration_id = :rid
+                ');
+                $stDis->execute([':rid' => $singleId]);
+                foreach ($stDis->fetchAll(PDO::FETCH_ASSOC) ?: [] as $dr) {
+                    $disclosures[] = [
+                        'id'              => (string)$dr['id'],
+                        'selfDescription' => pfgDecryptValue($dr['self_description'] ?? $dr['notes'] ?? null, 'data'),
+                        'categoryCode'    => $dr['category_code'] ?? $dr['disability_code'] ?? null,
+                        'categoryName'    => $dr['category_name'] ?? $dr['disability_code'] ?? null,
+                        'rpwdGroup'       => $dr['rpwd_group'] ?? null,
+                    ];
                 }
                 $disabilityDisclosures = $disclosures;
 
@@ -522,30 +489,25 @@ try {
             }
 
             if ($canReadAccomm) {
-                foreach (['accommodation_requests', 'registration_accommodations'] as $acTbl) {
-                    try {
-                        $stmtAc = $pdo->query("SELECT registration_id, status, selected_types, accommodation_code, free_text_details, notes FROM {$acTbl}");
-                        foreach (($stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : []) as $ac) {
-                            $rid = (string)$ac['registration_id'];
-                            $types = jsonDecode($ac['selected_types'] ?? '[]', []);
-                            if (empty($types) && !empty($ac['accommodation_code'])) {
-                                $types = [(string)$ac['accommodation_code']];
-                            }
-                            $decryptedFreeText = pfgDecryptValue($ac['free_text_details'] ?? $ac['notes'] ?? null, 'data');
-                            if (!isset($accommByReg[$rid])) {
-                                $accommByReg[$rid] = [
-                                    'status'          => (string)($ac['status'] ?? 'REQUESTED'),
-                                    'selectedTypes'   => is_array($types) ? $types : [],
-                                    'freeTextDetails' => $decryptedFreeText,
-                                ];
-                            } else {
-                                $accommByReg[$rid]['selectedTypes'] = array_values(array_unique(array_merge(
-                                    $accommByReg[$rid]['selectedTypes'],
-                                    is_array($types) ? $types : []
-                                )));
-                            }
-                        }
-                    } catch (Throwable $e) {
+                $stmtAc = $pdo->query('SELECT registration_id, status, selected_types, accommodation_code, free_text_details, notes FROM accommodation_requests');
+                foreach (($stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : []) as $ac) {
+                    $rid = (string)$ac['registration_id'];
+                    $types = jsonDecode($ac['selected_types'] ?? '[]', []);
+                    if (empty($types) && !empty($ac['accommodation_code'])) {
+                        $types = [(string)$ac['accommodation_code']];
+                    }
+                    $decryptedFreeText = pfgDecryptValue($ac['free_text_details'] ?? $ac['notes'] ?? null, 'data');
+                    if (!isset($accommByReg[$rid])) {
+                        $accommByReg[$rid] = [
+                            'status'          => (string)($ac['status'] ?? 'REQUESTED'),
+                            'selectedTypes'   => is_array($types) ? $types : [],
+                            'freeTextDetails' => $decryptedFreeText,
+                        ];
+                    } else {
+                        $accommByReg[$rid]['selectedTypes'] = array_values(array_unique(array_merge(
+                            $accommByReg[$rid]['selectedTypes'],
+                            is_array($types) ? $types : []
+                        )));
                     }
                 }
             }

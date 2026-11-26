@@ -19,6 +19,9 @@ require_once __DIR__ . '/config.php';
 if (is_file(__DIR__ . '/database.php')) {
     require_once __DIR__ . '/database.php';
 }
+if (is_file(__DIR__ . '/registration-id.php')) {
+    require_once __DIR__ . '/registration-id.php';
+}
 
 if (!function_exists('pfgBase64UrlEncode')) {
     function pfgBase64UrlEncode(string $bytes): string
@@ -226,28 +229,14 @@ if (!function_exists('pfgRecordCredentialEvent')) {
 
 if (!function_exists('generateUniqueRegistrationCode')) {
     /**
-     * Generates a unique registration code in format PFG-2027-000001-XXXX.
-     * Accepts optional PDO instance (defaults to getDb()).
+     * Deprecated compatibility delegate (Phase 3D / D-01).
+     * Registration ID allocation is permanently decoupled from QR credentials and handled atomically
+     * by `allocateNextRegistrationCode()` in `includes/registration-id.php`.
      */
-    function generateUniqueRegistrationCode(?PDO $pdo = null): string
+    function generateUniqueRegistrationCode(?PDO $pdo = null, ?string $editionId = null): string
     {
         $db = pfgResolvePdo($pdo);
-        $countStmt = $db->query('SELECT COUNT(*) FROM registrations');
-        $seq = ((int)$countStmt->fetchColumn()) + 1;
-
-        for ($attempt = 0; $attempt < 10; $attempt++) {
-            $suffix = strtoupper(bin2hex(random_bytes(2)));
-            $padded = str_pad((string)($seq + $attempt), 6, '0', STR_PAD_LEFT);
-            $candidate = "PFG-2027-{$padded}-{$suffix}";
-
-            $chk = $db->prepare('SELECT id FROM registrations WHERE registration_code = :code LIMIT 1');
-            $chk->execute([':code' => $candidate]);
-            if (!$chk->fetch()) {
-                return $candidate;
-            }
-        }
-
-        return 'PFG-2027-' . str_pad((string)$seq, 6, '0', STR_PAD_LEFT) . '-' . strtoupper(bin2hex(random_bytes(3)));
+        return allocateNextRegistrationCode($db, $editionId);
     }
 }
 

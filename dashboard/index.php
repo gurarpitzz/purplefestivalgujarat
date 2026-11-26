@@ -114,7 +114,7 @@ if (count($regIds) > 0) {
         $checkinsByReg[$rId][] = $chk;
     }
 
-    // Accommodation requests (from accommodation_requests + registration_accommodations)
+    // Accommodation requests (canonical `accommodation_requests` ONLY)
     $regCodeMap = [];
     foreach ($userRegs as $ur) {
         $regCodeMap[(string)$ur['id']] = [
@@ -123,30 +123,11 @@ if (count($regIds) > 0) {
         ];
     }
 
-    $seenAccIds = [];
     $accStmt = $pdo->prepare(
         "SELECT * FROM accommodation_requests WHERE registration_id IN ({$placeholders}) ORDER BY created_at DESC"
     );
     $accStmt->execute($regIds);
     $rawAccRows = $accStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    foreach ($rawAccRows as $ar) {
-        $seenAccIds[(string)$ar['id']] = true;
-    }
-
-    try {
-        $regAccStmt = $pdo->prepare(
-            "SELECT * FROM registration_accommodations WHERE registration_id IN ({$placeholders}) ORDER BY created_at DESC"
-        );
-        $regAccStmt->execute($regIds);
-        foreach ($regAccStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $er) {
-            if (!isset($seenAccIds[(string)$er['id']])) {
-                $rawAccRows[] = $er;
-                $seenAccIds[(string)$er['id']] = true;
-            }
-        }
-    } catch (Throwable $e) {
-        // Ignore if table not queried
-    }
 
     foreach ($rawAccRows as $ar) {
         $rId = (string)$ar['registration_id'];

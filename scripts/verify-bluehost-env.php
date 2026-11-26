@@ -73,6 +73,20 @@ if ($configOk) {
             $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
             $record('Schema Tables Present', count($tables) >= 50, count($tables) . ' tables found');
 
+            require_once dirname(__DIR__) . '/includes/migrations.php';
+            $migStatus = pfgGetMigrationStatus($pdo);
+            $record(
+                'Versioned Schema Migrations Applied',
+                $migStatus['pendingCount'] === 0 && empty($migStatus['checksumMismatches']),
+                sprintf(
+                    'applied=%d/%d pending=%d checksumMismatches=%d',
+                    $migStatus['appliedCount'],
+                    $migStatus['discoveredCount'],
+                    $migStatus['pendingCount'],
+                    count($migStatus['checksumMismatches'])
+                )
+            );
+
             $edCount = (int)$pdo->query('SELECT COUNT(*) FROM festival_editions WHERE is_active = 1')->fetchColumn();
             $record('Active Festival Edition Row', $edCount >= 1, "{$edCount} active edition(s)");
 
