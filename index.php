@@ -782,7 +782,10 @@ $structuredData = [
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="/assets/css/viksit-section.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />';
+    . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />' . "\n"
+    . '  <link rel="stylesheet" href="/assets/css/home-whats-on.css?v=1" />' . "\n"
+    . '  <link rel="stylesheet" href="/assets/css/home-programme-highlights.css?v=1" />' . "\n"
+    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=1" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1306,48 +1309,9 @@ function renderHighlightIconSvg(string $iconName): string
   </section>
 
   <!-- ============================================================
-       4. FESTIVAL HIGHLIGHTS
+       4. FESTIVAL HIGHLIGHTS (What's On Editorial Band)
        ============================================================ -->
-  <section
-    id="highlights"
-    aria-labelledby="highlights-heading"
-    class="border-b border-[#202D59]/10 bg-[#EFEFEF]/65 py-20 sm:py-24"
-  >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
-      <div class="max-w-2xl space-y-3">
-        <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">
-          The Festival Experience
-        </p>
-        <h2
-          id="highlights-heading"
-          class="text-3xl font-extrabold tracking-tight text-[#202D59] sm:text-5xl"
-        >
-          Six Pillars of Celebration
-        </h2>
-      </div>
-
-      <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <?php foreach ($FESTIVAL_HIGHLIGHTS as $item): ?>
-          <article class="flex flex-col rounded-xl border border-[#202D59]/10 bg-white p-7 shadow-xs transition-shadow hover:shadow-md">
-            <div class="flex items-center justify-between">
-              <span class="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-[#DDDDF9] text-[#202D59]">
-                <?= renderHighlightIconSvg($item['icon']) ?>
-              </span>
-              <span class="text-xs font-bold tracking-wider uppercase text-[#099F9F]">
-                <?= htmlspecialchars($item['category'], ENT_QUOTES, 'UTF-8') ?>
-              </span>
-            </div>
-            <h3 class="mt-5 text-xl font-bold text-[#202D59]">
-              <?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?>
-            </h3>
-            <p class="mt-2.5 text-sm leading-relaxed text-[#46537C]">
-              <?= htmlspecialchars($item['description'], ENT_QUOTES, 'UTF-8') ?>
-            </p>
-          </article>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  </section>
+  <?php require __DIR__ . '/includes/home-sections/whats-on.php'; ?>
 
   <!-- ============================================================
        5. UNDERSTANDING THE 21 DISABILITIES (RPwD Act, 2016)
@@ -1367,81 +1331,9 @@ function renderHighlightIconSvg(string $iconName): string
   ?>
 
   <!-- ============================================================
-       6. PROGRAMME PREVIEW
+       6. PROGRAMME PREVIEW (Programme Highlights Editorial Band)
        ============================================================ -->
-  <section
-    aria-labelledby="programme-preview-heading"
-    class="border-b border-[#202D59]/10 bg-[#DDDDF9]/50 py-20 sm:py-24"
-  >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
-      <div class="flex flex-col justify-between gap-6 md:flex-row md:items-end">
-        <div class="space-y-3">
-          <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">
-            21–23 January 2027 &middot; Vadodara
-          </p>
-          <h2
-            id="programme-preview-heading"
-            class="text-3xl font-extrabold tracking-tight text-[#202D59] sm:text-5xl"
-          >
-            Programme Highlights
-          </h2>
-        </div>
-        <a
-          href="/programme"
-          class="btn-primary-pfg touch-target inline-flex items-center gap-2 bg-[#A459FF] px-6 py-3 text-sm font-bold text-white hover:bg-[#8D3BF2]"
-        >
-          <span>Explore Full 3-Day Schedule</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-            <path d="M5 12h14" />
-            <path d="m12 5 7 7-7 7" />
-          </svg>
-        </a>
-      </div>
-
-      <div class="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-        <?php foreach ($programme as $item): ?>
-          <article class="flex flex-col justify-between rounded-xl border border-[#202D59]/12 bg-white p-6 shadow-xs">
-            <div>
-              <div class="flex items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider">
-                <span class="rounded bg-[#DDDDF9] px-2.5 py-1 text-[#202D59]">
-                  Day <?= (int)$item['dayNumber'] ?>
-                </span>
-                <span class="text-[#099F9F]">
-                  <?= htmlspecialchars($item['category'], ENT_QUOTES, 'UTF-8') ?>
-                </span>
-              </div>
-              <h3 class="mt-4 text-lg font-bold text-[#202D59]">
-                <?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?>
-              </h3>
-              <?php if (!empty($item['description'])): ?>
-                <p class="mt-2 text-sm text-[#46537C]">
-                  <?= htmlspecialchars((string)$item['description'], ENT_QUOTES, 'UTF-8') ?>
-                </p>
-              <?php endif; ?>
-            </div>
-            <div class="mt-5 space-y-1.5 border-t border-[#202D59]/10 pt-4 text-xs font-medium text-[#46537C]">
-              <p class="flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-[#A459FF]" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-                <span><?= htmlspecialchars($item['timeSlot'], ENT_QUOTES, 'UTF-8') ?></span>
-              </p>
-              <?php if (!empty($item['venueName'])): ?>
-                <p class="flex items-center gap-1.5">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 text-[#099F9F]" aria-hidden="true">
-                    <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                  <span><?= htmlspecialchars((string)$item['venueName'], ENT_QUOTES, 'UTF-8') ?></span>
-                </p>
-              <?php endif; ?>
-            </div>
-          </article>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  </section>
+  <?php require __DIR__ . '/includes/home-sections/programme-highlights.php'; ?>
 
   <!-- ============================================================
        7. PARTNERS & ORGANISERS (Compact Dark Purple #5B2A86 Showcase)
@@ -1585,48 +1477,9 @@ function renderHighlightIconSvg(string $iconName): string
   </section>
 
   <!-- ============================================================
-       8. VENUE & FESTIVAL GALLERY
+       8. VENUE & FESTIVAL GALLERY (Festival Grounds Editorial Band)
        ============================================================ -->
-  <section
-    id="gallery"
-    aria-labelledby="gallery-heading"
-    class="border-b border-[#202D59]/10 bg-[#EFEFEF]/65 py-20 sm:py-24"
-  >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
-      <div class="max-w-2xl space-y-3">
-        <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">
-          Vadodara Venues
-        </p>
-        <h2
-          id="gallery-heading"
-          class="text-3xl font-extrabold tracking-tight text-[#202D59] sm:text-5xl"
-        >
-          Festival Grounds &amp; Facilities
-        </h2>
-      </div>
-
-      <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <?php foreach ($galleryItems as $img): ?>
-          <figure class="overflow-hidden rounded-xl border border-[#202D59]/12 bg-white shadow-xs">
-            <div class="aspect-[16/10] w-full overflow-hidden bg-[#DDDDF9]">
-              <img
-                src="<?= htmlspecialchars($img['url'], ENT_QUOTES, 'UTF-8') ?>"
-                alt="<?= htmlspecialchars($img['altText'], ENT_QUOTES, 'UTF-8') ?>"
-                width="800"
-                height="500"
-                loading="lazy"
-                decoding="async"
-                class="h-full w-full object-cover"
-              />
-            </div>
-            <figcaption class="px-4 py-3 text-xs font-semibold text-[#46537C]">
-              <?= htmlspecialchars($img['caption'], ENT_QUOTES, 'UTF-8') ?>
-            </figcaption>
-          </figure>
-        <?php endforeach; ?>
-      </div>
-    </div>
-  </section>
+  <?php require __DIR__ . '/includes/home-sections/festival-grounds.php'; ?>
 
   <!-- ============================================================
        9. FAQs & CONTACT

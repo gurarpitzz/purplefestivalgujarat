@@ -1,0 +1,324 @@
+/* ==========================================================================
+   Homepage Section 4 — "What's On" (Six Festival Pillars)
+   Editorial Warm Ivory Layout with Deep Royal Plum Typography & Crisp Rules
+   ========================================================================== */
+
+.pfg-ed-whatson,
+.pfg-ed-whatson *,
+.pfg-ed-whatson *::before,
+.pfg-ed-whatson *::after {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+.pfg-ed-whatson {
+  position: relative;
+  background-color: #FBF8F1;
+  color: #2B0A3D;
+  padding: clamp(2.75rem, 5.2vw, 4.75rem) 0 clamp(3rem, 5.6vw, 5rem);
+  overflow-x: clip;
+}
+
+.pfg-ed-whatson__inner {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(1.1rem, 3.2vw, 2.25rem);
+}
+
+/* Section Heading */
+.pfg-ed-whatson__heading {
+  margin: 0 0 clamp(1.4rem, 2.7vw, 2.15rem);
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 4.2vw, 3.15rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  color: #2B0A3D;
+}
+
+/* 2-Column Editorial Split Grid */
+.pfg-ed-whatson__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr);
+  gap: clamp(1.75rem, 3.6vw, 3.25rem);
+  align-items: start;
+}
+
+/* Left Column: Clean 4:3 Editorial Photograph */
+.pfg-ed-whatson__media {
+  width: 100%;
+}
+
+.pfg-ed-whatson__figure {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.pfg-ed-whatson__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 2px;
+  background-color: #EDE6D8;
+}
+
+/* Right Column: 6 Pillars List */
+.pfg-ed-whatson__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.pfg-ed-whatson__item {
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+  border-bottom: 1.5px solid #6E338E;
+}
+
+.pfg-ed-whatson__item:last-child {
+  border-bottom: 0;
+}
+
+.pfg-ed-whatson__item-title {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+}
+
+/* Interactive Trigger Button (inside <h3>) */
+.pfg-ed-whatson__trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  width: 100%;
+  min-height: 44px;
+  padding: clamp(0.96rem, 1.68vw, 1.32rem) 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: #2B0A3D;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+/* Align first pillar cleanly with the top edge of the left photograph */
+.pfg-ed-whatson__item:first-child .pfg-ed-whatson__trigger {
+  padding-top: 0.15rem;
+  padding-bottom: clamp(1.04rem, 1.75vw, 1.38rem);
+}
+
+.pfg-ed-whatson__item:last-child .pfg-ed-whatson__trigger {
+  padding-top: clamp(0.98rem, 1.68vw, 1.34rem);
+  padding-bottom: 0.45rem;
+}
+
+.pfg-ed-whatson__label {
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif);
+  font-weight: 800;
+  font-size: clamp(1.2rem, 1.95vw, 1.6rem);
+  letter-spacing: -0.018em;
+  line-height: 1.24;
+  color: inherit;
+}
+
+.pfg-ed-whatson__indicator {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-family: inherit;
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(110, 51, 142, 0.35);
+  transition: color 180ms ease;
+}
+
+.pfg-ed-whatson__trigger:hover .pfg-ed-whatson__label,
+.pfg-ed-whatson__trigger[aria-expanded="true"] .pfg-ed-whatson__label {
+  color: #4A1468;
+}
+
+.pfg-ed-whatson__trigger:hover .pfg-ed-whatson__indicator,
+.pfg-ed-whatson__trigger:focus-visible .pfg-ed-whatson__indicator,
+.pfg-ed-whatson__trigger[aria-expanded="true"] .pfg-ed-whatson__indicator {
+  color: #6E338E;
+}
+
+.pfg-ed-whatson__trigger:focus-visible {
+  outline: 3px solid #7C2AE8;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* Expanded Detail Panel */
+.pfg-ed-whatson__detail {
+  padding: 0.05rem 0 1.15rem;
+}
+
+.pfg-ed-whatson__detail[hidden] {
+  display: none !important;
+}
+
+.pfg-ed-whatson__category {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  color: #6E338E;
+}
+
+.pfg-ed-whatson__desc {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #4B2C5E;
+}
+
+/* Responsive Single-Column Stack Below 840px (incl. 390px & 320px / 400% Zoom) */
+@media (max-width: 839.98px) {
+  .pfg-ed-whatson__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.75rem;
+  }
+
+  .pfg-ed-whatson__item:first-child .pfg-ed-whatson__trigger {
+    padding-top: 0.2rem;
+  }
+}
+
+/* ==========================================================================
+   Accessibility: High-Contrast Mode (WCAG AAA)
+   ========================================================================== */
+html[data-contrast="high"] .pfg-ed-whatson,
+html.high-contrast .pfg-ed-whatson {
+  background-color: #000000;
+  color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-whatson__heading,
+html[data-contrast="high"] .pfg-ed-whatson__trigger,
+html[data-contrast="high"] .pfg-ed-whatson__label,
+html[data-contrast="high"] .pfg-ed-whatson__indicator,
+html[data-contrast="high"] .pfg-ed-whatson__category,
+html[data-contrast="high"] .pfg-ed-whatson__desc,
+html[data-contrast="high"] .pfg-ed-whatson__trigger:hover .pfg-ed-whatson__label,
+html[data-contrast="high"] .pfg-ed-whatson__trigger[aria-expanded="true"] .pfg-ed-whatson__label,
+html[data-contrast="high"] .pfg-ed-whatson__trigger:hover .pfg-ed-whatson__indicator,
+html[data-contrast="high"] .pfg-ed-whatson__trigger:focus-visible .pfg-ed-whatson__indicator,
+html[data-contrast="high"] .pfg-ed-whatson__trigger[aria-expanded="true"] .pfg-ed-whatson__indicator,
+html.high-contrast .pfg-ed-whatson__heading,
+html.high-contrast .pfg-ed-whatson__trigger,
+html.high-contrast .pfg-ed-whatson__label,
+html.high-contrast .pfg-ed-whatson__indicator,
+html.high-contrast .pfg-ed-whatson__category,
+html.high-contrast .pfg-ed-whatson__desc {
+  color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-whatson__item,
+html.high-contrast .pfg-ed-whatson__item {
+  border-bottom-color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-whatson__item:last-child,
+html.high-contrast .pfg-ed-whatson__item:last-child {
+  border-bottom: 0;
+}
+
+html[data-contrast="high"] .pfg-ed-whatson__img,
+html.high-contrast .pfg-ed-whatson__img {
+  border: 2px solid #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-whatson__trigger:focus-visible,
+html.high-contrast .pfg-ed-whatson__trigger:focus-visible {
+  outline: 3px solid #FFFFFF;
+  outline-offset: 3px;
+}
+
+/* ==========================================================================
+   Accessibility: Yellow-on-Black Mode (WCAG AAA)
+   ========================================================================== */
+html[data-contrast="yellow-black"] .pfg-ed-whatson,
+html.yellow-black .pfg-ed-whatson {
+  background-color: #000000;
+  color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-whatson__heading,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__label,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__indicator,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__category,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__desc,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger:hover .pfg-ed-whatson__label,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger[aria-expanded="true"] .pfg-ed-whatson__label,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger:hover .pfg-ed-whatson__indicator,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger:focus-visible .pfg-ed-whatson__indicator,
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger[aria-expanded="true"] .pfg-ed-whatson__indicator,
+html.yellow-black .pfg-ed-whatson__heading,
+html.yellow-black .pfg-ed-whatson__trigger,
+html.yellow-black .pfg-ed-whatson__label,
+html.yellow-black .pfg-ed-whatson__indicator,
+html.yellow-black .pfg-ed-whatson__category,
+html.yellow-black .pfg-ed-whatson__desc {
+  color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-whatson__item,
+html.yellow-black .pfg-ed-whatson__item {
+  border-bottom-color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-whatson__item:last-child,
+html.yellow-black .pfg-ed-whatson__item:last-child {
+  border-bottom: 0;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-whatson__img,
+html.yellow-black .pfg-ed-whatson__img {
+  border: 2px solid #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-whatson__trigger:focus-visible,
+html.yellow-black .pfg-ed-whatson__trigger:focus-visible {
+  outline: 3px solid #FFEA00;
+  outline-offset: 3px;
+}
+
+/* ==========================================================================
+   Accessibility: Reduced Motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .pfg-ed-whatson,
+  .pfg-ed-whatson * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+html[data-reduced-motion="true"] .pfg-ed-whatson,
+html[data-reduced-motion="true"] .pfg-ed-whatson * {
+  transition: none !important;
+  animation: none !important;
+}

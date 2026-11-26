@@ -1,0 +1,424 @@
+/* ==========================================================================
+   Home Section 6: Programme Highlights — Editorial Deep Royal Plum Band
+   Palette: Deep Royal Plum (#2B0A3D), Festival Gold-Amber (#F5C451), Pure White (#FFFFFF)
+   ========================================================================== */
+
+.pfg-ed-prog,
+.pfg-ed-prog *,
+.pfg-ed-prog *::before,
+.pfg-ed-prog *::after {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pfg-ed-prog {
+  position: relative;
+  width: 100%;
+  background-color: #2b0a3d;
+  color: #ffffff;
+  padding-block: clamp(2.85rem, 5.2vw, 4.5rem);
+  overflow-x: clip;
+  font-family: var(--font-dm-sans, "DM Sans", ui-sans-serif, system-ui, -apple-system, Arial, sans-serif);
+}
+
+.pfg-ed-prog__inner {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding-inline: clamp(1.125rem, 3.5vw, 2.25rem);
+}
+
+/* Scoped sr-only safety net */
+.pfg-ed-prog .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Header Bar (Left Eyebrow + H2, Right CTA Link)
+   -------------------------------------------------------------------------- */
+.pfg-ed-prog__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  margin-bottom: clamp(1.65rem, 3vw, 2.45rem);
+}
+
+.pfg-ed-prog__title-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.pfg-ed-prog__eyebrow {
+  margin: 0;
+  color: #f5c451;
+  font-size: clamp(1rem, 1.35vw, 1.2rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+
+.pfg-ed-prog__heading {
+  margin: 0;
+  color: #ffffff;
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), ui-sans-serif, system-ui, -apple-system, sans-serif);
+  font-size: clamp(2.2rem, 4.2vw, 3.15rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  overflow-wrap: break-word;
+}
+
+.pfg-ed-prog__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding-block: 0.25rem;
+  color: #ffffff;
+  font-size: clamp(0.95rem, 1.15vw, 1.08rem);
+  font-weight: 600;
+  line-height: 1.35;
+  text-decoration: none;
+  text-underline-offset: 0.24em;
+  text-decoration-thickness: 1.5px;
+  border-radius: 4px;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+
+.pfg-ed-prog__cta:hover {
+  text-decoration: underline;
+  color: #ffffff;
+}
+
+.pfg-ed-prog__cta:focus-visible {
+  outline: 3px solid #f5c451;
+  outline-offset: 4px;
+  text-decoration: underline;
+}
+
+.pfg-ed-prog__arrow {
+  display: inline-block;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: transform 180ms ease;
+}
+
+.pfg-ed-prog__cta:hover .pfg-ed-prog__arrow,
+.pfg-ed-prog__cta:focus-visible .pfg-ed-prog__arrow {
+  transform: translateX(3px);
+}
+
+/* --------------------------------------------------------------------------
+   Editorial Timetable (Desktop & Tablet > 680px)
+   -------------------------------------------------------------------------- */
+.pfg-ed-prog__table-wrap {
+  width: 100%;
+}
+
+.pfg-ed-prog__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  text-align: left;
+}
+
+.pfg-ed-prog__th {
+  padding: 0 1.5rem 0.7rem 0;
+  text-align: left;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.78);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.pfg-ed-prog__th.pfg-ed-prog__col-venue {
+  padding-right: 0;
+}
+
+.pfg-ed-prog__col-time {
+  width: 13%;
+}
+
+.pfg-ed-prog__col-event {
+  width: 58%;
+}
+
+.pfg-ed-prog__col-venue {
+  width: 29%;
+}
+
+.pfg-ed-prog__tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  transition: background-color 150ms ease;
+}
+
+.pfg-ed-prog__tr:hover {
+  background-color: rgba(255, 255, 255, 0.035);
+}
+
+.pfg-ed-prog__td {
+  padding: clamp(0.95rem, 1.5vw, 1.2rem) 1.5rem clamp(0.95rem, 1.5vw, 1.2rem) 0;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.pfg-ed-prog__cell-time {
+  color: #ffffff;
+  font-size: clamp(1rem, 1.3vw, 1.18rem);
+  font-weight: 800;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pfg-ed-prog__cell-event {
+  color: #ffffff;
+  font-size: clamp(1rem, 1.3vw, 1.18rem);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.pfg-ed-prog__cell-venue {
+  padding-right: 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(0.96rem, 1.2vw, 1.1rem);
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* --------------------------------------------------------------------------
+   Accessible Empty Fallback State
+   -------------------------------------------------------------------------- */
+.pfg-ed-prog__empty {
+  padding-block: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.pfg-ed-prog__empty-title {
+  margin: 0 0 0.4rem;
+  color: #ffffff;
+  font-size: clamp(1.05rem, 1.4vw, 1.2rem);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.pfg-ed-prog__empty-copy {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: clamp(0.95rem, 1.15vw, 1.05rem);
+  line-height: 1.55;
+}
+
+.pfg-ed-prog__empty-link {
+  color: #f5c451;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.pfg-ed-prog__empty-link:focus-visible {
+  outline: 3px solid #f5c451;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Stacked Editorial Rows (<= 680px, including 390px & 320px/400%)
+   Guaranteed zero horizontal overflow at 320px viewport
+   -------------------------------------------------------------------------- */
+@media (max-width: 680px) {
+  .pfg-ed-prog__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .pfg-ed-prog__heading {
+    font-size: clamp(1.95rem, 8.2vw, 2.55rem);
+  }
+
+  .pfg-ed-prog__cta {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .pfg-ed-prog__table,
+  .pfg-ed-prog__tbody {
+    display: block;
+    width: 100%;
+    table-layout: auto;
+  }
+
+  .pfg-ed-prog__thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .pfg-ed-prog__tr {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  }
+
+  .pfg-ed-prog__tr:first-child {
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .pfg-ed-prog__td,
+  .pfg-ed-prog__col-time,
+  .pfg-ed-prog__col-event,
+  .pfg-ed-prog__col-venue {
+    display: block;
+    width: 100%;
+    padding: 0;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .pfg-ed-prog__cell-time {
+    font-size: 0.98rem;
+    letter-spacing: 0.01em;
+  }
+
+  .pfg-ed-prog__cell-event {
+    font-size: 1.06rem;
+  }
+
+  .pfg-ed-prog__cell-venue {
+    font-size: 0.94rem;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   High-Contrast Mode (AAA Black / White)
+   -------------------------------------------------------------------------- */
+html[data-contrast="high"] .pfg-ed-prog {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+html[data-contrast="high"] .pfg-ed-prog__eyebrow,
+html[data-contrast="high"] .pfg-ed-prog__heading,
+html[data-contrast="high"] .pfg-ed-prog__cta,
+html[data-contrast="high"] .pfg-ed-prog__cta:hover,
+html[data-contrast="high"] .pfg-ed-prog__th,
+html[data-contrast="high"] .pfg-ed-prog__cell-time,
+html[data-contrast="high"] .pfg-ed-prog__cell-event,
+html[data-contrast="high"] .pfg-ed-prog__cell-venue,
+html[data-contrast="high"] .pfg-ed-prog__empty-title,
+html[data-contrast="high"] .pfg-ed-prog__empty-copy,
+html[data-contrast="high"] .pfg-ed-prog__empty-link {
+  color: #ffffff;
+}
+
+html[data-contrast="high"] .pfg-ed-prog__th,
+html[data-contrast="high"] .pfg-ed-prog__tr,
+html[data-contrast="high"] .pfg-ed-prog__tr:first-child,
+html[data-contrast="high"] .pfg-ed-prog__empty {
+  border-color: #ffffff;
+}
+
+html[data-contrast="high"] .pfg-ed-prog__tr:hover {
+  background-color: #141414;
+}
+
+html[data-contrast="high"] .pfg-ed-prog__cta:focus-visible,
+html[data-contrast="high"] .pfg-ed-prog__empty-link:focus-visible {
+  outline-color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   Yellow-on-Black Mode (AAA #FFEA00 on #000000)
+   -------------------------------------------------------------------------- */
+html[data-contrast="yellow-black"] .pfg-ed-prog {
+  background-color: #000000;
+  color: #ffea00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-prog__eyebrow,
+html[data-contrast="yellow-black"] .pfg-ed-prog__heading,
+html[data-contrast="yellow-black"] .pfg-ed-prog__cta,
+html[data-contrast="yellow-black"] .pfg-ed-prog__cta:hover,
+html[data-contrast="yellow-black"] .pfg-ed-prog__th,
+html[data-contrast="yellow-black"] .pfg-ed-prog__cell-time,
+html[data-contrast="yellow-black"] .pfg-ed-prog__cell-event,
+html[data-contrast="yellow-black"] .pfg-ed-prog__cell-venue,
+html[data-contrast="yellow-black"] .pfg-ed-prog__empty-title,
+html[data-contrast="yellow-black"] .pfg-ed-prog__empty-copy,
+html[data-contrast="yellow-black"] .pfg-ed-prog__empty-link {
+  color: #ffea00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-prog__th,
+html[data-contrast="yellow-black"] .pfg-ed-prog__tr,
+html[data-contrast="yellow-black"] .pfg-ed-prog__tr:first-child,
+html[data-contrast="yellow-black"] .pfg-ed-prog__empty {
+  border-color: #ffea00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-prog__tr:hover {
+  background-color: #141400;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-prog__cta:focus-visible,
+html[data-contrast="yellow-black"] .pfg-ed-prog__empty-link:focus-visible {
+  outline-color: #ffea00;
+}
+
+/* --------------------------------------------------------------------------
+   Reduced Motion Preference
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .pfg-ed-prog *,
+  .pfg-ed-prog *::before,
+  .pfg-ed-prog *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .pfg-ed-prog__cta:hover .pfg-ed-prog__arrow,
+  .pfg-ed-prog__cta:focus-visible .pfg-ed-prog__arrow {
+    transform: none !important;
+  }
+}
+
+html[data-reduced-motion="true"] .pfg-ed-prog *,
+html[data-reduced-motion="true"] .pfg-ed-prog *::before,
+html[data-reduced-motion="true"] .pfg-ed-prog *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+html[data-reduced-motion="true"] .pfg-ed-prog__cta:hover .pfg-ed-prog__arrow,
+html[data-reduced-motion="true"] .pfg-ed-prog__cta:focus-visible .pfg-ed-prog__arrow {
+  transform: none !important;
+}

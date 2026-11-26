@@ -1,0 +1,423 @@
+/* ==========================================================================
+   Section 8: Festival Grounds & Facilities
+   Warm editorial ivory (#FBF8F1), asymmetric 3-photo mosaic, bottom venue strip,
+   and right-edge seamless Gujarati folk-art ornamental border.
+   ========================================================================== */
+
+.pfg-ed-grounds,
+.pfg-ed-grounds *,
+.pfg-ed-grounds *::before,
+.pfg-ed-grounds *::after {
+  box-sizing: border-box;
+}
+
+.pfg-ed-grounds {
+  position: relative;
+  background-color: #FBF8F1;
+  color: #2B0A3D;
+  padding-block: clamp(2.75rem, 5vw, 4.5rem);
+  overflow-x: clip;
+  isolation: isolate;
+}
+
+/* Right-edge seamless Gujarati folk-art ornamental border */
+.pfg-ed-grounds__ornament {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: clamp(34px, 4.2vw, 54px);
+  pointer-events: none;
+  z-index: 1;
+  background-image: url('/assets/editorial/gujarati-border-right.svg');
+  background-repeat: repeat-y;
+  background-position: right top;
+  background-size: 100% auto;
+}
+
+/* Inner editorial container aligned to site grid with safe clearance from right ornamental border */
+.pfg-ed-grounds__inner {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 1180px;
+  min-width: 0;
+  margin-inline: auto;
+  padding-left: clamp(1.1rem, 3.2vw, 2.25rem);
+  padding-right: clamp(1.1rem, 3.2vw, 2.25rem);
+}
+
+@media (max-width: 1339.98px) {
+  .pfg-ed-grounds__inner {
+    padding-right: clamp(3.85rem, 6.2vw, 5.5rem);
+  }
+}
+
+/* Section Heading */
+.pfg-ed-grounds__heading {
+  margin: 0 0 clamp(1.5rem, 2.8vw, 2.25rem);
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), ui-sans-serif, system-ui, -apple-system, Arial, sans-serif);
+  font-size: clamp(2.1rem, 4vw, 3.1rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  color: #2B0A3D;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+/* Asymmetric 2-Column 3-Photo Gallery Mosaic */
+.pfg-ed-grounds__mosaic {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(1rem, 1.8vw, 1.5rem);
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pfg-ed-grounds__feature,
+.pfg-ed-grounds__thumb {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pfg-ed-grounds__stack {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1rem, 1.8vw, 1.35rem);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pfg-ed-grounds__media {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 3px;
+  background-color: #EAE2D3;
+  box-shadow: 0 1px 4px rgba(43, 10, 61, 0.08);
+}
+
+.pfg-ed-grounds__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: cover;
+  object-position: center;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pfg-ed-grounds__feature:hover .pfg-ed-grounds__media img,
+.pfg-ed-grounds__thumb:hover .pfg-ed-grounds__media img {
+  transform: scale(1.025);
+}
+
+.pfg-ed-grounds__caption {
+  margin: 0.55rem 0 0;
+  font-size: clamp(0.9rem, 1.15vw, 1rem);
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #2B0A3D;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+/* Desktop asymmetric alignment: left feature fills exact vertical height so bottom captions align flush */
+@media (min-width: 780px) {
+  .pfg-ed-grounds__mosaic {
+    grid-template-columns: minmax(0, 1.52fr) minmax(0, 1fr);
+    gap: clamp(1rem, 1.8vw, 1.5rem);
+    align-items: stretch;
+  }
+
+  .pfg-ed-grounds__feature {
+    height: 100%;
+  }
+
+  .pfg-ed-grounds__feature .pfg-ed-grounds__media {
+    flex: 1 1 auto;
+    aspect-ratio: auto;
+    min-height: 280px;
+  }
+
+  .pfg-ed-grounds__feature .pfg-ed-grounds__media img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .pfg-ed-grounds__stack {
+    justify-content: space-between;
+    gap: clamp(0.85rem, 1.5vw, 1.15rem);
+  }
+
+  .pfg-ed-grounds__thumb .pfg-ed-grounds__media {
+    aspect-ratio: 16 / 9.2;
+  }
+}
+
+/* Bottom Venue Details Strip */
+.pfg-ed-grounds__venues {
+  margin-top: clamp(1.85rem, 3.2vw, 2.65rem);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.15rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pfg-ed-grounds__venue {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pfg-ed-grounds__venue-name {
+  margin: 0;
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, -apple-system, Arial, sans-serif;
+  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #2B0A3D;
+  overflow-wrap: break-word;
+}
+
+.pfg-ed-grounds__venue-addr {
+  margin: 0.28rem 0 0;
+  font-size: clamp(0.875rem, 1.05vw, 0.95rem);
+  font-weight: 400;
+  line-height: 1.45;
+  color: #4F3A5E;
+  max-width: 38ch;
+  overflow-wrap: break-word;
+}
+
+/* Mobile horizontal hairline divider (switches to vertical on >= 780px) */
+.pfg-ed-grounds__vdivider {
+  width: 100%;
+  height: 1px;
+  background-color: rgba(43, 10, 61, 0.24);
+  flex-shrink: 0;
+}
+
+/* Vibrant Royal Purple CTA Button (> 7.5:1 contrast with white text) */
+.pfg-ed-grounds__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.72rem 1.45rem;
+  border-radius: 0.45rem;
+  border: 2px solid transparent;
+  background-color: #6E22D4;
+  color: #FFFFFF;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 100%;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(110, 34, 212, 0.22);
+  transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.pfg-ed-grounds__cta:hover {
+  background-color: #5819B0;
+  color: #FFFFFF;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(88, 25, 176, 0.28);
+}
+
+.pfg-ed-grounds__cta:active {
+  background-color: #481394;
+  transform: translateY(0);
+}
+
+.pfg-ed-grounds__cta:focus-visible {
+  outline: 3px solid #2B0A3D;
+  outline-offset: 3px;
+  background-color: #5819B0;
+  color: #FFFFFF;
+}
+
+.pfg-ed-grounds__cta span {
+  display: inline-block;
+  transition: transform 160ms ease;
+}
+
+.pfg-ed-grounds__cta:hover span,
+.pfg-ed-grounds__cta:focus-visible span {
+  transform: translateX(3px);
+}
+
+@media (min-width: 780px) {
+  .pfg-ed-grounds__venues {
+    flex-direction: row;
+    align-items: center;
+    gap: clamp(1.25rem, 2.4vw, 2.25rem);
+  }
+
+  .pfg-ed-grounds__vdivider {
+    width: 1px;
+    height: auto;
+    min-height: 3.25rem;
+    align-self: stretch;
+    background-color: rgba(43, 10, 61, 0.24);
+  }
+
+  .pfg-ed-grounds__cta {
+    margin-left: auto;
+  }
+}
+
+/* Mobile narrow viewports (<= 540px & 320px at 400% zoom): zero horizontal overflow */
+@media (max-width: 540px) {
+  .pfg-ed-grounds__ornament {
+    width: 18px;
+  }
+
+  .pfg-ed-grounds__inner {
+    padding-left: 1rem;
+    padding-right: 1.95rem;
+  }
+
+  .pfg-ed-grounds__cta {
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (max-width: 420px) {
+  .pfg-ed-grounds__ornament {
+    display: none;
+  }
+
+  .pfg-ed-grounds__inner {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* ==========================================================================
+   Accessibility: High-Contrast (Black/White AAA) & Yellow-on-Black AAA Modes
+   ========================================================================== */
+
+html[data-contrast="high"] .pfg-ed-grounds {
+  background-color: #000000;
+  color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-grounds__ornament {
+  filter: brightness(0) invert(1);
+  opacity: 0.35;
+}
+
+html[data-contrast="high"] .pfg-ed-grounds__heading,
+html[data-contrast="high"] .pfg-ed-grounds__caption,
+html[data-contrast="high"] .pfg-ed-grounds__venue-name,
+html[data-contrast="high"] .pfg-ed-grounds__venue-addr {
+  color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-grounds__media {
+  background-color: #000000;
+  border: 2px solid #FFFFFF;
+  box-shadow: none;
+}
+
+html[data-contrast="high"] .pfg-ed-grounds__vdivider {
+  background-color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-grounds__cta {
+  background-color: #FFFFFF;
+  color: #000000;
+  border: 2px solid #FFFFFF;
+  box-shadow: none;
+}
+
+html[data-contrast="high"] .pfg-ed-grounds__cta:hover,
+html[data-contrast="high"] .pfg-ed-grounds__cta:focus-visible {
+  background-color: #000000;
+  color: #FFFFFF;
+  border-color: #FFFFFF;
+  outline: 3px solid #FFFFFF;
+  outline-offset: 3px;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds {
+  background-color: #000000;
+  color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds__ornament {
+  display: none;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds__heading,
+html[data-contrast="yellow-black"] .pfg-ed-grounds__caption,
+html[data-contrast="yellow-black"] .pfg-ed-grounds__venue-name,
+html[data-contrast="yellow-black"] .pfg-ed-grounds__venue-addr {
+  color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds__media {
+  background-color: #000000;
+  border: 2px solid #FFEA00;
+  box-shadow: none;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds__vdivider {
+  background-color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds__cta {
+  background-color: #FFEA00;
+  color: #000000;
+  border: 2px solid #FFEA00;
+  box-shadow: none;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-grounds__cta:hover,
+html[data-contrast="yellow-black"] .pfg-ed-grounds__cta:focus-visible {
+  background-color: #000000;
+  color: #FFEA00;
+  border-color: #FFEA00;
+  outline: 3px solid #FFEA00;
+  outline-offset: 3px;
+}
+
+/* ==========================================================================
+   Accessibility: Reduced Motion
+   ========================================================================== */
+
+html[data-reduced-motion="true"] .pfg-ed-grounds__media img,
+html[data-reduced-motion="true"] .pfg-ed-grounds__cta,
+html[data-reduced-motion="true"] .pfg-ed-grounds__cta span {
+  transition: none !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pfg-ed-grounds__media img,
+  .pfg-ed-grounds__cta,
+  .pfg-ed-grounds__cta span {
+    transition: none !important;
+    transform: none !important;
+  }
+}
