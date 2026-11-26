@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /**
- * Purple Festival Gujarat 2027 — Phases 5–15 Comprehensive Full-System Verification Suite (T5-01 .. T5-09)
+ * Purple Festival Gujarat 2027 — Phases 5–15 & Final Release Controls Full-System Verification Suite (T5-01 .. T5-10)
  * Executes against live local PHP 8.2 server(s) + isolated MariaDB `pfg27_test` + safe local file mail sink.
  */
 
@@ -1109,4 +1109,394 @@ PHP);
             }
         }
     }
+});
+
+// =========================================================================
+// T5-10: Final Release Acceptance Security & Cutover Controls (§5.1, §5.3, §6, §7, §8, §9, §14)
+// =========================================================================
+pfgTest('T5-10', 'Final release controls: granular notification RBAC (§5.1), self-approval 403 (§5.3), launch gate 503 (§6), withdrawal alert (§7), IST day window (§8), stale token cancel (§9), dynamic env loader (§14)', function () use ($p5Pdo, $saSess, $root, $phpBin, $tmpDir, $sinkDir): string {
+    require_once $root . '/includes/notification-service.php';
+
+    $setSetting = static function (PDO $pdo, string $key, string $val): void {
+        $st = $pdo->prepare('UPDATE system_settings SET `value` = :v, updated_at = NOW() WHERE `key` = :k');
+        $st->execute([':v' => $val, ':k' => $key]);
+        if ($st->rowCount() === 0) {
+            $pdo->prepare('INSERT INTO system_settings (id, `key`, `value`, description, updated_at) VALUES (:id, :k, :v, :d, NOW())')
+                ->execute([':id' => uuid4(), ':k' => $key, ':v' => $val, ':d' => 'T5-10 final release test setting']);
+        }
+    };
+
+    // ---------------------------------------------------------------------
+    // 1. Granular Notification RBAC (§5.1)
+    // ---------------------------------------------------------------------
+    $rProfiles = p2Http('GET', '/api/admin/permission-profiles', null, $saSess['cookies']);
+    pfgAssert($rProfiles['status'] === 200, 'T5-10: GET /api/admin/permission-profiles failed');
+    $profilesBySlug = [];
+    foreach (($rProfiles['json']['items'] ?? []) as $pr) {
+        $profilesBySlug[(string)$pr['slug']] = $pr;
+    }
+    foreach (['content_manager', 'volunteer_coordinator', 'registration_manager', 'communications_manager'] as $reqSlug) {
+        pfgAssert(isset($profilesBySlug[$reqSlug]), "T5-10: Missing system profile '{$reqSlug}'");
+    }
+
+    // Seed 2 operational notifications (1 FAILED for retry, 1 CAPTURED_LOCAL for resend) + 2 auth-token notifications
+    $t510Tag = bin2hex(random_bytes(3));
+    $opFailQ = pfgEnqueueNotification($p5Pdo, [
+        'to'             => "t510.opfail.{$t510Tag}@example.test",
+        'templateCode'   => 'ATTENDEE_REGISTRATION_CONFIRMED',
+        'variables'      => [
+            'fullName'         => 'Operational Retry Target',
+            'registrationCode' => 'PFG-2027-990001',
+            'categoryName'     => 'General Attendee',
+            'status'           => 'CONFIRMED',
+        ],
+        'idempotencyKey' => "t510-op-fail-{$t510Tag}",
+    ]);
+    $opFailId = (string)$opFailQ['queueId'];
+    $p5Pdo->prepare("UPDATE notification_queue SET status = 'FAILED', error_category = 'PROVIDER_5XX', last_error = 'Synthetic failure for retry test' WHERE id = :id")
+        ->execute([':id' => $opFailId]);
+
+    $opSentQ = pfgEnqueueNotification($p5Pdo, [
+        'to'             => "t510.opsent.{$t510Tag}@example.test",
+        'templateCode'   => 'ATTENDEE_REGISTRATION_CONFIRMED',
+        'variables'      => [
+            'fullName'         => 'Operational Resend Target',
+            'registrationCode' => 'PFG-2027-990002',
+            'categoryName'     => 'General Attendee',
+            'status'           => 'CONFIRMED',
+        ],
+        'idempotencyKey' => "t510-op-sent-{$t510Tag}",
+    ]);
+    $opSentId = (string)$opSentQ['queueId'];
+    $p5Pdo->prepare("UPDATE notification_queue SET status = 'CAPTURED_LOCAL' WHERE id = :id")
+        ->execute([':id' => $opSentId]);
+
+    $authPwdQ = pfgEnqueueNotification($p5Pdo, [
+        'to'             => "t510.authpwd.{$t510Tag}@example.test",
+        'templateCode'   => 'PASSWORD_RECOVERY',
+        'variables'      => ['fullName' => 'Auth Pwd Target'],
+        'ephemeralVars'  => ['actionUrl' => APP_URL . '/reset-password?token=t510dummyreset' . $t510Tag],
+        'idempotencyKey' => "t510-auth-pwd-{$t510Tag}",
+    ]);
+    $authPwdId = (string)$authPwdQ['queueId'];
+    $p5Pdo->prepare("UPDATE notification_queue SET status = 'FAILED', ephemeral_secret_enc = NULL WHERE id = :id")
+        ->execute([':id' => $authPwdId]);
+
+    $authVerQ = pfgEnqueueNotification($p5Pdo, [
+        'to'             => "t510.authver.{$t510Tag}@example.test",
+        'templateCode'   => 'ACCOUNT_VERIFICATION',
+        'variables'      => ['fullName' => 'Auth Verify Target'],
+        'ephemeralVars'  => ['actionUrl' => APP_URL . '/verify-email?token=t510dummyverify' . $t510Tag],
+        'idempotencyKey' => "t510-auth-ver-{$t510Tag}",
+    ]);
+    $authVerId = (string)$authVerQ['queueId'];
+    $p5Pdo->prepare("UPDATE notification_queue SET status = 'CAPTURED_LOCAL', ephemeral_secret_enc = NULL WHERE id = :id")
+        ->execute([':id' => $authVerId]);
+
+    // Helper: create an MFA-authenticated ADMIN session assigned to a specific profile slug
+    $makeProfileAdmin = static function (string $slug) use ($p5Pdo, $saSess, $profilesBySlug, $t510Tag): array {
+        $uname = 't510_' . substr($slug, 0, 10) . '_' . $t510Tag;
+        $email = $uname . '@example.test';
+        $pw = 'RelAdmin#2027';
+        $mfa = generateMfaSecret();
+        $u = p2CreateTestUser($p5Pdo, $uname, $email, $pw, 'ADMIN', [], $mfa);
+        $codes = generateMfaRecoveryCodes($p5Pdo, $u['id'], 2);
+
+        $rAssign = p2Http('PATCH', '/api/admin/users', [
+            'userId'              => $u['id'],
+            'permissionProfileId' => $profilesBySlug[$slug]['id'],
+        ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+        pfgAssert($rAssign['status'] === 200, "T5-10: Assign {$slug} failed: {$rAssign['body']}");
+
+        pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
+        $sess = p2Login($u['username'], $u['password'], $codes[0]);
+        pfgAssert($sess['resp']['status'] === 200, "T5-10: Login for {$slug} failed: {$sess['resp']['body']}");
+        return ['user' => $u, 'cookies' => $sess['cookies'], 'csrf' => $sess['csrf']];
+    };
+
+    $cmAdm = $makeProfileAdmin('content_manager');
+    $vcAdm = $makeProfileAdmin('volunteer_coordinator');
+    $rmAdm = $makeProfileAdmin('registration_manager');
+    $commAdm = $makeProfileAdmin('communications_manager');
+
+    // content_manager & volunteer_coordinator -> 403 on GET and POST
+    foreach (['content_manager' => $cmAdm, 'volunteer_coordinator' => $vcAdm] as $lbl => $adm) {
+        $rG = p2Http('GET', '/api/admin/notifications', null, $adm['cookies']);
+        pfgAssert($rG['status'] === 403, "T5-10 §5.1: {$lbl} GET notifications expected 403, got {$rG['status']}");
+        $rP = p2Http('POST', '/api/admin/notifications', ['action' => 'retry', 'queueId' => $opFailId, 'reason' => 'Test'], $adm['cookies'], ['X-CSRF-Token' => $adm['csrf']]);
+        pfgAssert($rP['status'] === 403, "T5-10 §5.1: {$lbl} POST notifications expected 403, got {$rP['status']}");
+    }
+
+    // registration_manager -> 200 on GET, 403 on POST retry & resend
+    $rRmGet = p2Http('GET', '/api/admin/notifications', null, $rmAdm['cookies']);
+    pfgAssert($rRmGet['status'] === 200, "T5-10 §5.1: registration_manager GET expected 200, got {$rRmGet['status']}");
+    $rRmRetry = p2Http('POST', '/api/admin/notifications', ['action' => 'retry', 'queueId' => $opFailId, 'reason' => 'Test'], $rmAdm['cookies'], ['X-CSRF-Token' => $rmAdm['csrf']]);
+    pfgAssert($rRmRetry['status'] === 403, "T5-10 §5.1: registration_manager POST retry expected 403, got {$rRmRetry['status']}");
+    $rRmResend = p2Http('POST', '/api/admin/notifications', ['action' => 'resend', 'queueId' => $opSentId, 'reason' => 'Test'], $rmAdm['cookies'], ['X-CSRF-Token' => $rmAdm['csrf']]);
+    pfgAssert($rRmResend['status'] === 403, "T5-10 §5.1: registration_manager POST resend expected 403, got {$rRmResend['status']}");
+
+    // communications_manager -> 200 on GET (operational visible, auth templates filtered out), 403 on direct GET/POST for auth templates, 200/201 on operational retry/resend
+    $rCommList = p2Http('GET', '/api/admin/notifications?pageSize=100', null, $commAdm['cookies']);
+    pfgAssert($rCommList['status'] === 200, "T5-10 §5.1: communications_manager GET expected 200, got {$rCommList['status']}");
+    $authTpls = ['PASSWORD_RECOVERY', 'ACCOUNT_VERIFICATION', 'EMAIL_VERIFICATION_RESEND', 'EMAIL_CHANGE_VERIFICATION', 'PASSWORD_RESET_CONFIRMATION', 'SECURITY_ALERT'];
+    $sawOp = false;
+    foreach (($rCommList['json']['items'] ?? []) as $nItem) {
+        $tpl = strtoupper((string)($nItem['template_code'] ?? ''));
+        pfgAssert(!in_array($tpl, $authTpls, true), "T5-10 §5.1: communications_manager list leaked auth template {$tpl}!");
+        if ((string)($nItem['id'] ?? '') === $opFailId || (string)($nItem['id'] ?? '') === $opSentId) {
+            $sawOp = true;
+        }
+    }
+    pfgAssert($sawOp, 'T5-10 §5.1: communications_manager list did not include operational notifications');
+
+    foreach ([$authPwdId, $authVerId] as $authQid) {
+        $rDirectAuth = p2Http('GET', '/api/admin/notifications?id=' . urlencode($authQid), null, $commAdm['cookies']);
+        pfgAssert($rDirectAuth['status'] === 403, "T5-10 §5.1: communications_manager direct GET auth notif expected 403, got {$rDirectAuth['status']}");
+    }
+    $rCommAuthRetry = p2Http('POST', '/api/admin/notifications', ['action' => 'retry', 'queueId' => $authPwdId, 'reason' => 'Unauthorized retry'], $commAdm['cookies'], ['X-CSRF-Token' => $commAdm['csrf']]);
+    pfgAssert($rCommAuthRetry['status'] === 403, "T5-10 §5.1: communications_manager POST retry auth notif expected 403, got {$rCommAuthRetry['status']}");
+    $rCommAuthResend = p2Http('POST', '/api/admin/notifications', ['action' => 'resend', 'queueId' => $authVerId, 'reason' => 'Unauthorized resend'], $commAdm['cookies'], ['X-CSRF-Token' => $commAdm['csrf']]);
+    pfgAssert($rCommAuthResend['status'] === 403, "T5-10 §5.1: communications_manager POST resend auth notif expected 403, got {$rCommAuthResend['status']}");
+
+    $rCommOpRetry = p2Http('POST', '/api/admin/notifications', ['action' => 'retry', 'queueId' => $opFailId, 'reason' => 'Authorized comms retry'], $commAdm['cookies'], ['X-CSRF-Token' => $commAdm['csrf']]);
+    pfgAssert($rCommOpRetry['status'] === 200, "T5-10 §5.1: communications_manager operational retry expected 200, got {$rCommOpRetry['status']}: {$rCommOpRetry['body']}");
+    $rCommOpResend = p2Http('POST', '/api/admin/notifications', ['action' => 'resend', 'queueId' => $opSentId, 'reason' => 'Authorized comms resend'], $commAdm['cookies'], ['X-CSRF-Token' => $commAdm['csrf']]);
+    pfgAssert($rCommOpResend['status'] === 201, "T5-10 §5.1: communications_manager operational resend expected 201, got {$rCommOpResend['status']}: {$rCommOpResend['body']}");
+
+    // SUPERADMIN -> 400 when attempting to include notifications.auth.manage in a custom profile; 200 inspecting auth notifications
+    $rForbidAuthPerm = p2Http('POST', '/api/admin/permission-profiles', [
+        'name'        => 'Forbidden Auth Notif Profile ' . $t510Tag,
+        'permissions' => ['notifications.read', 'notifications.auth.manage'],
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rForbidAuthPerm['status'] === 400, "T5-10 §5.1: SUPERADMIN custom profile with notifications.auth.manage expected 400, got {$rForbidAuthPerm['status']}");
+
+    $rSaAuthGet = p2Http('GET', '/api/admin/notifications?id=' . urlencode($authPwdId), null, $saSess['cookies']);
+    pfgAssert($rSaAuthGet['status'] === 200 && ($rSaAuthGet['json']['item']['template_code'] ?? '') === 'PASSWORD_RECOVERY', "T5-10 §5.1: SUPERADMIN GET auth notif expected 200, got {$rSaAuthGet['status']}");
+
+    // ---------------------------------------------------------------------
+    // 2. Staff Self-Approval Prevention (§5.3)
+    // ---------------------------------------------------------------------
+    pfgResetRateLimit($p5Pdo, 'registration_submit_ip', '127.0.0.1');
+    $rSelfReg = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER'), $rmAdm['cookies'], ['X-CSRF-Token' => $rmAdm['csrf']]);
+    pfgAssert($rSelfReg['status'] === 201, "T5-10 §5.3: Staff personal VOLUNTEER registration failed: {$rSelfReg['status']} {$rSelfReg['body']}");
+    $selfRegId = (string)$rSelfReg['json']['registration']['id'];
+
+    $rSelfApprove = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($selfRegId), [
+        'status' => 'APPROVED',
+    ], $rmAdm['cookies'], ['X-CSRF-Token' => $rmAdm['csrf']]);
+    pfgAssert(
+        $rSelfApprove['status'] === 403 && ($rSelfApprove['json']['code'] ?? '') === 'SELF_APPROVAL_BLOCKED',
+        "T5-10 §5.3: Staff self-approval expected 403 SELF_APPROVAL_BLOCKED, got {$rSelfApprove['status']}: {$rSelfApprove['body']}"
+    );
+    $selfAuditCnt = (int)$p5Pdo->query(
+        "SELECT COUNT(*) FROM audit_logs WHERE action = 'SELF_APPROVAL_BLOCKED' AND resource_id = " . $p5Pdo->quote($selfRegId)
+    )->fetchColumn();
+    pfgAssert($selfAuditCnt >= 1, 'T5-10 §5.3: SELF_APPROVAL_BLOCKED audit log entry missing');
+
+    // ---------------------------------------------------------------------
+    // 3. Centralized Registration Launch Gate (§6)
+    // ---------------------------------------------------------------------
+    $gatePart = p5CreateVerifiedParticipantSession($p5Pdo, "t510.gate.{$t510Tag}@example.test", 'Gate Tester');
+    $setSetting($p5Pdo, 'registration_public_open', '0');
+    try {
+        $regsBefore = (int)$p5Pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn();
+        $rClosed = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $gatePart['cookies'], ['X-CSRF-Token' => $gatePart['csrf']]);
+        $regsAfter = (int)$p5Pdo->query('SELECT COUNT(*) FROM registrations')->fetchColumn();
+        pfgAssert(
+            $rClosed['status'] === 503 && !empty($rClosed['json']['registrationClosed']) && $regsAfter === $regsBefore,
+            "T5-10 §6: Launch gate closed expected 503 registrationClosed=true & 0 rows created, got {$rClosed['status']} delta=" . ($regsAfter - $regsBefore) . " body={$rClosed['body']}"
+        );
+    } finally {
+        $setSetting($p5Pdo, 'registration_public_open', '1');
+    }
+
+    // ---------------------------------------------------------------------
+    // 4. Assigned-Participant Withdrawal Coordinator Alert (§7)
+    // ---------------------------------------------------------------------
+    $wPart = p5CreateVerifiedParticipantSession($p5Pdo, "t510.withdraw.{$t510Tag}@example.test", 'Assigned Withdrawer');
+    $rWVol = p2Http('POST', '/api/registrations', p5ValidPayload('VOLUNTEER'), $wPart['cookies'], ['X-CSRF-Token' => $wPart['csrf']]);
+    pfgAssert($rWVol['status'] === 201, "T5-10 §7: Volunteer registration failed: {$rWVol['body']}");
+    $wVolId = (string)$rWVol['json']['registration']['id'];
+
+    $rWApp = p2Http('PATCH', '/api/admin/registrations?id=' . urlencode($wVolId), ['status' => 'APPROVED'], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rWApp['status'] === 200, "T5-10 §7: Approve volunteer failed: {$rWApp['body']}");
+
+    $rWDuty = p2Http('POST', '/api/admin/assignments', [
+        'registrationId' => $wVolId,
+        'roleTitle'      => 'T5-10 Hospitality Steward',
+        'department'     => 'Welcome Desk',
+        'dutyDateIst'    => '2027-01-21',
+        'shiftCode'      => 'DAY_1_SHIFT_1',
+        'startTime'      => '09:00',
+        'endTime'        => '12:30',
+    ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+    pfgAssert($rWDuty['status'] === 201, "T5-10 §7: Duty assignment failed: {$rWDuty['body']}");
+    $wDutyId = (string)$rWDuty['json']['assignment']['id'];
+
+    $rWDo = p2Http('POST', '/api/account/registrations', [
+        'action'         => 'withdraw',
+        'registrationId' => $wVolId,
+        'reason'         => 'Unexpected schedule emergency',
+    ], $wPart['cookies'], ['X-CSRF-Token' => $wPart['csrf']]);
+    pfgAssert($rWDo['status'] === 200 && !empty($rWDo['json']['assignedConflictFlagged']), "T5-10 §7: Assigned withdrawal failed: {$rWDo['status']} {$rWDo['body']}");
+
+    $dutyStatusAfter = (string)$p5Pdo->query('SELECT status FROM duty_assignments WHERE id = ' . $p5Pdo->quote($wDutyId))->fetchColumn();
+    $regAssignAfter = (string)$p5Pdo->query('SELECT assignment_status FROM registrations WHERE id = ' . $p5Pdo->quote($wVolId))->fetchColumn();
+    $coordNotifCnt = (int)$p5Pdo->query(
+        "SELECT COUNT(*) FROM in_app_notifications WHERE event_type = 'assigned_participant_withdrawn' AND entity_id = " . $p5Pdo->quote($wVolId)
+    )->fetchColumn();
+    pfgAssert($dutyStatusAfter === 'CANCELLED', "T5-10 §7: Expected duty_assignments.status=CANCELLED, got {$dutyStatusAfter}");
+    pfgAssert($regAssignAfter === 'UNASSIGNED', "T5-10 §7: Expected registrations.assignment_status=UNASSIGNED, got {$regAssignAfter}");
+    pfgAssert($coordNotifCnt >= 1, "T5-10 §7: Expected >=1 coordinator in_app_notifications (assigned_participant_withdrawn), got {$coordNotifCnt}");
+
+    // ---------------------------------------------------------------------
+    // 5. Configurable IST Event-Day Attendance Window (§8)
+    // ---------------------------------------------------------------------
+    $rAttGate = p2Http('POST', '/api/registrations', p5ValidPayload('ATTENDEE'), $gatePart['cookies'], ['X-CSRF-Token' => $gatePart['csrf']]);
+    pfgAssert($rAttGate['status'] === 201, "T5-10 §8: Attendee creation failed: {$rAttGate['body']}");
+    $attGateRegId = (string)$rAttGate['json']['registration']['id'];
+
+    $rgstUser = p2CreateTestUser($p5Pdo, 't510_rgst_' . $t510Tag, "t510.rgst.{$t510Tag}@example.test", 'RgstWin#2027', 'RGST');
+    pfgResetRateLimit($p5Pdo, 'auth_login_ip', '127.0.0.1');
+    $rgstSess = p2Login($rgstUser['username'], $rgstUser['password']);
+    pfgAssert($rgstSess['resp']['status'] === 200, 'T5-10 §8: RGST login failed');
+
+    $setSetting($p5Pdo, 'attendance_enforce_event_day_window', '1');
+    try {
+        $rRgstFuture = p2Http('POST', '/api/attendance/mark', [
+            'registrationId'    => $attGateRegId,
+            'attendanceDateIst' => '2027-01-23',
+        ], $rgstSess['cookies'], ['X-CSRF-Token' => $rgstSess['csrf']]);
+        pfgAssert(
+            $rRgstFuture['status'] === 403 && ($rRgstFuture['json']['code'] ?? '') === 'FUTURE_EVENT_DAY_BLOCKED',
+            "T5-10 §8: RGST future-date mark expected 403 FUTURE_EVENT_DAY_BLOCKED, got {$rRgstFuture['status']}: {$rRgstFuture['body']}"
+        );
+
+        $rSaOverride = p2Http('POST', '/api/attendance/mark', [
+            'registrationId'     => $attGateRegId,
+            'attendanceDateIst'  => '2027-01-23',
+            'overrideFutureDate' => true,
+            'overrideReason'     => 'Superadmin authorized pre-festival desk rehearsal verification',
+        ], $saSess['cookies'], ['X-CSRF-Token' => $saSess['csrf']]);
+        pfgAssert(
+            $rSaOverride['status'] === 201 && ($rSaOverride['json']['record']['status'] ?? '') === 'PRESENT',
+            "T5-10 §8: SUPERADMIN future-date override expected 201 PRESENT, got {$rSaOverride['status']}: {$rSaOverride['body']}"
+        );
+        $ovRecId = (string)$rSaOverride['json']['record']['id'];
+        $ovAuditCnt = (int)$p5Pdo->query(
+            "SELECT COUNT(*) FROM audit_logs WHERE action = 'ATTENDANCE_FUTURE_DATE_OVERRIDE' AND resource_id = " . $p5Pdo->quote($ovRecId)
+        )->fetchColumn();
+        pfgAssert($ovAuditCnt >= 1, 'T5-10 §8: ATTENDANCE_FUTURE_DATE_OVERRIDE audit log missing');
+    } finally {
+        $setSetting($p5Pdo, 'attendance_enforce_event_day_window', '0');
+    }
+
+    // ---------------------------------------------------------------------
+    // 6. Stale / Expired / Used / Superseded Auth Token Guard (§9)
+    // ---------------------------------------------------------------------
+    // Drain any unrelated queued rows first so batch assertions are strictly scoped to our 2 stale jobs
+    pfgProcessNotificationQueueBatch($p5Pdo, ['batchLimit' => 200]);
+    foreach (glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [] as $oldSink) {
+        @unlink($oldSink);
+    }
+
+    $stalePart = p5CreateVerifiedParticipantSession($p5Pdo, "t510.stale.{$t510Tag}@example.test", 'Stale Token User');
+    $rawStaleReset = 't510-stale-reset-' . bin2hex(random_bytes(16));
+    $p5Pdo->prepare('INSERT INTO password_reset_tokens (id, user_id, email, token_hash, expires_at, used_at, created_at) VALUES (:id, :uid, :em, :th, :exp, :used, :now)')
+        ->execute([
+            ':id'   => uuid4(),
+            ':uid'  => $stalePart['id'],
+            ':em'   => $stalePart['email'],
+            ':th'   => hashToken($rawStaleReset),
+            ':exp'  => nowSql(time() - 3600),
+            ':used' => nowSql(time() - 1800),
+            ':now'  => nowSql(time() - 7200),
+        ]);
+    $stalePwdQ = pfgEnqueueNotification($p5Pdo, [
+        'to'              => $stalePart['email'],
+        'templateCode'    => 'PASSWORD_RECOVERY',
+        'recipientUserId' => $stalePart['id'],
+        'variables'       => ['fullName' => 'Stale Token User'],
+        'ephemeralVars'   => ['actionUrl' => APP_URL . '/reset-password?token=' . $rawStaleReset],
+        'idempotencyKey'  => "t510-stale-pwd-{$t510Tag}",
+    ]);
+    $stalePwdId = (string)$stalePwdQ['queueId'];
+
+    $rawStaleVer = 't510-stale-ver-' . bin2hex(random_bytes(16));
+    $p5Pdo->prepare("INSERT INTO email_verification_tokens (id, user_id, purpose, target_email, token_hash, expires_at, used_at, created_at) VALUES (:id, :uid, 'SIGNUP_VERIFY', :em, :th, :exp, :used, :now)")
+        ->execute([
+            ':id'   => uuid4(),
+            ':uid'  => $stalePart['id'],
+            ':em'   => $stalePart['email'],
+            ':th'   => hashToken($rawStaleVer),
+            ':exp'  => nowSql(time() + 3600),
+            ':used' => nowSql(time() - 120),
+            ':now'  => nowSql(time() - 600),
+        ]);
+    $staleVerQ = pfgEnqueueNotification($p5Pdo, [
+        'to'              => $stalePart['email'],
+        'templateCode'    => 'ACCOUNT_VERIFICATION',
+        'recipientUserId' => $stalePart['id'],
+        'variables'       => ['fullName' => 'Stale Token User'],
+        'ephemeralVars'   => ['actionUrl' => APP_URL . '/verify-email?token=' . $rawStaleVer],
+        'idempotencyKey'  => "t510-stale-ver-{$t510Tag}",
+    ]);
+    $staleVerId = (string)$staleVerQ['queueId'];
+
+    $batchStats = pfgProcessNotificationQueueBatch($p5Pdo, ['batchLimit' => 50]);
+    $dispatchedSinkFiles = glob($sinkDir . DIRECTORY_SEPARATOR . '*.json') ?: [];
+    pfgAssert(
+        count($dispatchedSinkFiles) === 0 && (int)$batchStats['capturedLocal'] === 0 && (int)$batchStats['accepted'] === 0,
+        'T5-10 §9: Stale auth jobs dispatched unexpectedly: sink=' . count($dispatchedSinkFiles) . ' stats=' . json_encode($batchStats)
+    );
+
+    foreach (['PASSWORD_RECOVERY' => $stalePwdId, 'ACCOUNT_VERIFICATION' => $staleVerId] as $tplLabel => $jid) {
+        $qRow = $p5Pdo->query('SELECT status, error_category, ephemeral_secret_enc FROM notification_queue WHERE id = ' . $p5Pdo->quote($jid))->fetch(PDO::FETCH_ASSOC);
+        pfgAssert(
+            is_array($qRow)
+            && ($qRow['status'] ?? '') === 'CANCELLED'
+            && ($qRow['error_category'] ?? '') === 'TOKEN_EXPIRED_OR_SUPERSEDED'
+            && $qRow['ephemeral_secret_enc'] === null,
+            "T5-10 §9: {$tplLabel} stale job invalid state: " . json_encode($qRow)
+        );
+        $logCnt = (int)$p5Pdo->query(
+            "SELECT COUNT(*) FROM notification_delivery_logs WHERE job_id = " . $p5Pdo->quote($jid) . " AND event_type = 'STALE_AUTH_CANCELLED'"
+        )->fetchColumn();
+        pfgAssert($logCnt >= 1, "T5-10 §9: Missing STALE_AUTH_CANCELLED delivery log for {$tplLabel}");
+    }
+
+    // ---------------------------------------------------------------------
+    // 7. Subdomain / Parent .pfg27_env.php Dynamic Loader (§14)
+    // ---------------------------------------------------------------------
+    $cfgSrc = (string)file_get_contents($root . '/includes/config.php');
+    pfgAssert(!str_contains($cfgSrc, '/home1/tstpllmy'), 'T5-10 §14: Hardcoded /home1/tstpllmy path still present in includes/config.php');
+    pfgAssert(preg_match('#/home\d*/[a-z0-9_-]+/#i', $cfgSrc) !== 1, 'T5-10 §14: Hardcoded hosting account home path found in includes/config.php');
+    pfgAssert(
+        str_contains($cfgSrc, "dirname(__DIR__, 2) . '/.pfg27_env.php'")
+        && str_contains($cfgSrc, "dirname(__DIR__, 3) . '/.pfg27_env.php'")
+        && str_contains($cfgSrc, "getenv('HOME')"),
+        'T5-10 §14: includes/config.php missing dynamic parent/grandparent/HOME .pfg27_env.php lookup'
+    );
+
+    $fakeHome = $tmpDir . DIRECTORY_SEPARATOR . 't510_home_' . $t510Tag;
+    mkdir($fakeHome, 0775, true);
+    $fakeHomeEnv = $fakeHome . DIRECTORY_SEPARATOR . '.pfg27_env.php';
+    file_put_contents($fakeHomeEnv, "<?php return ['APP_ENV' => 'testing', 'APP_URL' => 'http://127.0.0.1:19876', 'AUTH_SECRET' => str_repeat('x', 32), 'QR_SIGNING_SECRET' => str_repeat('y', 32)];\n");
+    try {
+        $envRes = runPhpSnippet(
+            $phpBin,
+            "require '" . addslashes($root . '/includes/config.php') . "'; echo json_encode(['url' => APP_URL, 'loaded' => \$GLOBALS['pfgLoadedEnvPath'] ?? null]);",
+            ['PFG_ENV_FILE' => null, 'HOME' => $fakeHome]
+        );
+        $envDecoded = json_decode($envRes['stdout'], true);
+        pfgAssert(
+            is_array($envDecoded) && ($envDecoded['url'] ?? '') === 'http://127.0.0.1:19876',
+            'T5-10 §14: Dynamic HOME .pfg27_env.php resolution failed: ' . $envRes['stdout'] . ' ' . $envRes['stderr']
+        );
+    } finally {
+        @unlink($fakeHomeEnv);
+        @rmdir($fakeHome);
+    }
+
+    return 'All 7 final release controls PASS: §5.1 notification RBAC (CM/VC 403, RM 200/403, Comms op-only+auth 403, SA auth 200+profile 400), §5.3 self-approval 403+audit, §6 launch gate 503, §7 withdrawal cancels duty+alerts coord, §8 IST day window 403+SA override 201, §9 2 stale auth jobs CANCELLED/wiped/0 sent, §14 dynamic .pfg27_env.php loader';
 });
