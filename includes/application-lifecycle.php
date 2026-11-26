@@ -64,6 +64,9 @@ if (!function_exists('pfgGetAllowedStatusTransitions')) {
     {
         $cat = strtoupper(trim($categoryCode));
         $cur = strtoupper(trim($currentStatus));
+        if ($cur === 'PENDING') {
+            $cur = 'SUBMITTED';
+        }
         $actor = strtoupper(trim($actorType));
 
         $isAdmin = in_array($actor, ['ADMIN', 'SUPERADMIN'], true);
@@ -71,27 +74,36 @@ if (!function_exists('pfgGetAllowedStatusTransitions')) {
         $isParticipant = ($actor === 'PARTICIPANT');
 
         // Review-gated categories: VOLUNTEER and SLI
+        // Unified authoritative state machine (HIGH-02):
+        // - ADMIN/SUPERADMIN may fast-track from SUBMITTED or RESUBMITTED directly to a decision
+        //   (an implicit UNDER_REVIEW history record is inserted cleanly).
+        // - WITHDRAWN is reserved for PARTICIPANT self-service; ADMIN uses CANCELLED.
         if (in_array($cat, ['VOLUNTEER', 'SLI'], true)) {
+            $decisions = ['APPROVED', 'REJECTED', 'WAITLISTED', 'ADDITIONAL_INFO_REQUIRED'];
             return match ($cur) {
                 'DRAFT' => $isAdmin
                     ? ['SUBMITTED', 'CANCELLED']
                     : ['SUBMITTED', 'WITHDRAWN'],
                 'SUBMITTED' => $isAdmin
-                    ? ['UNDER_REVIEW', 'CANCELLED']
+                    ? array_merge(['UNDER_REVIEW'], $decisions, ['CANCELLED'])
                     : ($isParticipant ? ['WITHDRAWN', 'CANCELLED'] : ['UNDER_REVIEW']),
                 'UNDER_REVIEW' => $isAdmin
-                    ? ['APPROVED', 'REJECTED', 'WAITLISTED', 'ADDITIONAL_INFO_REQUIRED', 'CANCELLED']
+                    ? array_merge($decisions, ['CANCELLED'])
                     : ($isParticipant ? ['WITHDRAWN', 'CANCELLED'] : []),
                 'ADDITIONAL_INFO_REQUIRED' => $isParticipant
                     ? ['RESUBMITTED', 'WITHDRAWN', 'CANCELLED']
                     : ($isAdmin ? ['UNDER_REVIEW', 'CANCELLED'] : []),
                 'RESUBMITTED' => $isAdmin
-                    ? ['UNDER_REVIEW', 'CANCELLED']
+                    ? array_merge(['UNDER_REVIEW'], $decisions, ['CANCELLED'])
                     : ($isParticipant ? ['WITHDRAWN', 'CANCELLED'] : []),
                 'WAITLISTED' => $isAdmin
                     ? ['APPROVED', 'REJECTED', 'CANCELLED']
                     : ($isParticipant ? ['WITHDRAWN', 'CANCELLED'] : []),
                 'APPROVED' => $isAdmin
+                    ? ['CANCELLED']
+                    : ($isParticipant ? ['WITHDRAWN', 'CANCELLED'] : []),
+                // Historical rows confirmed under legacy single-step flow
+                'CONFIRMED' => $isAdmin
                     ? ['CANCELLED']
                     : ($isParticipant ? ['WITHDRAWN', 'CANCELLED'] : []),
                 default => [],
@@ -347,6 +359,9 @@ if (!function_exists('pfgTransitionRegistrationStatus')) {
         $regCode = (string)($registration['registration_code'] ?? '');
         $categoryCode = strtoupper(trim((string)($registration['category_code'] ?? 'ATTENDEE')));
         $currentStatus = strtoupper(trim((string)($registration['status'] ?? 'SUBMITTED')));
+        if ($currentStatus === 'PENDING') {
+            $currentStatus = 'SUBMITTED';
+        }
         $nextStatus = strtoupper(trim($targetStatus));
         $actorType = pfgResolveLifecycleActorType($actor);
         $actorUserId = !empty($actor['id']) ? (string)$actor['id'] : null;
@@ -412,10 +427,28 @@ if (!function_exists('pfgTransitionRegistrationStatus')) {
             $upd = $pdo->prepare($sql);
             $upd->execute($params);
 
+            // Fast-track decision straight from SUBMITTED / RESUBMITTED: record the implicit UNDER_REVIEW step cleanly.
+            $fastTracked = $isAdmin
+                && in_array($categoryCode, ['VOLUNTEER', 'SLI'], true)
+                && in_array($currentStatus, ['SUBMITTED', 'RESUBMITTED'], true)
+                && in_array($nextStatus, ['APPROVED', 'REJECTED', 'WAITLISTED', 'ADDITIONAL_INFO_REQUIRED'], true);
+            if ($fastTracked) {
+                pfgRecordRegistrationStatusHistory(
+                    $pdo,
+                    $regId,
+                    $currentStatus,
+                    'UNDER_REVIEW',
+                    $actorUserId,
+                    $actorType,
+                    'Implicit review step (decision recorded directly from ' . $currentStatus . ').',
+                    null
+                );
+            }
+
             $historyId = pfgRecordRegistrationStatusHistory(
                 $pdo,
                 $regId,
-                $currentStatus,
+                $fastTracked ? 'UNDER_REVIEW' : $currentStatus,
                 $nextStatus,
                 $actorUserId,
                 $actorType,

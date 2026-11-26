@@ -867,15 +867,43 @@ if (!function_exists('getUserRolesAndPermissions')) {
                 if (!in_array($rCode, $roles, true)) {
                     $roles[] = $rCode;
                 }
-                $basePerms = DEFAULT_ROLE_PERMISSIONS[$rCode] ?? [];
-                foreach ($basePerms as $p) {
-                    $permMap[$p] = true;
+            }
+        } else {
+            $roles = ['PARTICIPANT'];
+        }
+
+        // Phase 8 / CRIT-01: reusable operational permission profile (ADMIN tier ONLY — never RGST / PARTICIPANT / SUPERADMIN).
+        // When an ADMIN (without SUPERADMIN) has an active permission profile, enforce strict least privilege:
+        // grant ONLY account.read.own + profile permissions (filtered against forbidden perms) + explicit user_roles.custom_permissions,
+        // and do NOT merge the broad 17 DEFAULT_ROLE_PERMISSIONS['ADMIN'].
+        // Legacy/unprofiled ADMINs (permission_profile_id IS NULL) preserve DEFAULT_ROLE_PERMISSIONS['ADMIN'].
+        $profileId = null;
+        $profileSlug = null;
+        $activeAdminProfile = null;
+        if (in_array('ADMIN', $roles, true) && !in_array('SUPERADMIN', $roles, true)) {
+            $activeAdminProfile = pfgResolvePermissionProfile($userId, $pdo);
+            if ($activeAdminProfile !== null) {
+                $profileId = $activeAdminProfile['id'];
+                $profileSlug = $activeAdminProfile['slug'];
+            }
+        }
+
+        if (!empty($assigned)) {
+            $validPerms = array_values(PERMISSIONS);
+            foreach ($assigned as $row) {
+                $rCode = (string)$row['role_code'];
+                if ($rCode === 'ADMIN' && $activeAdminProfile !== null) {
+                    $permMap[PERMISSIONS['ACCOUNT_READ_OWN']] = true;
+                } else {
+                    $basePerms = DEFAULT_ROLE_PERMISSIONS[$rCode] ?? [];
+                    foreach ($basePerms as $p) {
+                        $permMap[$p] = true;
+                    }
                 }
-                // Only ADMIN/SUPERADMIN may receive custom administrative permissions
+                // Only ADMIN/SUPERADMIN may receive explicit custom administrative permissions
                 if (in_array($rCode, ['ADMIN', 'SUPERADMIN'], true)) {
                     $custom = jsonDecode($row['custom_permissions'] ?? null, []);
                     if (is_array($custom)) {
-                        $validPerms = array_values(PERMISSIONS);
                         foreach ($custom as $cp) {
                             if (is_string($cp) && in_array($cp, $validPerms, true)) {
                                 $permMap[$cp] = true;
@@ -885,21 +913,16 @@ if (!function_exists('getUserRolesAndPermissions')) {
                 }
             }
         } else {
-            $roles = ['PARTICIPANT'];
             foreach (DEFAULT_ROLE_PERMISSIONS['PARTICIPANT'] as $p) {
                 $permMap[$p] = true;
             }
         }
 
-        // Phase 8: reusable operational permission profile (ADMIN tier ONLY — never RGST / PARTICIPANT / SUPERADMIN).
-        $profileId = null;
-        $profileSlug = null;
-        if (in_array('ADMIN', $roles, true) && !in_array('SUPERADMIN', $roles, true)) {
-            $profile = pfgResolvePermissionProfile($userId, $pdo);
-            if ($profile !== null) {
-                $profileId = $profile['id'];
-                $profileSlug = $profile['slug'];
-                foreach ($profile['permissions'] as $pp) {
+        if ($activeAdminProfile !== null) {
+            $permMap[PERMISSIONS['ACCOUNT_READ_OWN']] = true;
+            $forbidden = pfgProfileForbiddenPermissions();
+            foreach ($activeAdminProfile['permissions'] as $pp) {
+                if (is_string($pp) && !in_array($pp, $forbidden, true)) {
                     $permMap[$pp] = true;
                 }
             }
@@ -916,13 +939,14 @@ if (!function_exists('getUserRolesAndPermissions')) {
 
 if (!function_exists('pfgProfileForbiddenPermissions')) {
     /**
-     * Permission codes that can NEVER be conferred through an operational permission profile (CAD-04).
+     * Permission codes that can NEVER be conferred through an operational permission profile (CAD-04 / MED-05).
      */
     function pfgProfileForbiddenPermissions(): array
     {
         return [
             PERMISSIONS['ADMIN_ACCOUNTS_MANAGE'],
             PERMISSIONS['SETTINGS_MANAGE'],
+            PERMISSIONS['AUDIT_LOGS_READ'],
         ];
     }
 }

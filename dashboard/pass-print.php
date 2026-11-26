@@ -2,15 +2,16 @@
 declare(strict_types=1);
 
 /**
- * Accessible Printable / Save-as-PDF Digital Entry Pass View
+ * Accessible Printable / Save-as-PDF Registration ID Confirmation Sheet
  * Path: /dashboard/pass-print.php?registrationId=...
- * Port of src/lib/pass-pdf.ts & src/app/api/qr/[registrationId]/pdf/route.ts
+ *
+ * Compliant with Decision D-01 (HIGH-03): displays the participant's official Registration ID
+ * and Vadodara Registration Desk manual check-in instructions with ZERO QR code generation or payload.
  */
 
 require_once dirname(__DIR__) . '/includes/config.php';
 require_once dirname(__DIR__) . '/includes/database.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
-require_once dirname(__DIR__) . '/includes/qr-service.php';
 
 $user = getCurrentUser();
 if (!$user) {
@@ -45,6 +46,7 @@ $regStmt->execute([
 ]);
 $reg = $regStmt->fetch(PDO::FETCH_ASSOC);
 
+$errorMsg = null;
 if (!$reg) {
     http_response_code(404);
     $errorMsg = 'Registration record not found.';
@@ -52,14 +54,12 @@ if (!$reg) {
     $isOwner = ((string)$reg['user_id'] === (string)$user['id']);
     if (!$isOwner && !$isAdmin) {
         http_response_code(403);
-        $errorMsg = 'You do not have permission to view or print this entry pass.';
+        $errorMsg = 'You do not have permission to view or print this registration confirmation sheet.';
         $reg = null;
     }
 }
 
-$credential = null;
 $roleAssignment = null;
-$qrPayload = '';
 $categoryName = '';
 $attendingDaysLabel = 'All Festival Days (21–23 Jan 2027)';
 
@@ -67,20 +67,7 @@ if ($reg) {
     $categoryName = !empty($reg['category_name']) ? (string)$reg['category_name'] : (string)$reg['category_code'];
     $attendingDays = jsonDecode($reg['attending_days'] ?? '[]', []);
     if (is_array($attendingDays) && count($attendingDays) > 0) {
-        $attendingDaysLabel = implode(', ', $attendingDays);
-    }
-
-    $credStmt = $pdo->prepare(
-        "SELECT * FROM qr_credentials
-         WHERE registration_id = :reg_id AND status = 'ACTIVE'
-         ORDER BY issued_at DESC
-         LIMIT 1"
-    );
-    $credStmt->execute([':reg_id' => $reg['id']]);
-    $credential = $credStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-    if ($credential) {
-        $qrPayload = reconstructQrTokenForCredential($credential);
+        $attendingDaysLabel = implode(', ', array_map('strval', $attendingDays));
     }
 
     if ($reg['category_code'] === 'VOLUNTEER') {
@@ -127,7 +114,7 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title><?= htmlspecialchars(FESTIVAL_NAME, ENT_QUOTES, 'UTF-8') ?> — Digital Entry Pass<?= $reg ? ' (' . htmlspecialchars((string)$reg['registration_code'], ENT_QUOTES, 'UTF-8') . ')' : '' ?></title>
+  <title><?= htmlspecialchars(FESTIVAL_NAME, ENT_QUOTES, 'UTF-8') ?> — Registration ID Confirmation Sheet<?= $reg ? ' (' . htmlspecialchars((string)$reg['registration_code'], ENT_QUOTES, 'UTF-8') . ')' : '' ?></title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&display=swap" />
@@ -144,8 +131,8 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .pass-card {
-      max-width: 480px;
+    .sheet-card {
+      max-width: 520px;
       margin: 0 auto;
       background-color: #17151C;
       color: #F9F7FC;
@@ -154,25 +141,25 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
       box-shadow: 0 24px 60px rgba(23, 21, 28, 0.25);
       border: 2px solid #59436D;
     }
-    body[data-bw-mode="true"] .pass-card {
+    body[data-bw-mode="true"] .sheet-card {
       background-color: #FFFFFF !important;
       color: #000000 !important;
       border: 3px solid #000000 !important;
       box-shadow: none !important;
     }
-    body[data-bw-mode="true"] .pass-header {
+    body[data-bw-mode="true"] .sheet-header {
       background-color: #000000 !important;
       color: #FFFFFF !important;
     }
-    body[data-bw-mode="true"] .pass-inner-card {
+    body[data-bw-mode="true"] .sheet-inner-card {
       background-color: #FFFFFF !important;
       color: #000000 !important;
       border: 2px solid #000000 !important;
     }
-    body[data-bw-mode="true"] .pass-muted {
+    body[data-bw-mode="true"] .sheet-muted {
       color: #222222 !important;
     }
-    body[data-bw-mode="true"] .pass-accent {
+    body[data-bw-mode="true"] .sheet-accent {
       color: #000000 !important;
     }
     @media print {
@@ -182,7 +169,7 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
       .no-print {
         display: none !important;
       }
-      .pass-card {
+      .sheet-card {
         box-shadow: none !important;
         margin: 0 auto !important;
       }
@@ -191,7 +178,7 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
 </head>
 <body class="min-h-screen py-8 px-4" data-bw-mode="false">
   <!-- Top Action Bar (Hidden when printing) -->
-  <div class="no-print max-w-[480px] mx-auto mb-6 flex flex-wrap items-center justify-between gap-3">
+  <div class="no-print max-w-[520px] mx-auto mb-6 flex flex-wrap items-center justify-between gap-3">
     <a
       href="/dashboard"
       class="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-[#59436D]/30 bg-white px-4 py-2 text-sm font-semibold text-[#211B29] hover:bg-[#E8DFF0]"
@@ -199,7 +186,7 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
       &larr; Back to Dashboard
     </a>
 
-    <?php if ($reg && $credential): ?>
+    <?php if ($reg): ?>
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
@@ -224,14 +211,14 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
     <?php endif; ?>
   </div>
 
-  <main id="main-content" aria-label="Accessible Digital Festival Entry Pass">
-    <?php if (!$reg || !$credential): ?>
-      <div class="max-w-[480px] mx-auto rounded-2xl bg-white border border-[#59436D]/25 p-8 text-center space-y-4">
+  <main id="main-content" aria-label="Registration ID Confirmation Sheet">
+    <?php if (!$reg): ?>
+      <div class="max-w-[520px] mx-auto rounded-2xl bg-white border border-[#59436D]/25 p-8 text-center space-y-4">
         <h1 class="text-xl font-bold text-[#17151C]">
-          <?= htmlspecialchars($errorMsg ?? 'QR Entry Pass Issuance Discontinued', ENT_QUOTES, 'UTF-8') ?>
+          <?= htmlspecialchars($errorMsg ?? 'Registration Not Available', ENT_QUOTES, 'UTF-8') ?>
         </h1>
         <p class="text-sm text-[#4B4257]">
-          New participant QR entry passes are no longer issued (Decision D-01). Please use your official Registration ID at the festival Registration Desk in Vadodara.
+          Please return to your Participant Dashboard to view your official Registration ID for manual desk check-in in Vadodara.
         </p>
         <a
           href="/dashboard"
@@ -241,11 +228,11 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
         </a>
       </div>
     <?php else: ?>
-      <article class="pass-card" aria-label="Digital Entry Pass for <?= htmlspecialchars((string)$reg['full_name'], ENT_QUOTES, 'UTF-8') ?>">
+      <article class="sheet-card" aria-label="Registration ID Confirmation Sheet for <?= htmlspecialchars((string)$reg['full_name'], ENT_QUOTES, 'UTF-8') ?>">
         <!-- Top Dusty Purple Accent Header (#59436D) -->
-        <header class="pass-header bg-[#59436D] px-7 pt-6 pb-5 border-b-4 border-[#D5B77B]">
+        <header class="sheet-header bg-[#59436D] px-7 pt-6 pb-5 border-b-4 border-[#D5B77B]">
           <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-[#D5B77B]">
-            OFFICIAL FESTIVAL ENTRY CREDENTIAL
+            OFFICIAL REGISTRATION ID CONFIRMATION SHEET
           </p>
           <h1 class="mt-1 text-xl font-extrabold tracking-tight text-[#F9F7FC]">
             PURPLE FESTIVAL GUJARAT 2027
@@ -260,10 +247,23 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
 
         <!-- Body -->
         <div class="p-6 space-y-5">
+          <!-- Prominent Registration ID Box -->
+          <div class="sheet-inner-card rounded-xl bg-[#25212B] border-2 border-[#D5B77B] p-5 text-center space-y-1">
+            <p class="sheet-muted text-[11px] font-bold uppercase tracking-[0.18em] text-[#B6A1C8]">
+              OFFICIAL REGISTRATION ID
+            </p>
+            <p class="sheet-accent font-mono text-2xl sm:text-3xl font-extrabold tracking-wider text-[#D5B77B]">
+              <?= htmlspecialchars((string)$reg['registration_code'], ENT_QUOTES, 'UTF-8') ?>
+            </p>
+            <p class="sheet-muted text-xs text-[#E8DFF0]">
+              Quote this Registration ID or your registered full name at the Vadodara Registration Desk
+            </p>
+          </div>
+
           <!-- Participant Details Box -->
-          <div class="pass-inner-card rounded-xl bg-[#25212B] border border-[#9273B5]/50 p-5 space-y-4">
+          <div class="sheet-inner-card rounded-xl bg-[#25212B] border border-[#9273B5]/50 p-5 space-y-4">
             <div>
-              <p class="pass-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
+              <p class="sheet-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
                 PARTICIPANT NAME
               </p>
               <p class="mt-0.5 text-xl font-extrabold text-current">
@@ -273,44 +273,25 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <p class="pass-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
+                <p class="sheet-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
                   REGISTRATION CATEGORY
                 </p>
-                <p class="pass-accent mt-0.5 text-sm font-extrabold uppercase text-[#D5B77B]">
+                <p class="sheet-accent mt-0.5 text-sm font-extrabold uppercase text-[#D5B77B]">
                   <?= htmlspecialchars($categoryName, ENT_QUOTES, 'UTF-8') ?>
                 </p>
               </div>
               <div>
-                <p class="pass-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
-                  PASS STATUS
+                <p class="sheet-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
+                  REGISTRATION STATUS
                 </p>
                 <p class="mt-0.5 text-sm font-extrabold uppercase text-emerald-400">
-                  <?= htmlspecialchars((string)$credential['status'] . ' • ' . (string)$reg['status'], ENT_QUOTES, 'UTF-8') ?>
-                </p>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-4 pt-2 border-t border-[#9273B5]/25">
-              <div>
-                <p class="pass-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
-                  CREDENTIAL ID
-                </p>
-                <p class="mt-0.5 font-mono text-sm font-bold text-current">
-                  <?= htmlspecialchars((string)$credential['credential_code'], ENT_QUOTES, 'UTF-8') ?>
-                </p>
-              </div>
-              <div>
-                <p class="pass-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
-                  REGISTRATION ID
-                </p>
-                <p class="mt-0.5 font-mono text-sm font-bold text-current">
-                  <?= htmlspecialchars((string)$reg['registration_code'], ENT_QUOTES, 'UTF-8') ?>
+                  <?= htmlspecialchars((string)$reg['status'], ENT_QUOTES, 'UTF-8') ?>
                 </p>
               </div>
             </div>
 
             <div class="pt-2 border-t border-[#9273B5]/25">
-              <p class="pass-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
+              <p class="sheet-muted text-[11px] font-bold uppercase tracking-wider text-[#B6A1C8]">
                 ATTENDING DAYS &amp; VENUE
               </p>
               <p class="mt-0.5 text-xs font-semibold text-current">
@@ -319,23 +300,9 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
             </div>
           </div>
 
-          <!-- High-Contrast Scannable QR Code Container -->
-          <div class="flex flex-col items-center justify-center">
-            <div
-              id="pass-qr-container"
-              data-qr-payload="<?= htmlspecialchars($qrPayload, ENT_QUOTES, 'UTF-8') ?>"
-              data-qr-size="220"
-              data-qr-label="Digital QR entry pass for <?= htmlspecialchars((string)$reg['full_name'], ENT_QUOTES, 'UTF-8') ?>, Credential ID <?= htmlspecialchars((string)$credential['credential_code'], ENT_QUOTES, 'UTF-8') ?>"
-              class="rounded-2xl bg-[#F9F7FC] p-4 border-2 border-[#D5B77B] shadow-md flex items-center justify-center"
-            ></div>
-            <p class="mt-2 font-mono text-xs font-bold tracking-wider text-[#D5B77B] pass-accent">
-              PASS ID: <?= htmlspecialchars((string)$credential['credential_code'], ENT_QUOTES, 'UTF-8') ?>
-            </p>
-          </div>
-
           <?php if ($roleAssignment): ?>
-          <div class="pass-inner-card rounded-xl bg-[#25212B] border border-[#D5B77B]/40 p-3.5 text-xs">
-            <p class="font-bold uppercase tracking-wider text-[#D5B77B] pass-accent">
+          <div class="sheet-inner-card rounded-xl bg-[#25212B] border border-[#D5B77B]/40 p-3.5 text-xs">
+            <p class="font-bold uppercase tracking-wider text-[#D5B77B] sheet-accent">
               Assigned Duty / Schedule
             </p>
             <p class="mt-1 font-semibold text-current">
@@ -344,16 +311,16 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
           </div>
           <?php endif; ?>
 
-          <!-- Accessible Instructions & Privacy Notice -->
-          <footer class="border-t border-[#9273B5]/25 pt-4 space-y-1.5 text-xs text-[#C6B6D8] pass-muted">
+          <!-- Accessible Vadodara Desk Instructions & Privacy Notice -->
+          <footer class="border-t border-[#9273B5]/25 pt-4 space-y-2 text-xs text-[#C6B6D8] sheet-muted">
             <p>
-              <strong>Reception Check-In Instructions:</strong> Present this QR pass or quote your Credential ID (<code class="font-mono font-bold"><?= htmlspecialchars((string)$credential['credential_code'], ENT_QUOTES, 'UTF-8') ?></code>) at the Registration Desk (RGST).
+              <strong>Vadodara Registration Desk Check-In Instructions:</strong> Arrive at the Sama Indoor Stadium or MSU Baroda Registration Desk and quote your official Registration ID (<code class="font-mono font-bold"><?= htmlspecialchars((string)$reg['registration_code'], ENT_QUOTES, 'UTF-8') ?></code>) or registered full name for manual desk verification and attendance check-in.
             </p>
             <p>
-              <strong>Privacy &amp; Dignity Guarantee:</strong> No personal medical, disability, or accommodation information is embedded in this QR code.
+              <strong>Privacy &amp; Dignity Guarantee:</strong> No personal medical, disability, or accommodation details appear on this confirmation sheet. Any accessibility accommodations you requested are coordinated privately by authorized accessibility staff.
             </p>
-            <p class="pt-1 text-[11px] text-[#9273B5] pass-muted">
-              Official Digital Credential — www.purplefestivalgujarat.com
+            <p class="pt-1 text-[11px] text-[#9273B5] sheet-muted">
+              Official Registration Confirmation — www.purplefestivalgujarat.com
             </p>
           </footer>
         </div>
@@ -361,7 +328,6 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
     <?php endif; ?>
   </main>
 
-  <script src="/assets/js/qrcode-gen.js"></script>
   <script>
     (function () {
       var bwBtn = document.getElementById("toggle-bw-btn");
@@ -372,7 +338,7 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
           bwBtn.textContent = current ? "B&W Print Mode" : "Default Dark Mode";
         });
       }
-      <?php if ($autoPrint && $reg && $credential): ?>
+      <?php if ($autoPrint && $reg): ?>
       window.addEventListener("load", function () {
         setTimeout(function () {
           window.print();

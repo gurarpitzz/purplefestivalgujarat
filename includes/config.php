@@ -594,6 +594,8 @@ if (!defined('PERMISSIONS')) {
         'ACCOMMODATIONS_READ'    => 'accommodations.read',
         'ACCOMMODATIONS_MANAGE'  => 'accommodations.manage',
         'CMS_MANAGE'             => 'cms.manage',
+        'PROGRAMME_MANAGE'       => 'programme.manage',
+        'COMMUNICATIONS_MANAGE'  => 'communications.manage',
         'ADMIN_ACCOUNTS_MANAGE'  => 'admin_accounts.manage',
         'CREDENTIALS_ISSUE'      => 'credentials.issue',
         'CREDENTIALS_REVOKE'     => 'credentials.revoke',

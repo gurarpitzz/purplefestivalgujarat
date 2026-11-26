@@ -311,9 +311,15 @@ try {
         $messages[] = 'If the new email address can be used, a confirmation link has been sent to it. Your current email stays active until it is confirmed.';
     }
 
+    $profilePayload = pfgProfileLoad($pdo, (string)$user['id'], $user['roles'] ?? []);
+    if ($emailChangeRequested && is_array($profilePayload)) {
+        // Anti-enumeration (MED-02): do not reflect collision-dependent pendingEmail state in PATCH response
+        $profilePayload['pendingEmail'] = null;
+    }
+
     jsonResponse([
         'success'            => true,
-        'user'               => pfgProfileLoad($pdo, (string)$user['id'], $user['roles'] ?? []),
+        'user'               => $profilePayload,
         'emailChangePending' => $emailChangeRequested,
         'message'            => implode(' ', $messages),
     ], 200);

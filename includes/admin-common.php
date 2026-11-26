@@ -95,14 +95,14 @@ if (!function_exists('pfgAdminPaginationMeta')) {
 if (!function_exists('pfgAdminCanManageProgramme')) {
     function pfgAdminCanManageProgramme(array $user): bool
     {
-        return hasPermission($user, PERMISSIONS['CMS_MANAGE']) || hasPermission($user, 'programme.manage');
+        return hasPermission($user, PERMISSIONS['CMS_MANAGE']) || hasPermission($user, PERMISSIONS['PROGRAMME_MANAGE']);
     }
 }
 
 if (!function_exists('pfgAdminCanManageCommunications')) {
     function pfgAdminCanManageCommunications(array $user): bool
     {
-        return hasPermission($user, PERMISSIONS['CMS_MANAGE']) || hasPermission($user, 'communications.manage');
+        return hasPermission($user, PERMISSIONS['CMS_MANAGE']) || hasPermission($user, PERMISSIONS['COMMUNICATIONS_MANAGE']);
     }
 }
 
@@ -242,28 +242,39 @@ if (!function_exists('pfgAdminNormalizeStatus')) {
 
 if (!function_exists('pfgAdminAllowedTransitions')) {
     /**
-     * Statuses an ADMIN may move a registration to from its current status.
-     * Participant-driven steps (DRAFT -> SUBMITTED, ADDITIONAL_INFO_REQUIRED -> RESUBMITTED) are intentionally absent.
-     * From SUBMITTED, reviewers may decide directly; the server records the implicit UNDER_REVIEW step in history.
+     * Statuses an ADMIN / SUPERADMIN may move a registration to from its current status.
+     * Unified with `includes/application-lifecycle.php` (HIGH-02) so there is zero transition divergence.
+     * Participant-driven steps (`ADDITIONAL_INFO_REQUIRED -> RESUBMITTED`, `-> WITHDRAWN`) belong strictly to PARTICIPANT.
+     * From SUBMITTED / RESUBMITTED, reviewers may decide directly; the server records the implicit UNDER_REVIEW step in history.
      */
     function pfgAdminAllowedTransitions(string $categoryCode, string $currentStatus): array
     {
+        if (!function_exists('pfgGetAllowedStatusTransitions') && file_exists(__DIR__ . '/application-lifecycle.php')) {
+            require_once __DIR__ . '/application-lifecycle.php';
+        }
+        if (function_exists('pfgGetAllowedStatusTransitions')) {
+            return pfgGetAllowedStatusTransitions($categoryCode, $currentStatus, 'ADMIN');
+        }
+
         $current = pfgAdminNormalizeStatus($currentStatus);
         if (pfgAdminRegistrationTrack($categoryCode) === 'ATTENDEE') {
             $map = [
+                'DRAFT'     => ['SUBMITTED', 'CONFIRMED', 'CANCELLED'],
                 'SUBMITTED' => ['CONFIRMED', 'CANCELLED'],
                 'CONFIRMED' => ['CANCELLED'],
             ];
         } else {
             $decisions = ['APPROVED', 'REJECTED', 'WAITLISTED', 'ADDITIONAL_INFO_REQUIRED'];
             $map = [
-                'SUBMITTED'    => array_merge(['UNDER_REVIEW'], $decisions, ['WITHDRAWN', 'CANCELLED']),
-                'RESUBMITTED'  => ['UNDER_REVIEW', 'WITHDRAWN', 'CANCELLED'],
-                'UNDER_REVIEW' => array_merge($decisions, ['WITHDRAWN', 'CANCELLED']),
-                'WAITLISTED'   => ['APPROVED', 'REJECTED', 'WITHDRAWN', 'CANCELLED'],
-                'APPROVED'     => ['WITHDRAWN', 'CANCELLED'],
+                'DRAFT'                    => ['SUBMITTED', 'CANCELLED'],
+                'SUBMITTED'                => array_merge(['UNDER_REVIEW'], $decisions, ['CANCELLED']),
+                'RESUBMITTED'              => array_merge(['UNDER_REVIEW'], $decisions, ['CANCELLED']),
+                'UNDER_REVIEW'             => array_merge($decisions, ['CANCELLED']),
+                'ADDITIONAL_INFO_REQUIRED' => ['UNDER_REVIEW', 'CANCELLED'],
+                'WAITLISTED'               => ['APPROVED', 'REJECTED', 'CANCELLED'],
+                'APPROVED'                 => ['CANCELLED'],
                 // Historical rows that were confirmed under the old single-step flow.
-                'CONFIRMED'    => ['WITHDRAWN', 'CANCELLED'],
+                'CONFIRMED'                => ['CANCELLED'],
             ];
         }
         return $map[$current] ?? [];
