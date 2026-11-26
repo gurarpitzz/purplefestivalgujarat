@@ -43,6 +43,7 @@ if (!function_exists('pfgRunSafeReferenceSeed')) {
             'notification_templates' => 0,
             'system_settings'        => 0,
             'media_assets'           => 0,
+            'admin_permission_profiles' => 0,
         ];
 
         // 1. Roles (4 core roles: SUPERADMIN, ADMIN, RGST, PARTICIPANT)
@@ -213,6 +214,24 @@ if (!function_exists('pfgRunSafeReferenceSeed')) {
             ]);
             $inserted['accommodation_types'] += $accStmt->rowCount();
         }
+        // 8b. Organizer accommodation types added in Phase 6 (mirrors migration 008; code-checked so
+        //     existing / organizer-edited rows are never touched and ids never collide with the base range).
+        $accExists = $pdo->prepare('SELECT COUNT(*) FROM accommodation_types WHERE code = :code');
+        $extraAccTypes = [
+            ['id' => '41000000-0000-4000-8000-000000000101', 'code' => 'TACTILE_INTERPRETATION', 'label' => 'Tactile Interpretation (Deafblind support)', 'order' => 2],
+            ['id' => '41000000-0000-4000-8000-000000000102', 'code' => 'WHEELCHAIR_CHARGING',    'label' => 'Wheelchair Charging Bay',                     'order' => 7],
+            ['id' => '41000000-0000-4000-8000-000000000103', 'code' => 'SIGHTED_GUIDE',          'label' => 'Sighted Guide',                               'order' => 8],
+            ['id' => '41000000-0000-4000-8000-000000000104', 'code' => 'LIVE_CAPTIONS',          'label' => 'Live Captions (CART / Speech-to-Text)',       'order' => 10],
+            ['id' => '41000000-0000-4000-8000-000000000105', 'code' => 'DIETARY_ACCESS_SUPPORT', 'label' => 'Dietary & Food-Access Support',               'order' => 12],
+        ];
+        foreach ($extraAccTypes as $a) {
+            $accExists->execute([':code' => $a['code']]);
+            if ((int)$accExists->fetchColumn() > 0) {
+                continue;
+            }
+            $accStmt->execute([':id' => $a['id'], ':code' => $a['code'], ':label' => $a['label'], ':display_order' => $a['order']]);
+            $inserted['accommodation_types'] += $accStmt->rowCount();
+        }
 
         // 9. Registration Categories (3 PRIMARY: ATTENDEE, SLI, VOLUNTEER + 5 preserved LEGACY rows)
         $hasTierCol = pfgDbColumnExists($pdo, 'registration_categories', 'category_tier');
@@ -230,13 +249,13 @@ if (!function_exists('pfgRunSafeReferenceSeed')) {
             $catStmt = $pdo->prepare('
                 INSERT IGNORE INTO registration_categories
                 (id, edition_id, code, category_tier, name, description, requires_approval, requires_payment, fee_amount_inr, is_active, display_order, created_at)
-                VALUES (:id, :edition_id, :code, :tier, :name, :description, :requires_approval, :requires_payment, :fee, 1, :display_order, :now)
+                VALUES (:id, :edition_id, :code, :tier, :name, :description, :requires_approval, :requires_payment, :fee, :is_active, :display_order, :now)
             ');
         } else {
             $catStmt = $pdo->prepare('
                 INSERT IGNORE INTO registration_categories
                 (id, edition_id, code, name, description, requires_approval, requires_payment, fee_amount_inr, is_active, display_order, created_at)
-                VALUES (:id, :edition_id, :code, :name, :description, :requires_approval, :requires_payment, :fee, 1, :display_order, :now)
+                VALUES (:id, :edition_id, :code, :name, :description, :requires_approval, :requires_payment, :fee, :is_active, :display_order, :now)
             ');
         }
         foreach ($catSeed as $i => $c) {
@@ -251,6 +270,9 @@ if (!function_exists('pfgRunSafeReferenceSeed')) {
                 ':fee'               => $c['fee'],
                 ':display_order'     => $c['order'],
                 ':now'               => $now,
+                // Phase 6: only the 3 PRIMARY categories open for new registration; LEGACY rows are
+                // preserved (never deleted) but inserted inactive. INSERT IGNORE never overwrites edits.
+                ':is_active'         => ($c['tier'] === 'PRIMARY') ? 1 : 0,
             ];
             if ($hasTierCol) {
                 $params[':tier'] = $c['tier'];
@@ -487,6 +509,36 @@ if (!function_exists('pfgRunSafeReferenceSeed')) {
                     ':now'        => $now,
                 ]);
                 $inserted['media_assets'] += $mStmt->rowCount();
+            }
+        }
+
+        // 16b. Default operational admin permission profiles (Phase 8; INSERT IGNORE on unique slug so
+        //      organizer edits to name/description/permissions are never overwritten).
+        if (pfgDbTableExists($pdo, 'admin_permission_profiles')) {
+            $profileSeed = [
+                ['90000000-0000-4000-8000-000000000001', 'registration_manager', 'Registration Manager', 'Reviews, edits and exports registrations across all three categories.', ['account.read.own', 'registrations.read.all', 'registrations.write', 'registrations.export', 'attendance.read.full']],
+                ['90000000-0000-4000-8000-000000000002', 'volunteer_coordinator', 'Volunteer Coordinator', 'Reviews volunteer applications and manages volunteer duty assignments.', ['account.read.own', 'registrations.read.all', 'volunteers.review', 'attendance.read.full']],
+                ['90000000-0000-4000-8000-000000000003', 'sli_coordinator', 'SLI Coordinator', 'Reviews Indian Sign Language interpreter applications and session pairings.', ['account.read.own', 'registrations.read.all', 'sli.review', 'accommodations.read']],
+                ['90000000-0000-4000-8000-000000000004', 'accessibility_coordinator', 'Accessibility Coordinator', 'Reads and manages accommodation requests and accessibility logistics.', ['account.read.own', 'registrations.read.all', 'accommodations.read', 'accommodations.manage']],
+                ['90000000-0000-4000-8000-000000000005', 'programme_coordinator', 'Programme Coordinator', 'Plans programme sessions, venues and volunteer / SLI duty rosters.', ['account.read.own', 'registrations.read.all', 'volunteers.review', 'sli.review', 'attendance.read.full']],
+                ['90000000-0000-4000-8000-000000000006', 'content_manager', 'Content Manager', 'Manages public website content, programme copy, FAQs and partners.', ['account.read.own', 'cms.manage']],
+                ['90000000-0000-4000-8000-000000000007', 'communications_manager', 'Communications Manager', 'Handles participant communications and registration exports for outreach.', ['account.read.own', 'registrations.read.all', 'registrations.export']],
+            ];
+            $profStmt = $pdo->prepare('
+                INSERT IGNORE INTO admin_permission_profiles
+                (id, slug, name, description, permissions_json, is_system, is_active, created_by_user_id, created_at, updated_at)
+                VALUES (:id, :slug, :name, :description, :perms, 1, 1, NULL, :now, :now)
+            ');
+            foreach ($profileSeed as [$pid, $pslug, $pname, $pdesc, $pperms]) {
+                $profStmt->execute([
+                    ':id'          => $pid,
+                    ':slug'        => $pslug,
+                    ':name'        => $pname,
+                    ':description' => $pdesc,
+                    ':perms'       => jsonEncode($pperms),
+                    ':now'         => $now,
+                ]);
+                $inserted['admin_permission_profiles'] += $profStmt->rowCount();
             }
         }
 

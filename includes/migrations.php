@@ -19,7 +19,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 
 if (!defined('PFG_REQUIRED_SCHEMA_VERSION')) {
-    define('PFG_REQUIRED_SCHEMA_VERSION', '006_phase4_notifications_and_delivery_tracking');
+    define('PFG_REQUIRED_SCHEMA_VERSION', '010_phase12_programme_venues_and_duty_assignments');
 }
 
 if (!function_exists('pfgCreateDirectPdo')) {
