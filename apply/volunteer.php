@@ -11,6 +11,7 @@ require_once __DIR__ . '/../includes/database.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/registration-validators.php';
 require_once __DIR__ . '/../includes/form-components/applicant-details.php';
+require_once __DIR__ . '/../includes/form-components/wave-stepper.php';
 require_once __DIR__ . '/../includes/form-components/shared-accessibility.php';
 require_once __DIR__ . '/../includes/form-components/shift-availability-grid.php';
 require_once __DIR__ . '/../includes/form-components/emergency-contact.php';
@@ -54,6 +55,8 @@ $bootData = [
 
 $pageTitle = 'Festival Volunteer Application | Purple Festival Gujarat 2027';
 $pageDescription = 'Apply as a Festival Volunteer for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara). Volunteers with and without disabilities are equally welcomed. No account required.';
+$extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
+    . '  <link rel="stylesheet" href="/assets/css/form-wave-stepper.css?v=1" />';
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -78,6 +81,13 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if (!$registrationOpen): ?>
       <?= pfgRenderRegistrationClosedCard('Festival Volunteer Application') ?>
     <?php else: ?>
+      <!-- 3-Step Flowing Wave-Node Progress Bar -->
+      <?= pfgRenderWaveStepper([
+          ['number' => 1, 'title' => 'Your Details'],
+          ['number' => 2, 'title' => 'Roles & Shifts'],
+          ['number' => 3, 'title' => 'Accessibility & Confirm'],
+      ]) ?>
+
       <div
         id="pfg-form-error-summary"
         role="alert"
@@ -87,7 +97,9 @@ require_once __DIR__ . '/../includes/header.php';
         class="mb-6 rounded-2xl border-2 border-red-600 bg-red-50 p-5 text-sm text-red-950"
       ></div>
 
-      <form id="pfg-category-form" novalidate class="space-y-7">
+      <form id="pfg-category-form" novalidate class="space-y-7" data-wizard-form="true">
+        <!-- STEP 1: Applicant Details + Volunteer Profile -->
+        <div class="pfg-wizard-step space-y-7" data-wizard-step="1" data-step-title="Your Details">
         <!-- Section 0: Direct Applicant Personal & Contact Details -->
         <?= pfgRenderApplicantDetails(true, 'Volunteer Application') ?>
 
@@ -204,7 +216,10 @@ require_once __DIR__ . '/../includes/header.php';
             />
           </div>
         </section>
+        </div><!-- /STEP 1 -->
 
+        <!-- STEP 2: Role Preferences, Languages & Shift Availability -->
+        <div class="pfg-wizard-step space-y-7" data-wizard-step="2" data-step-title="Roles &amp; Shifts" hidden>
         <!-- Section 2: Role Preferences, Languages & Experience -->
         <section aria-labelledby="vol-sec2-heading" class="rounded-2xl border-2 border-[#202D59]/15 bg-white p-5 sm:p-7">
           <p class="text-xs font-bold uppercase tracking-[0.12em] text-[#5B2A86]">Section 2</p>
@@ -310,7 +325,10 @@ require_once __DIR__ . '/../includes/header.php';
           <h2 id="vol-sec3-heading" class="mt-1 mb-4 text-xl font-bold text-[#202D59]">Shift Availability</h2>
           <?= pfgRenderShiftAvailabilityGrid('availabilityShifts', [], 'VOLUNTEER') ?>
         </section>
+        </div><!-- /STEP 2 -->
 
+        <!-- STEP 3: Accessibility, Emergency Contact & Declarations -->
+        <div class="pfg-wizard-step space-y-7" data-wizard-step="3" data-step-title="Accessibility &amp; Confirm" hidden>
         <!-- Section 4: Shared Accessibility & Accommodations Module -->
         <?= pfgRenderSharedAccessibility($disabilityCategories, $accommodationTypes, []) ?>
 
@@ -319,16 +337,26 @@ require_once __DIR__ . '/../includes/header.php';
 
         <!-- Section 6: Declarations & Consents -->
         <?= pfgRenderConsentDeclarations('VOLUNTEER', []) ?>
+        </div><!-- /STEP 3 -->
 
-        <!-- Submit Controls -->
-        <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-[#202D59]/15 bg-white p-5">
-          <div class="flex flex-wrap items-center gap-3">
-            <a href="/apply" class="text-sm font-semibold text-[#46537C] underline hover:text-[#202D59]">Cancel</a>
+        <!-- Wizard Navigation & Submit Controls -->
+        <div class="pfg-wizard-nav">
+          <div class="pfg-wizard-nav__left">
+            <a href="/apply" id="pfg-btn-cancel" class="text-sm font-semibold text-[#46537C] underline hover:text-[#202D59]">Cancel</a>
+            <button type="button" id="pfg-btn-prev" class="pfg-wizard-btn-prev" hidden>
+              <span aria-hidden="true">&larr;</span>
+              <span>Previous</span>
+            </button>
           </div>
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="pfg-wizard-nav__right">
+            <button type="button" id="pfg-btn-next" class="pfg-wizard-btn-next">
+              <span id="pfg-btn-next-label">Next: Roles &amp; Shifts</span>
+              <span aria-hidden="true">&rarr;</span>
+            </button>
             <button
               type="button"
               id="pfg-btn-review"
+              hidden
               class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-5 py-3 text-sm font-bold text-[#202D59] transition-colors hover:bg-[#DDDDF9]"
             >
               Review Information
@@ -336,6 +364,7 @@ require_once __DIR__ . '/../includes/header.php';
             <button
               type="submit"
               id="pfg-btn-submit"
+              hidden
               class="touch-target inline-flex items-center justify-center rounded-lg bg-[#A459FF] px-7 py-3 text-base font-bold text-white transition-colors hover:bg-[#8D3BF2] disabled:opacity-50"
             >
               Submit Volunteer Application
@@ -355,6 +384,6 @@ $bootJson = pfgSafeJsonForScript($bootData);
 $extraFooterHtml = <<<HTML
 <script>window.__PFG_FORM_BOOT__ = {$bootJson};</script>
 <script src="/assets/js/shared-accessibility.js"></script>
-<script src="/assets/js/category-forms.js"></script>
+<script src="/assets/js/category-forms.js?v=2"></script>
 HTML;
 require_once __DIR__ . '/../includes/footer.php';

@@ -55,8 +55,234 @@
     var errorSummary = document.getElementById('pfg-form-error-summary');
     var reviewBtn = document.getElementById('pfg-btn-review');
     var submitBtn = document.getElementById('pfg-btn-submit');
+    var prevBtn = document.getElementById('pfg-btn-prev');
+    var nextBtn = document.getElementById('pfg-btn-next');
+    var nextBtnLabel = document.getElementById('pfg-btn-next-label');
+    var cancelBtn = document.getElementById('pfg-btn-cancel');
     var reviewPanel = document.getElementById('pfg-review-panel');
     var confirmationPanel = document.getElementById('pfg-confirmation-panel');
+
+    var waveStepper = document.getElementById('pfg-wave-stepper');
+    var waveProgressPath = document.getElementById('pfg-wave-progress-path');
+    var waveStepCounter = document.getElementById('pfg-wave-step-counter');
+    var waveStepTitle = document.getElementById('pfg-wave-step-title');
+    var wizardSteps = Array.prototype.slice.call(form.querySelectorAll('[data-wizard-step]'));
+    var totalSteps = wizardSteps.length;
+    var currentStep = 1;
+    var wavePathLen = 0;
+
+    if (waveProgressPath && typeof waveProgressPath.getTotalLength === 'function') {
+      try {
+        wavePathLen = waveProgressPath.getTotalLength();
+        waveProgressPath.style.strokeDasharray = wavePathLen + ' ' + wavePathLen;
+        waveProgressPath.style.strokeDashoffset = String(wavePathLen);
+      } catch (e) {
+        wavePathLen = 0;
+      }
+    }
+
+    function getStepTitle(stepNum) {
+      var panel = wizardSteps[stepNum - 1];
+      return panel ? (panel.getAttribute('data-step-title') || ('Step ' + stepNum)) : ('Step ' + stepNum);
+    }
+
+    function validateStep(stepNum) {
+      var errs = {};
+      if (stepNum === 1) {
+        if (!getFieldValue(form, 'fullName')) errs.fullName = 'Please enter your Full Name.';
+        var em = getFieldValue(form, 'email');
+        if (!em || em.indexOf('@') === -1 || em.indexOf('.') === -1) {
+          errs.email = 'Please enter a valid Email Address.';
+        }
+        var ph = getFieldValue(form, 'phone');
+        var digits = ph.replace(/\D/g, '');
+        if (!ph || digits.length < 7) {
+          errs.phone = 'Please enter a valid Mobile / WhatsApp Number.';
+        }
+        if (!getFieldValue(form, 'country')) {
+          errs.country = 'Please enter your Country.';
+        }
+
+        if (categoryCode === 'ATTENDEE') {
+          var ag = getRadioValue(form, 'ageGroup');
+          if (!ag) errs.ageGroup = 'Please select your Age Group.';
+          var behalf = !!(document.getElementById('pfg-registering-behalf') && document.getElementById('pfg-registering-behalf').checked);
+          if (ag === 'UNDER_18' || behalf) {
+            if (!getFieldValue(form, 'guardianName')) errs.guardianName = 'Please enter the Parent / Legal Guardian Full Name.';
+            if (!getFieldValue(form, 'guardianRelationship')) errs.guardianRelationship = 'Please select the Guardian Relationship.';
+          }
+          if (getCheckedValues(form, 'selfIdentificationTags[]').length === 0) {
+            errs.selfIdentificationTags = 'Please select at least one option under "I am attending as".';
+          }
+        } else if (categoryCode === 'SLI') {
+          var sliAge = Number(getFieldValue(form, 'age'));
+          if (!sliAge || isNaN(sliAge) || sliAge < 18 || sliAge > 85) {
+            errs.age = 'Please enter a valid Age (minimum 18 years for SLI).';
+          }
+          if (!getFieldValue(form, 'cityDistrict')) errs.cityDistrict = 'Please enter your City / District.';
+          if (!getFieldValue(form, 'state')) errs.state = 'Please select your State / Union Territory.';
+          if (!getRadioValue(form, 'basedInGujarat')) errs.basedInGujarat = 'Please indicate whether you are currently based in Gujarat.';
+        } else if (categoryCode === 'VOLUNTEER') {
+          var volAge = Number(getFieldValue(form, 'age'));
+          if (!volAge || isNaN(volAge) || volAge < 16 || volAge > 85) {
+            errs.age = 'Please enter a valid Age (minimum 16 years for Volunteers).';
+          }
+          var msuAff = getRadioValue(form, 'msuAffiliation');
+          if (!msuAff) {
+            errs.msuAffiliation = 'Please select your MSU Baroda affiliation status.';
+          } else if ((msuAff === 'CURRENT_STUDENT' || msuAff === 'ALUMNI') && !getFieldValue(form, 'msuFacultyDepartment')) {
+            errs.msuFacultyDepartment = 'Please enter your MSU Faculty / Department Name.';
+          }
+        }
+      } else if (stepNum === 2) {
+        if (categoryCode === 'ATTENDEE') {
+          if (getCheckedValues(form, 'attendingDays[]').length === 0) {
+            errs.attendingDays = 'Please select at least one Festival Day you plan to attend.';
+          }
+        } else if (categoryCode === 'SLI') {
+          var qCat = getRadioValue(form, 'qualificationCategory');
+          if (!qCat) errs.qualificationCategory = 'Please select your Sign Language qualification tier.';
+          if (qCat === 'OTHER' && !getFieldValue(form, 'qualifications')) {
+            errs.qualifications = 'Please specify your qualification or interpreting background.';
+          }
+          if (!getRadioValue(form, 'experienceBand')) errs.experienceBand = 'Please select your Years of Interpretation Experience.';
+          var vUrl = getFieldValue(form, 'videoDemoUrl');
+          if (vUrl && !/^https?:\/\//i.test(vUrl)) {
+            errs.videoDemoUrl = 'Video Demonstration Link must start with http:// or https://.';
+          }
+          if (!getRadioValue(form, 'comfortablePublicStage')) errs.comfortablePublicStage = 'Please indicate whether you are comfortable interpreting on public stages.';
+          if (getCheckedValues(form, 'availabilityShifts[]').length === 0) {
+            errs.availabilityShifts = 'Please select at least one availability shift.';
+          }
+        } else if (categoryCode === 'VOLUNTEER') {
+          var pRole = getRadioValue(form, 'primaryRole');
+          if (!pRole) errs.primaryRole = 'Please select a Primary Role you are interested in.';
+          if (pRole === 'Stage Anchoring / Hosting' && getFieldValue(form, 'anchoringExperience').length < 10) {
+            errs.anchoringExperience = 'Please describe your public speaking or stage hosting experience (at least 10 characters).';
+          }
+          if (getCheckedValues(form, 'languagesSpoken[]').length === 0) {
+            errs.languagesSpoken = 'Please select at least one language you can communicate in.';
+          }
+          if (getCheckedValues(form, 'availabilityShifts[]').length === 0) {
+            errs.availabilityShifts = 'Please select at least one shift in the availability grid.';
+          }
+        }
+      }
+      return errs;
+    }
+
+    function goToStep(stepNum, options) {
+      if (totalSteps === 0) return;
+      var opts = options || {};
+      var target = Math.max(1, Math.min(totalSteps, Number(stepNum) || 1));
+      currentStep = target;
+
+      wizardSteps.forEach(function (panel) {
+        var n = Number(panel.getAttribute('data-wizard-step'));
+        panel.hidden = (n !== currentStep);
+      });
+
+      if (waveStepper) {
+        var nodeItems = waveStepper.querySelectorAll('[data-wave-node-item]');
+        nodeItems.forEach(function (li) {
+          var n = Number(li.getAttribute('data-wave-node-item'));
+          li.classList.toggle('is-active', n === currentStep);
+          li.classList.toggle('is-complete', n < currentStep);
+          var btn = li.querySelector('[data-wave-step-btn]');
+          if (btn) {
+            btn.setAttribute('aria-current', n === currentStep ? 'step' : 'false');
+          }
+        });
+      }
+
+      if (waveProgressPath && wavePathLen > 0) {
+        var fraction = totalSteps > 1 ? (currentStep - 1) / (totalSteps - 1) : 1;
+        waveProgressPath.style.strokeDashoffset = String(Math.max(0, wavePathLen * (1 - fraction)));
+      }
+
+      if (waveStepCounter) {
+        waveStepCounter.textContent = 'Step ' + currentStep + ' of ' + totalSteps;
+      }
+      if (waveStepTitle) {
+        waveStepTitle.textContent = getStepTitle(currentStep);
+      }
+
+      if (prevBtn) prevBtn.hidden = (currentStep <= 1);
+      if (cancelBtn) cancelBtn.hidden = (currentStep > 1);
+      if (nextBtn) {
+        nextBtn.hidden = (currentStep >= totalSteps);
+        if (nextBtnLabel && currentStep < totalSteps) {
+          nextBtnLabel.textContent = 'Next: ' + getStepTitle(currentStep + 1);
+        }
+      }
+      if (reviewBtn) reviewBtn.hidden = (currentStep < totalSteps);
+      if (submitBtn) submitBtn.hidden = (currentStep < totalSteps);
+
+      if (!opts.keepErrors) {
+        clearErrors();
+      }
+
+      if (opts.scroll !== false) {
+        var scrollTarget = waveStepper || form;
+        var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        scrollTarget.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      }
+
+      if (opts.focusStep) {
+        var activePanel = wizardSteps[currentStep - 1];
+        if (activePanel) {
+          var firstHeading = activePanel.querySelector('h2');
+          if (firstHeading) {
+            if (!firstHeading.hasAttribute('tabindex')) firstHeading.setAttribute('tabindex', '-1');
+            firstHeading.focus({ preventScroll: true });
+          }
+        }
+      }
+    }
+
+    function attemptStepAdvance(targetStep) {
+      if (targetStep <= currentStep) {
+        goToStep(targetStep, { focusStep: true });
+        return;
+      }
+      // Validate each step sequentially up to targetStep - 1
+      for (var s = currentStep; s < targetStep; s += 1) {
+        var errs = validateStep(s);
+        if (Object.keys(errs).length > 0) {
+          if (s !== currentStep) {
+            goToStep(s, { keepErrors: true, scroll: false });
+          }
+          showErrors('Please complete the required fields in Step ' + s + ' (' + getStepTitle(s) + ') before continuing.', errs);
+          return;
+        }
+      }
+      goToStep(targetStep, { focusStep: true });
+    }
+
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        attemptStepAdvance(currentStep + 1);
+      });
+    }
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        goToStep(currentStep - 1, { focusStep: true });
+      });
+    }
+    if (waveStepper) {
+      waveStepper.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('[data-wave-step-btn]') : null;
+        if (!btn) return;
+        var target = Number(btn.getAttribute('data-wave-step-btn'));
+        if (target >= 1 && target <= totalSteps) {
+          attemptStepAdvance(target);
+        }
+      });
+    }
+
+    if (totalSteps > 0) {
+      goToStep(1, { scroll: false, focusStep: false });
+    }
 
     // =========================================================================
     // Conditional UI wiring per category
@@ -330,6 +556,7 @@
         '</div>';
 
       form.hidden = true;
+      if (waveStepper) waveStepper.hidden = true;
       reviewPanel.hidden = false;
       reviewPanel.focus();
       reviewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -340,6 +567,7 @@
         editBtn.addEventListener('click', function () {
           reviewPanel.hidden = true;
           form.hidden = false;
+          if (waveStepper) waveStepper.hidden = false;
           form.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
       }
@@ -359,6 +587,7 @@
     // =========================================================================
     function renderConfirmation(reg, payload) {
       form.hidden = true;
+      if (waveStepper) waveStepper.hidden = true;
       if (reviewPanel) reviewPanel.hidden = true;
       clearErrors();
 
@@ -457,6 +686,7 @@
           if (reviewPanel && !reviewPanel.hidden) {
             reviewPanel.hidden = true;
             form.hidden = false;
+            if (waveStepper) waveStepper.hidden = false;
           }
           var errMsg = (result.json && result.json.error) || 'Please review the highlighted fields and try again.';
           var errMap = (result.json && result.json.errors) || null;
@@ -471,6 +701,7 @@
           if (reviewPanel && !reviewPanel.hidden) {
             reviewPanel.hidden = true;
             form.hidden = false;
+            if (waveStepper) waveStepper.hidden = false;
           }
           showErrors('A network error occurred while submitting. Please try again.');
         });
@@ -478,6 +709,10 @@
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
+      if (totalSteps > 0 && currentStep < totalSteps) {
+        attemptStepAdvance(currentStep + 1);
+        return;
+      }
       submitRegistration(submitBtn);
     });
   }
