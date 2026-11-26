@@ -3,13 +3,15 @@ declare(strict_types=1);
 
 /**
  * POST / PUT /api/auth/password-reset
- * - POST (with email): Generates a 1-hour password reset token, stores its HMAC hash in
- *   `password_reset_tokens` & `auth_accounts`, and queues a notification job.
- * - PUT or POST (with token & newPassword): Validates token hash, updates bcrypt password,
- *   revokes active sessions, and consumes the token.
+ * Phase 2 Hardened:
+ * - Persistent DB-backed rate limiting (IP + email)
+ * - Zero plaintext resetUrl or rawToken stored in notification_queue.payload
+ * - Delivers reset email via sendFestivalEmail() (safe local file sink in dev/testing)
+ * - Revokes all active sessions via revokeAllUserSessions() upon password completion
  */
 
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
+require_once dirname(__DIR__, 2) . '/includes/mailer.php';
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 if ($method === 'OPTIONS') {
@@ -20,16 +22,21 @@ if ($method === 'OPTIONS') {
 try {
     $pdo = getDb();
     $input = readRequestInput();
+    $clientIp = getClientIp() ?: 'unknown';
 
     $isCompleteReset = ($method === 'PUT')
         || ($method === 'PATCH')
         || (!empty($input['token']) && !empty($input['newPassword']));
 
     if (!$isCompleteReset && $method === 'POST') {
+        pfgRequireRateLimit($pdo, 'auth_pwreset_ip', $clientIp, 10, 900, 900);
+
         $email = strtolower(trim((string)($input['email'] ?? '')));
         if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             jsonResponse(['error' => 'Please enter a valid email address.'], 400);
         }
+
+        pfgRequireRateLimit($pdo, 'auth_pwreset_email', $email, 5, 900, 900);
 
         $stmt = $pdo->prepare("
             SELECT *
@@ -39,7 +46,7 @@ try {
             LIMIT 1
         ");
         $stmt->execute([':email' => $email]);
-        $user = $stmt->fetch();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user && !empty($user['is_active'])) {
             $rawToken = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
@@ -47,7 +54,6 @@ try {
             $now = nowSql();
             $expiresAt = nowSql(time() + 3600); // 1 hour
 
-            // Clear old tokens in both auth_accounts and password_reset_tokens
             $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'password_reset'")
                 ->execute([':uid' => $user['id']]);
             $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = :uid")
@@ -78,17 +84,21 @@ try {
             ]);
 
             $resetUrl = APP_URL . '/login?resetToken=' . rawurlencode($rawToken);
+            $safeName = htmlspecialchars((string)$user['full_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $safeUrl = htmlspecialchars($resetUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
-            queueNotification([
+            // Deliver via mailer without persisting rawToken or resetUrl in notification_queue.payload
+            sendFestivalEmail($pdo, [
+                'to'              => (string)$user['email'],
+                'subject'         => 'Reset your Purple Festival Gujarat 2027 password',
+                'html'            => "<p>Dear {$safeName},</p><p>Use the link below within 1 hour to reset your password:</p><p><a href=\"{$safeUrl}\">Reset Password</a></p><p>If you did not request this, you can safely ignore this email.</p>",
+                'text'            => "Dear {$user['full_name']},\n\nReset your password within 1 hour using this link:\n{$resetUrl}\n\nIf you did not request this, ignore this email.",
                 'templateCode'    => 'PASSWORD_RESET',
-                'recipientUserId' => $user['id'],
-                'recipientEmail'  => $user['email'],
-                'variables'       => [
-                    'fullName' => $user['full_name'],
-                    'resetUrl' => $resetUrl,
+                'recipientUserId' => (string)$user['id'],
+                'metadata'        => [
+                    'expiresAt' => $expiresAt,
                 ],
-                'fallbackSubject' => 'Reset your Purple Festival Gujarat 2027 password',
-            ], $pdo);
+            ]);
 
             logAudit([
                 'actorUserId'  => $user['id'],
@@ -98,14 +108,16 @@ try {
             ]);
         }
 
-        // Generic response to prevent email enumeration
+        // Uniform response to prevent email enumeration
         jsonResponse([
             'success' => true,
-            'message' => 'If an account exists for that email address, password reset instructions have been queued.',
+            'message' => 'If an account exists for that email address, password reset instructions have been processed.',
         ], 200);
     }
 
     if ($isCompleteReset) {
+        pfgRequireRateLimit($pdo, 'auth_pwreset_complete_ip', $clientIp, 10, 900, 900);
+
         $rawToken = trim((string)($input['token'] ?? ''));
         $newPassword = (string)($input['newPassword'] ?? $input['new_password'] ?? '');
 
@@ -119,7 +131,6 @@ try {
         $tokenHash = hashToken($rawToken);
         $now = nowSql();
 
-        // Check auth_accounts first, then password_reset_tokens
         $stmt = $pdo->prepare("
             SELECT id, user_id
             FROM auth_accounts
@@ -129,7 +140,7 @@ try {
             LIMIT 1
         ");
         $stmt->execute([':token_hash' => $tokenHash, ':now' => $now]);
-        $resetRecord = $stmt->fetch();
+        $resetRecord = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$resetRecord) {
             $stmt2 = $pdo->prepare("
@@ -141,7 +152,7 @@ try {
                 LIMIT 1
             ");
             $stmt2->execute([':token_hash' => $tokenHash, ':now' => $now]);
-            $resetRecord = $stmt2->fetch();
+            $resetRecord = $stmt2->fetch(PDO::FETCH_ASSOC);
         }
 
         if (!$resetRecord || empty($resetRecord['user_id'])) {
@@ -164,9 +175,8 @@ try {
             ':uid'  => $targetUserId,
         ]);
 
-        // Revoke all existing sessions for security
-        $pdo->prepare("UPDATE sessions SET revoked_at = :now WHERE user_id = :uid")
-            ->execute([':now' => $now, ':uid' => $targetUserId]);
+        // Revoke all active sessions for security
+        revokeAllUserSessions($targetUserId, null, $pdo, $targetUserId, 'password_reset_completed');
 
         // Consume reset token in both tables
         $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'password_reset'")

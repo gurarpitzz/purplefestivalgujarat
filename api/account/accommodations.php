@@ -93,7 +93,7 @@ try {
             if (count($selected) === 0 && !empty($r['accommodation_code'])) {
                 $selected = [(string)$r['accommodation_code']];
             }
-            $details = $r['free_text_details'] ?? $r['notes'] ?? null;
+            $details = pfgDecryptValue($r['free_text_details'] ?? $r['notes'] ?? null, 'data');
             return [
                 'id'               => (string)$r['id'],
                 'registrationId'   => (string)$r['registration_id'],
@@ -101,7 +101,7 @@ try {
                 'categoryCode'     => (string)$r['category_code'],
                 'selectedTypes'    => array_values($selected),
                 'freeTextDetails'  => $details,
-                'coordinatorNotes' => $r['coordinator_notes'] ?? null,
+                'coordinatorNotes' => pfgDecryptValue($r['coordinator_notes'] ?? null, 'data'),
                 'status'           => (string)($r['status'] ?? 'REQUESTED'),
                 'createdAt'        => (string)$r['created_at'],
                 'updatedAt'        => (string)($r['updated_at'] ?? $r['created_at']),
@@ -117,6 +117,9 @@ try {
     }
 
     if ($method === 'POST') {
+        enforceStaffMfaGate($user);
+        requireCsrfToken($user);
+
         $body = readRequestInput();
         $registrationId = trim((string)($body['registrationId'] ?? $body['registration_id'] ?? ''));
         $rawSelected = $body['selectedTypes'] ?? $body['selected_types'] ?? [];
@@ -173,6 +176,7 @@ try {
         $now = nowSql();
         $selectedJson = jsonEncode($selectedTypes);
         $primaryCode = $selectedTypes[0] ?? null;
+        $encryptedDetails = $freeTextDetails !== '' ? pfgEncryptValue($freeTextDetails, 'data') : null;
 
         $insStmt = $pdo->prepare(
             'INSERT INTO accommodation_requests (
@@ -189,8 +193,8 @@ try {
             ':user_id'            => $user['id'],
             ':accommodation_code' => $primaryCode,
             ':selected_types'     => $selectedJson,
-            ':free_text_details'  => $freeTextDetails !== '' ? $freeTextDetails : null,
-            ':notes'              => $freeTextDetails !== '' ? $freeTextDetails : null,
+            ':free_text_details'  => $encryptedDetails,
+            ':notes'              => $encryptedDetails,
             ':status'             => 'REQUESTED',
             ':created_at'         => $now,
             ':updated_at'         => $now,
@@ -213,8 +217,8 @@ try {
                 ':user_id'            => $user['id'],
                 ':accommodation_code' => $primaryCode,
                 ':selected_types'     => $selectedJson,
-                ':free_text_details'  => $freeTextDetails !== '' ? $freeTextDetails : null,
-                ':notes'              => $freeTextDetails !== '' ? $freeTextDetails : null,
+                ':free_text_details'  => $encryptedDetails,
+                ':notes'              => $encryptedDetails,
                 ':status'             => 'REQUESTED',
                 ':created_at'         => $now,
                 ':updated_at'         => $now,

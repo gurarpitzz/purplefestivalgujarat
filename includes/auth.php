@@ -2,15 +2,30 @@
 declare(strict_types=1);
 
 /**
- * Purple Festival Gujarat 2027 — Authentication, RBAC, Session, CSRF & RFC 6238 TOTP MFA Layer
+ * Purple Festival Gujarat 2027 — Authentication, RBAC, Session, CSRF, Rate Limiting & RFC 6238 TOTP MFA Layer
+ * Phase 2 Hardened Security Core (Native PHP + PDO MySQL/MariaDB, Bluehost-compatible).
  */
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/database.php';
 
 // ============================================================================
-// 1. TOKEN & PASSWORD CRYPTOGRAPHY
+// 1. TOKEN, PASSWORD & HTTPS HELPERS
 // ============================================================================
+
+if (!function_exists('pfgIsHttpsRequest')) {
+    /**
+     * Determines whether session cookies should carry the Secure flag.
+     * Does NOT blindly trust spoofable HTTP_X_FORWARDED_PROTO headers.
+     */
+    function pfgIsHttpsRequest(): bool
+    {
+        if (defined('APP_URL') && stripos((string)APP_URL, 'https://') === 0) {
+            return true;
+        }
+        return !empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off';
+    }
+}
 
 if (!function_exists('hashToken')) {
     /**
@@ -41,22 +56,30 @@ if (!function_exists('verifyPassword')) {
         if (!is_string($hash) || $hash === '') {
             return false;
         }
-        // Normalize Node bcryptjs $2a$/$2b$ prefix if needed (PHP password_verify supports $2a$, $2b$, $2y$ natively)
         return password_verify($password, $hash);
     }
 }
 
+if (!function_exists('pfgDummyPasswordVerify')) {
+    /**
+     * Performs a constant-cost bcrypt check when a user record is not found to mitigate timing enumeration.
+     */
+    function pfgDummyPasswordVerify(string $password): void
+    {
+        static $dummyHash = '$2y$12$abcdefghijklmnopqrstuu5s5s5s5s5s5s5s5s5s5s5s5s5s5s5s.';
+        @password_verify($password, $dummyHash);
+    }
+}
+
 // ============================================================================
-// 2. CSRF PROTECTION
+// 2. SESSION-BOUND CSRF PROTECTION (ZERO STATIC ANONYMOUS FALLBACK)
 // ============================================================================
 
 if (!function_exists('ensurePhpSessionStarted')) {
     function ensurePhpSessionStarted(): void
     {
         if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
-            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-                || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-                || stripos(APP_URL, 'https://') === 0;
+            $isHttps = pfgIsHttpsRequest();
             @session_set_cookie_params([
                 'lifetime' => 0,
                 'path'     => '/',
@@ -69,28 +92,48 @@ if (!function_exists('ensurePhpSessionStarted')) {
     }
 }
 
+if (!function_exists('pfgComputeSessionBoundCsrfToken')) {
+    /**
+     * Derives a cryptographic CSRF token strictly bound to an authenticated `pfg_session` cookie token.
+     */
+    function pfgComputeSessionBoundCsrfToken(string $rawSessionToken): string
+    {
+        return hash_hmac('sha256', 'pfg27:csrf:v2:' . hashToken($rawSessionToken), AUTH_SECRET);
+    }
+}
+
 if (!function_exists('getCsrfToken')) {
     /**
-     * Returns or generates a per-session CSRF token (with stateless HMAC fallback).
+     * Returns a session-bound CSRF token.
+     * - For authenticated users: strictly bound to their active `pfg_session` token (automatically rotates on login/logout).
+     * - For unauthenticated browser sessions: random 256-bit token stored in PHP $_SESSION.
+     * NEVER uses a static anonymous fallback.
      */
     function getCsrfToken(): string
     {
         ensurePhpSessionStarted();
-        if (!empty($_SESSION['pfg_csrf_token']) && is_string($_SESSION['pfg_csrf_token'])) {
+        $rawCookie = $_COOKIE[SESSION_COOKIE_NAME] ?? null;
+        if (is_string($rawCookie) && trim($rawCookie) !== '') {
+            $bound = pfgComputeSessionBoundCsrfToken($rawCookie);
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                $_SESSION['pfg_csrf_token'] = $bound;
+            }
+            return $bound;
+        }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            if (empty($_SESSION['pfg_csrf_token']) || !is_string($_SESSION['pfg_csrf_token']) || strlen($_SESSION['pfg_csrf_token']) < 32) {
+                $_SESSION['pfg_csrf_token'] = bin2hex(random_bytes(32));
+            }
             return $_SESSION['pfg_csrf_token'];
         }
-        $sessionSeed = $_COOKIE[SESSION_COOKIE_NAME] ?? session_id() ?: 'pfg27-anon-csrf';
-        $token = hash_hmac('sha256', (string)$sessionSeed, AUTH_SECRET);
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION['pfg_csrf_token'] = $token;
-        }
-        return $token;
+        return bin2hex(random_bytes(32));
     }
 }
 
 if (!function_exists('verifyCsrfToken')) {
     /**
-     * Verifies a CSRF token passed explicitly, via X-CSRF-Token header, or via POST/JSON body.
+     * Verifies a session-bound CSRF token passed via X-CSRF-Token header, form field, or JSON body.
+     * Fails closed if no active session exists or if token does not match.
      */
     function verifyCsrfToken(?string $token = null): bool
     {
@@ -105,21 +148,210 @@ if (!function_exists('verifyCsrfToken')) {
                 $token = $input['csrf_token'] ?? $input['csrfToken'] ?? null;
             }
         }
-        if (!is_string($token) || $token === '') {
+        if (!is_string($token) || trim($token) === '') {
             return false;
         }
-        $expected = getCsrfToken();
-        if (hash_equals($expected, $token)) {
-            return true;
+        $provided = trim($token);
+
+        $rawCookie = $_COOKIE[SESSION_COOKIE_NAME] ?? null;
+        if (is_string($rawCookie) && trim($rawCookie) !== '') {
+            $expected = pfgComputeSessionBoundCsrfToken($rawCookie);
+            return hash_equals($expected, $provided);
         }
-        $sessionSeed = $_COOKIE[SESSION_COOKIE_NAME] ?? session_id() ?: 'pfg27-anon-csrf';
-        $hmacExpected = hash_hmac('sha256', (string)$sessionSeed, AUTH_SECRET);
-        return hash_equals($hmacExpected, $token);
+
+        if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['pfg_csrf_token']) && is_string($_SESSION['pfg_csrf_token'])) {
+            return hash_equals($_SESSION['pfg_csrf_token'], $provided);
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('requireCsrfToken')) {
+    /**
+     * Enforces valid CSRF token on all authenticated state-changing endpoints BEFORE any DB mutation.
+     */
+    function requireCsrfToken(?array $user = null): void
+    {
+        if (verifyCsrfToken()) {
+            return;
+        }
+        logAudit([
+            'actorUserId'  => $user['id'] ?? null,
+            'action'       => 'CSRF_REJECTED',
+            'resourceType' => 'security',
+            'resourceId'   => $_SERVER['REQUEST_URI'] ?? null,
+            'metadata'     => [
+                'method' => $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN',
+                'uri'    => parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH),
+            ],
+        ]);
+        jsonResponse(['error' => 'Invalid or missing CSRF token.'], 403);
     }
 }
 
 // ============================================================================
-// 3. PURE-PHP RFC 6238 TOTP MFA
+// 3. PERSISTENT BLUEHOST-COMPATIBLE RATE LIMITING (MySQL/MariaDB/SQLite)
+// ============================================================================
+
+if (!function_exists('pfgCheckRateLimit')) {
+    /**
+     * Persistent database-backed sliding/fixed window rate limiter compatible with shared Bluehost hosting.
+     * Returns ['allowed' => bool, 'attempts' => int, 'retryAfter' => int].
+     */
+    function pfgCheckRateLimit(
+        PDO $pdo,
+        string $scope,
+        string $identifier,
+        int $maxAttempts,
+        int $windowSeconds,
+        int $blockSeconds = 900,
+        bool $increment = true
+    ): array {
+        $normScope = strtolower(trim($scope));
+        $normIdent = strtolower(trim($identifier));
+        $bucketKey = hash('sha256', $normScope . '|' . $normIdent);
+        $nowTs = time();
+        $nowStr = nowSql($nowTs);
+
+        try {
+            $stmt = $pdo->prepare('SELECT attempts, window_started_at, blocked_until FROM security_rate_limits WHERE bucket_key = :k LIMIT 1');
+            $stmt->execute([':k' => $bucketKey]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($row && !empty($row['blocked_until'])) {
+                $blockedTs = strtotime((string)$row['blocked_until']);
+                if ($blockedTs !== false && $blockedTs > $nowTs) {
+                    return [
+                        'allowed'    => false,
+                        'attempts'   => (int)$row['attempts'],
+                        'retryAfter' => max(1, $blockedTs - $nowTs),
+                    ];
+                }
+            }
+
+            $attempts = 0;
+            $windowStartedTs = $nowTs;
+            if ($row) {
+                $prevWindowTs = strtotime((string)$row['window_started_at']);
+                $prevBlockedTs = !empty($row['blocked_until']) ? strtotime((string)$row['blocked_until']) : false;
+                if ($prevBlockedTs !== false && $prevBlockedTs <= $nowTs) {
+                    // Block expired -> cleanly reset window
+                    $attempts = 0;
+                    $windowStartedTs = $nowTs;
+                } elseif ($prevWindowTs !== false && ($nowTs - $prevWindowTs) < $windowSeconds) {
+                    $attempts = (int)$row['attempts'];
+                    $windowStartedTs = $prevWindowTs;
+                }
+            }
+
+            if (!$increment) {
+                $allowed = $attempts < $maxAttempts;
+                return [
+                    'allowed'    => $allowed,
+                    'attempts'   => $attempts,
+                    'retryAfter' => $allowed ? 0 : max(1, $windowSeconds - ($nowTs - $windowStartedTs)),
+                ];
+            }
+
+            $nextAttempts = $attempts + 1;
+            $exceeded = $nextAttempts > $maxAttempts;
+            $blockedUntilStr = $exceeded ? nowSql($nowTs + $blockSeconds) : null;
+            $windowStr = nowSql($windowStartedTs);
+
+            if ($row) {
+                $upd = $pdo->prepare('
+                    UPDATE security_rate_limits
+                    SET attempts = :att,
+                        window_started_at = :ws,
+                        blocked_until = :bu,
+                        updated_at = :now
+                    WHERE bucket_key = :k
+                ');
+                $upd->execute([
+                    ':att' => $nextAttempts,
+                    ':ws'  => $windowStr,
+                    ':bu'  => $blockedUntilStr,
+                    ':now' => $nowStr,
+                    ':k'   => $bucketKey,
+                ]);
+            } else {
+                $ins = $pdo->prepare('
+                    INSERT INTO security_rate_limits (bucket_key, scope, attempts, window_started_at, blocked_until, updated_at)
+                    VALUES (:k, :sc, :att, :ws, :bu, :now)
+                ');
+                $ins->execute([
+                    ':k'   => $bucketKey,
+                    ':sc'  => $normScope,
+                    ':att' => $nextAttempts,
+                    ':ws'  => $windowStr,
+                    ':bu'  => $blockedUntilStr,
+                    ':now' => $nowStr,
+                ]);
+            }
+
+            return [
+                'allowed'    => !$exceeded,
+                'attempts'   => $nextAttempts,
+                'retryAfter' => $exceeded ? $blockSeconds : 0,
+            ];
+        } catch (Throwable $e) {
+            error_log('pfgCheckRateLimit warning: ' . $e->getMessage());
+            return ['allowed' => true, 'attempts' => 0, 'retryAfter' => 0];
+        }
+    }
+}
+
+if (!function_exists('pfgResetRateLimit')) {
+    function pfgResetRateLimit(PDO $pdo, string $scope, string $identifier): void
+    {
+        try {
+            $bucketKey = hash('sha256', strtolower(trim($scope)) . '|' . strtolower(trim($identifier)));
+            $stmt = $pdo->prepare('DELETE FROM security_rate_limits WHERE bucket_key = :k');
+            $stmt->execute([':k' => $bucketKey]);
+        } catch (Throwable $e) {
+        }
+    }
+}
+
+if (!function_exists('pfgRequireRateLimit')) {
+    function pfgRequireRateLimit(
+        PDO $pdo,
+        string $scope,
+        string $identifier,
+        int $maxAttempts,
+        int $windowSeconds,
+        int $blockSeconds = 900,
+        ?string $actorUserId = null
+    ): void {
+        $rl = pfgCheckRateLimit($pdo, $scope, $identifier, $maxAttempts, $windowSeconds, $blockSeconds, true);
+        if (!empty($rl['allowed'])) {
+            return;
+        }
+        $retry = (int)($rl['retryAfter'] ?? $blockSeconds);
+        logAudit([
+            'actorUserId'  => $actorUserId,
+            'action'       => 'RATE_LIMIT_EXCEEDED',
+            'resourceType' => 'security',
+            'resourceId'   => $scope,
+            'metadata'     => [
+                'scope'      => $scope,
+                'attempts'   => $rl['attempts'] ?? 0,
+                'retryAfter' => $retry,
+            ],
+        ]);
+        if (!headers_sent()) {
+            header('Retry-After: ' . $retry);
+        }
+        jsonResponse([
+            'error'      => 'Too many requests. Please wait before trying again.',
+            'retryAfter' => $retry,
+        ], 429);
+    }
+}
+
+// ============================================================================
+// 4. PURE-PHP RFC 6238 TOTP MFA (160-BIT ENTROPY, AES-256-GCM, REPLAY GUARD, RECOVERY CODES)
 // ============================================================================
 
 if (!function_exists('base32Encode')) {
@@ -179,13 +411,11 @@ if (!function_exists('buildOtpAuthUrl')) {
 
 if (!function_exists('generateMfaSecret')) {
     /**
-     * Generates a 160-bit Base32 RFC 6238 TOTP secret.
-     * When $email is provided, returns ['secret' => ..., 'otpauthUrl' => ...];
-     * when called without arguments, returns the Base32 secret string.
+     * Generates a cryptographically strong 160-bit (20-byte / 32 Base32 character) RFC 6238 TOTP secret.
      */
     function generateMfaSecret(?string $email = null)
     {
-        $secret = substr(base32Encode(random_bytes(10)), 0, 16);
+        $secret = base32Encode(random_bytes(20)); // 20 bytes = 160 bits = exactly 32 Base32 chars
         if ($email !== null && $email !== '') {
             return [
                 'secret'     => $secret,
@@ -193,6 +423,21 @@ if (!function_exists('generateMfaSecret')) {
             ];
         }
         return $secret;
+    }
+}
+
+if (!function_exists('encryptMfaSecret')) {
+    function encryptMfaSecret(string $plaintextSecret): string
+    {
+        return pfgEncryptValue($plaintextSecret, 'mfa');
+    }
+}
+
+if (!function_exists('decryptMfaSecret')) {
+    function decryptMfaSecret(?string $storedSecret): string
+    {
+        $decrypted = pfgDecryptValue($storedSecret, 'mfa');
+        return is_string($decrypted) ? $decrypted : '';
     }
 }
 
@@ -216,6 +461,30 @@ if (!function_exists('computeTotpCode')) {
     }
 }
 
+if (!function_exists('verifyMfaTokenWithSlice')) {
+    /**
+     * Verifies a 6-digit RFC 6238 TOTP code against a Base32 secret (+/- $window slices)
+     * and returns the matching 30-second integer time slice (or null on mismatch).
+     */
+    function verifyMfaTokenWithSlice(string $secret, string $code, int $window = 1): ?int
+    {
+        $cleanedCode = preg_replace('/\s+/', '', $code) ?? '';
+        $cleanedSecret = preg_replace('/\s+/', '', $secret) ?? '';
+        if (!preg_match('/^\d{6}$/', $cleanedCode) || $cleanedSecret === '') {
+            return null;
+        }
+        $currentSlice = (int)floor(time() / 30);
+        for ($i = -$window; $i <= $window; $i++) {
+            $slice = $currentSlice + $i;
+            $candidate = computeTotpCode($cleanedSecret, $slice);
+            if ($candidate !== '' && hash_equals($candidate, $cleanedCode)) {
+                return $slice;
+            }
+        }
+        return null;
+    }
+}
+
 if (!function_exists('verifyMfaToken')) {
     /**
      * Verifies a 6-digit RFC 6238 TOTP code against a Base32 secret (+/- 1 window).
@@ -234,40 +503,193 @@ if (!function_exists('verifyMfaToken')) {
             $code = $b;
         }
 
-        if (!preg_match('/^\d{6}$/', $code) || $secret === '') {
-            return false;
+        return verifyMfaTokenWithSlice($secret, $code, $window) !== null;
+    }
+}
+
+if (!function_exists('consumeTotpSliceIfFresh')) {
+    /**
+     * Prevents TOTP code replay within the 30–90 second validity window by tracking the last accepted slice.
+     */
+    function consumeTotpSliceIfFresh(PDO $pdo, string $userId, int $timeSlice): bool
+    {
+        $stmt = $pdo->prepare("SELECT id, provider_account_id FROM auth_accounts WHERE user_id = :uid AND provider = 'mfa_replay' LIMIT 1");
+        $stmt->execute([':uid' => $userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            $lastSlice = (int)($row['provider_account_id'] ?? 0);
+            if ($timeSlice <= $lastSlice) {
+                return false; // Replay detected!
+            }
+            $upd = $pdo->prepare("UPDATE auth_accounts SET provider_account_id = :slice, token_hash = :th, expires_at = :exp WHERE id = :id");
+            $upd->execute([
+                ':slice' => (string)$timeSlice,
+                ':th'    => hashToken('slice:' . $userId . ':' . $timeSlice),
+                ':exp'   => nowSql(time() + 86400),
+                ':id'    => $row['id'],
+            ]);
+            return true;
         }
 
-        $currentSlice = (int)floor(time() / 30);
-        for ($i = -$window; $i <= $window; $i++) {
-            $candidate = computeTotpCode($secret, $currentSlice + $i);
-            if ($candidate !== '' && hash_equals($candidate, $code)) {
-                return true;
+        $ins = $pdo->prepare("
+            INSERT INTO auth_accounts (id, user_id, provider, provider_account_id, token_hash, expires_at, created_at)
+            VALUES (:id, :uid, 'mfa_replay', :slice, :th, :exp, :now)
+        ");
+        $ins->execute([
+            ':id'    => uuid4(),
+            ':uid'   => $userId,
+            ':slice' => (string)$timeSlice,
+            ':th'    => hashToken('slice:' . $userId . ':' . $timeSlice),
+            ':exp'   => nowSql(time() + 86400),
+            ':now'   => nowSql(),
+        ]);
+        return true;
+    }
+}
+
+if (!function_exists('pfgHashRecoveryCode')) {
+    function pfgHashRecoveryCode(string $userId, string $rawCode): string
+    {
+        $normalized = strtoupper((string)preg_replace('/[^A-Za-z0-9]/', '', $rawCode));
+        return hash_hmac('sha256', 'pfg27:mfa-recovery:' . $userId . ':' . $normalized, AUTH_SECRET);
+    }
+}
+
+if (!function_exists('generateMfaRecoveryCodes')) {
+    /**
+     * Generates single-use recovery codes, persists ONLY cryptographic hashes in auth_accounts,
+     * and returns plaintext codes ONCE for the user to store safely.
+     */
+    function generateMfaRecoveryCodes(PDO $pdo, string $userId, int $count = 8): array
+    {
+        $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'mfa_recovery'")
+            ->execute([':uid' => $userId]);
+
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $alphaMax = strlen($alphabet) - 1;
+        $codes = [];
+        $now = nowSql();
+        $ins = $pdo->prepare("
+            INSERT INTO auth_accounts (id, user_id, provider, provider_account_id, token_hash, expires_at, created_at)
+            VALUES (:id, :uid, 'mfa_recovery', :slot, :th, NULL, :now)
+        ");
+
+        for ($i = 0; $i < $count; $i++) {
+            $part1 = '';
+            $part2 = '';
+            for ($c = 0; $c < 4; $c++) {
+                $part1 .= $alphabet[random_int(0, $alphaMax)];
+                $part2 .= $alphabet[random_int(0, $alphaMax)];
             }
+            $code = $part1 . '-' . $part2;
+            $codes[] = $code;
+            $ins->execute([
+                ':id'   => uuid4(),
+                ':uid'  => $userId,
+                ':slot' => 'rc_' . ($i + 1),
+                ':th'   => pfgHashRecoveryCode($userId, $code),
+                ':now'  => $now,
+            ]);
         }
-        return false;
+
+        return $codes;
+    }
+}
+
+if (!function_exists('consumeMfaRecoveryCode')) {
+    /**
+     * Validates and atomically consumes a single-use MFA recovery code. Returns true once, false on reuse.
+     */
+    function consumeMfaRecoveryCode(PDO $pdo, string $userId, string $rawCode): bool
+    {
+        $normalized = strtoupper((string)preg_replace('/[^A-Za-z0-9]/', '', $rawCode));
+        if (strlen($normalized) !== 8) {
+            return false;
+        }
+        $hash = pfgHashRecoveryCode($userId, $rawCode);
+        $stmt = $pdo->prepare("
+            SELECT id FROM auth_accounts
+            WHERE user_id = :uid AND provider = 'mfa_recovery' AND token_hash = :th
+            LIMIT 1
+        ");
+        $stmt->execute([':uid' => $userId, ':th' => $hash]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+        $del = $pdo->prepare("DELETE FROM auth_accounts WHERE id = :id");
+        $del->execute([':id' => $row['id']]);
+        return $del->rowCount() > 0;
+    }
+}
+
+if (!function_exists('countRemainingRecoveryCodes')) {
+    function countRemainingRecoveryCodes(PDO $pdo, string $userId): int
+    {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM auth_accounts WHERE user_id = :uid AND provider = 'mfa_recovery'");
+        $stmt->execute([':uid' => $userId]);
+        return (int)$stmt->fetchColumn();
+    }
+}
+
+if (!function_exists('isMfaRequiredForRoles')) {
+    /**
+     * D-20 Approved MFA Policy:
+     * - SUPERADMIN: Mandatory TOTP MFA
+     * - ADMIN: Mandatory TOTP MFA
+     * - RGST: Optional MFA initially
+     * - PARTICIPANT: Optional MFA
+     */
+    function isMfaRequiredForRoles(array $roles): bool
+    {
+        return in_array('SUPERADMIN', $roles, true) || in_array('ADMIN', $roles, true);
+    }
+}
+
+if (!function_exists('userRequiresMfaEnrollment')) {
+    function userRequiresMfaEnrollment(?array $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
+        return isMfaRequiredForRoles($roles) && empty($user['mfaEnabled']);
+    }
+}
+
+if (!function_exists('userHasCompletedRequiredMfa')) {
+    function userHasCompletedRequiredMfa(?array $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
+        if (!isMfaRequiredForRoles($roles)) {
+            return true;
+        }
+        return !empty($user['mfaEnabled']) && !empty($user['mfaVerified']);
     }
 }
 
 // ============================================================================
-// 4. SESSION & COOKIE MANAGEMENT
+// 5. SESSION & COOKIE MANAGEMENT (WITH FIXATION PROTECTION & BULK REVOCATION)
 // ============================================================================
 
 if (!function_exists('setSessionCookie')) {
     function setSessionCookie(string $rawToken, int $expiresTimestamp): void
     {
         $_COOKIE[SESSION_COOKIE_NAME] = $rawToken;
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['pfg_csrf_token'] = pfgComputeSessionBoundCsrfToken($rawToken);
+        }
         if (headers_sent()) {
             return;
         }
-        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-            || stripos(APP_URL, 'https://') === 0;
-
         setcookie(SESSION_COOKIE_NAME, $rawToken, [
             'expires'  => $expiresTimestamp,
             'path'     => '/',
-            'secure'   => $isHttps,
+            'secure'   => pfgIsHttpsRequest(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -278,17 +700,16 @@ if (!function_exists('clearSessionCookie')) {
     function clearSessionCookie(): void
     {
         unset($_COOKIE[SESSION_COOKIE_NAME]);
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            unset($_SESSION['pfg_csrf_token']);
+        }
         if (headers_sent()) {
             return;
         }
-        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-            || stripos(APP_URL, 'https://') === 0;
-
         setcookie(SESSION_COOKIE_NAME, '', [
             'expires'  => time() - 3600,
             'path'     => '/',
-            'secure'   => $isHttps,
+            'secure'   => pfgIsHttpsRequest(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -297,11 +718,28 @@ if (!function_exists('clearSessionCookie')) {
 
 if (!function_exists('createSession')) {
     /**
-     * Creates a new authenticated session row and sets the HttpOnly `pfg_session` cookie.
+     * Creates a new authenticated session row, mitigates session fixation by revoking any prior cookie
+     * and regenerating PHP session ID, sets the HttpOnly `pfg_session` cookie, and rotates the CSRF token.
      */
     function createSession(string $userId, array $options = [], ?PDO $pdo = null): array
     {
         $pdo = $pdo ?? getDb();
+
+        // Revoke any pre-existing session cookie to prevent session fixation
+        $prevCookie = $_COOKIE[SESSION_COOKIE_NAME] ?? null;
+        if (is_string($prevCookie) && trim($prevCookie) !== '') {
+            try {
+                $pdo->prepare('UPDATE sessions SET revoked_at = :now WHERE token_hash = :th AND revoked_at IS NULL')
+                    ->execute([':now' => nowSql(), ':th' => hashToken($prevCookie)]);
+            } catch (Throwable $e) {
+            }
+        }
+
+        ensurePhpSessionStarted();
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+            @session_regenerate_id(true);
+        }
+
         $rawToken = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
         $tokenHash = hashToken($rawToken);
         $expiresTimestamp = time() + SESSION_DURATION_SECONDS;
@@ -333,13 +771,14 @@ if (!function_exists('createSession')) {
             'rawToken'  => $rawToken,
             'expiresAt' => $expiresAt,
             'sessionId' => $sessionId,
+            'csrfToken' => pfgComputeSessionBoundCsrfToken($rawToken),
         ];
     }
 }
 
 if (!function_exists('destroyCurrentSession')) {
     /**
-     * Revokes the current session in the database and deletes the `pfg_session` cookie.
+     * Revokes the current session in the database, clears the `pfg_session` cookie, and destroys PHP session state.
      */
     function destroyCurrentSession(?PDO $pdo = null): void
     {
@@ -354,11 +793,53 @@ if (!function_exists('destroyCurrentSession')) {
             ]);
         }
         clearSessionCookie();
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION = [];
+            @session_destroy();
+        }
+    }
+}
+
+if (!function_exists('revokeAllUserSessions')) {
+    /**
+     * Revokes all active sessions for a user (optionally keeping one current session ID) and audits the event.
+     */
+    function revokeAllUserSessions(
+        string $userId,
+        ?string $exceptSessionId = null,
+        ?PDO $pdo = null,
+        ?string $actorUserId = null,
+        string $reason = 'security_policy'
+    ): int {
+        $pdo = $pdo ?? getDb();
+        $now = nowSql();
+        if ($exceptSessionId !== null && $exceptSessionId !== '') {
+            $stmt = $pdo->prepare('UPDATE sessions SET revoked_at = :now WHERE user_id = :uid AND id <> :sid AND revoked_at IS NULL');
+            $stmt->execute([':now' => $now, ':uid' => $userId, ':sid' => $exceptSessionId]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE sessions SET revoked_at = :now WHERE user_id = :uid AND revoked_at IS NULL');
+            $stmt->execute([':now' => $now, ':uid' => $userId]);
+        }
+        $revokedCount = $stmt->rowCount();
+
+        logAudit([
+            'actorUserId'  => $actorUserId ?? $userId,
+            'action'       => 'SESSIONS_REVOKED',
+            'resourceType' => 'session',
+            'resourceId'   => $userId,
+            'metadata'     => [
+                'reason'       => $reason,
+                'revokedCount' => $revokedCount,
+                'keptCurrent'  => $exceptSessionId !== null && $exceptSessionId !== '',
+            ],
+        ]);
+
+        return $revokedCount;
     }
 }
 
 // ============================================================================
-// 5. USER, ROLES & PERMISSIONS RESOLUTION
+// 6. USER, ROLES & PERMISSIONS RESOLUTION
 // ============================================================================
 
 if (!function_exists('getUserRolesAndPermissions')) {
@@ -390,11 +871,15 @@ if (!function_exists('getUserRolesAndPermissions')) {
                 foreach ($basePerms as $p) {
                     $permMap[$p] = true;
                 }
-                $custom = jsonDecode($row['custom_permissions'] ?? null, []);
-                if (is_array($custom)) {
-                    foreach ($custom as $cp) {
-                        if (is_string($cp) && $cp !== '') {
-                            $permMap[$cp] = true;
+                // Only ADMIN/SUPERADMIN may receive custom administrative permissions
+                if (in_array($rCode, ['ADMIN', 'SUPERADMIN'], true)) {
+                    $custom = jsonDecode($row['custom_permissions'] ?? null, []);
+                    if (is_array($custom)) {
+                        $validPerms = array_values(PERMISSIONS);
+                        foreach ($custom as $cp) {
+                            if (is_string($cp) && in_array($cp, $validPerms, true)) {
+                                $permMap[$cp] = true;
+                            }
                         }
                     }
                 }
@@ -459,22 +944,27 @@ if (!function_exists('getCurrentUser')) {
         }
 
         $rp = getUserRolesAndPermissions((string)$row['user_id'], $pdo);
+        $mfaRequired = isMfaRequiredForRoles($rp['roles']);
+        $mfaEnabled = (bool)$row['mfa_enabled'];
+        $mfaVerified = (bool)$row['mfa_verified'];
 
         return [
-            'id'          => (string)$row['user_id'],
-            'email'       => (string)$row['email'],
-            'fullName'    => (string)$row['full_name'],
-            'full_name'   => (string)$row['full_name'],
-            'phone'       => $row['phone'] !== null ? (string)$row['phone'] : null,
-            'country'     => (string)($row['country'] ?? 'India'),
-            'roles'       => $rp['roles'],
-            'permissions' => $rp['permissions'],
-            'mfaEnabled'  => (bool)$row['mfa_enabled'],
-            'mfa_enabled' => (bool)$row['mfa_enabled'],
-            'mfaVerified' => (bool)$row['mfa_verified'],
-            'mfa_verified'=> (bool)$row['mfa_verified'],
-            'sessionId'   => (string)$row['session_id'],
-            'session_id'  => (string)$row['session_id'],
+            'id'                    => (string)$row['user_id'],
+            'email'                 => (string)$row['email'],
+            'fullName'              => (string)$row['full_name'],
+            'full_name'             => (string)$row['full_name'],
+            'phone'                 => $row['phone'] !== null ? (string)$row['phone'] : null,
+            'country'               => (string)($row['country'] ?? 'India'),
+            'roles'                 => $rp['roles'],
+            'permissions'           => $rp['permissions'],
+            'mfaEnabled'            => $mfaEnabled,
+            'mfa_enabled'           => $mfaEnabled,
+            'mfaVerified'           => $mfaVerified,
+            'mfa_verified'          => $mfaVerified,
+            'mfaRequiredForRole'    => $mfaRequired,
+            'mfaEnrollmentRequired' => $mfaRequired && !$mfaEnabled,
+            'sessionId'             => (string)$row['session_id'],
+            'session_id'            => (string)$row['session_id'],
         ];
     }
 }
@@ -523,7 +1013,7 @@ if (!function_exists('getPortalPathForRoles')) {
 }
 
 // ============================================================================
-// 6. RESPONSE & ACCESS CONTROL GUARDS
+// 7. RESPONSE & ACCESS CONTROL GUARDS (WITH MANDATORY ADMIN MFA ENFORCEMENT)
 // ============================================================================
 
 if (!function_exists('jsonResponse')) {
@@ -557,6 +1047,40 @@ if (!function_exists('isApiRequest')) {
     }
 }
 
+if (!function_exists('enforceStaffMfaGate')) {
+    /**
+     * Enforces D-20 mandatory MFA policy for SUPERADMIN and ADMIN accounts on protected resources.
+     */
+    function enforceStaffMfaGate(array $user): void
+    {
+        if (userHasCompletedRequiredMfa($user)) {
+            return;
+        }
+        $enrollmentNeeded = userRequiresMfaEnrollment($user);
+        logAudit([
+            'actorUserId'  => $user['id'] ?? null,
+            'action'       => 'ACCESS_DENIED',
+            'resourceType' => 'security',
+            'resourceId'   => parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH),
+            'metadata'     => [
+                'reason' => $enrollmentNeeded ? 'MFA_ENROLLMENT_REQUIRED' : 'MFA_VERIFICATION_REQUIRED',
+                'roles'  => $user['roles'] ?? [],
+            ],
+        ]);
+        if (isApiRequest()) {
+            jsonResponse([
+                'error'                 => $enrollmentNeeded
+                    ? 'Multi-factor authentication enrollment is mandatory for your role before accessing administrative operations.'
+                    : 'Multi-factor authentication verification is required for this session.',
+                'mfaEnrollmentRequired' => $enrollmentNeeded,
+                'mfaRequired'           => !$enrollmentNeeded,
+            ], 403);
+        }
+        header('Location: /admin?mfa_setup=1');
+        exit;
+    }
+}
+
 if (!function_exists('requireAuth')) {
     /**
      * Requires an authenticated user session.
@@ -571,40 +1095,68 @@ if (!function_exists('requireAuth')) {
         if (isApiRequest()) {
             jsonResponse(['error' => 'Authentication required.'], 401);
         }
-        $currentUri = $_SERVER['REQUEST_URI'] ?? '/dashboard';
-        header('Location: /login?redirect=' . rawurlencode($currentUri));
+        $currentUri = pfgValidateSafeRedirect($_SERVER['REQUEST_URI'] ?? '/dashboard', '/dashboard');
+        header('Location: /login?next=' . rawurlencode($currentUri));
         exit;
     }
 }
 
 if (!function_exists('requireRole')) {
     /**
-     * Requires the authenticated user to hold at least one role in $roles.
+     * Requires the authenticated user to hold at least one role in $roles,
+     * and enforces mandatory MFA for SUPERADMIN/ADMIN unless $allowPendingMfa is true.
      */
-    function requireRole(array $roles, ?array $user = null): array
+    function requireRole(array $roles, ?array $user = null, bool $allowPendingMfa = false): array
     {
         $user = $user ?? requireAuth();
-        if (hasRole($user, $roles)) {
-            return $user;
+        if (!hasRole($user, $roles)) {
+            logAudit([
+                'actorUserId'  => $user['id'] ?? null,
+                'action'       => 'ACCESS_DENIED',
+                'resourceType' => 'rbac',
+                'resourceId'   => parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH),
+                'metadata'     => [
+                    'requiredRoles' => $roles,
+                    'actualRoles'   => $user['roles'] ?? [],
+                ],
+            ]);
+            if (isApiRequest()) {
+                jsonResponse(['error' => 'Forbidden: insufficient role permissions.'], 403);
+            }
+            header('Location: ' . getPortalPathForRoles($user['roles'] ?? ['PARTICIPANT']));
+            exit;
         }
-        if (isApiRequest()) {
-            jsonResponse(['error' => 'Forbidden: insufficient role permissions.'], 403);
+        if (!$allowPendingMfa) {
+            enforceStaffMfaGate($user);
         }
-        header('Location: ' . getPortalPathForRoles($user['roles'] ?? ['PARTICIPANT']));
-        exit;
+        return $user;
     }
 }
 
 if (!function_exists('requirePermission')) {
     /**
-     * Requires the authenticated user to hold the specified permission code (or SUPERADMIN).
+     * Requires the authenticated user to hold the specified permission code (or SUPERADMIN),
+     * and enforces mandatory MFA for SUPERADMIN/ADMIN.
      */
-    function requirePermission(string $perm, ?array $user = null): array
+    function requirePermission(string $perm, ?array $user = null, bool $allowPendingMfa = false): array
     {
         $user = $user ?? requireAuth();
+        if (!$allowPendingMfa) {
+            enforceStaffMfaGate($user);
+        }
         if (hasPermission($user, $perm)) {
             return $user;
         }
+        logAudit([
+            'actorUserId'  => $user['id'] ?? null,
+            'action'       => 'ACCESS_DENIED',
+            'resourceType' => 'rbac',
+            'resourceId'   => parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH),
+            'metadata'     => [
+                'requiredPermission' => $perm,
+                'actualRoles'        => $user['roles'] ?? [],
+            ],
+        ]);
         if (isApiRequest()) {
             jsonResponse(['error' => "Permission {$perm} is required."], 403);
         }
@@ -614,16 +1166,12 @@ if (!function_exists('requirePermission')) {
 }
 
 // ============================================================================
-// 7. IMMUTABLE AUDIT LOGGING
+// 8. IMMUTABLE AUDIT LOGGING (WITH AUTOMATIC SECRET SCRUBBING)
 // ============================================================================
 
 if (!function_exists('logAudit')) {
     /**
-     * Writes an immutable audit log entry to `audit_logs`.
-     * Supports:
-     *   - logAudit(['actorUserId' => ..., 'action' => ..., 'resourceType' => ..., 'resourceId' => ..., 'metadata' => ...])
-     *   - logAudit($actorUserId, $action, $resourceType, $resourceId, $metadata)
-     *   - logAudit($pdo, $actorUserId, $action, $resourceType, $resourceId, $metadata)
+     * Writes an immutable audit log entry to `audit_logs`, automatically scrubbing secret/token fields.
      */
     function logAudit(...$args): void
     {
@@ -655,7 +1203,12 @@ if (!function_exists('logAudit')) {
 
             $metaJson = null;
             if ($metadata !== null) {
-                $metaJson = is_string($metadata) ? $metadata : jsonEncode($metadata);
+                if (is_array($metadata)) {
+                    $safeMeta = function_exists('pfgScrubSensitiveArray') ? pfgScrubSensitiveArray($metadata) : $metadata;
+                    $metaJson = jsonEncode($safeMeta);
+                } else {
+                    $metaJson = (string)$metadata;
+                }
             }
 
             $stmt = $pdo->prepare("

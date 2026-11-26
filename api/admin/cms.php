@@ -68,6 +68,10 @@ $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
+    requirePermission(PERMISSIONS['CMS_MANAGE'], $user);
+    if (in_array($method, ['POST', 'PATCH', 'PUT', 'DELETE'], true)) {
+        requireCsrfToken($user);
+    }
     $pdo = getDb();
     $edition = pfgCmsGetActiveEdition($pdo);
 
@@ -366,6 +370,20 @@ try {
             if ($orgName === '') {
                 jsonResponse(['error' => 'Organization name is required.'], 400);
             }
+            if ($websiteUrl !== '') {
+                $safeWeb = pfgValidateSafeUrl($websiteUrl, false);
+                if ($safeWeb === null) {
+                    jsonResponse(['error' => 'Invalid partner websiteUrl. Only http:// and https:// URLs are permitted.'], 400);
+                }
+                $websiteUrl = $safeWeb;
+            }
+            if ($logoUrl !== '') {
+                $safeLogo = pfgValidateSafeUrl($logoUrl, true);
+                if ($safeLogo === null) {
+                    jsonResponse(['error' => 'Invalid partner logoUrl. Only http://, https://, or root-relative / paths are permitted.'], 400);
+                }
+                $logoUrl = $safeLogo;
+            }
             if ($status === 'PUBLISHED' && !$consentVerified) {
                 jsonResponse(['error' => 'Partner cannot be published without verified partner consent.'], 400);
             }
@@ -474,6 +492,11 @@ try {
             if ($url === '' || $altText === '') {
                 jsonResponse(['error' => 'Media URL and accessible altText are required.'], 400);
             }
+            $safeMediaUrl = pfgValidateSafeUrl($url, true);
+            if ($safeMediaUrl === null || $safeMediaUrl === '') {
+                jsonResponse(['error' => 'Invalid media URL. Only http://, https://, or root-relative / paths are permitted.'], 400);
+            }
+            $url = $safeMediaUrl;
 
             $id = uuid4();
             $stmt = $pdo->prepare('
@@ -701,10 +724,23 @@ try {
                 $stOrg->execute([':oid' => $existing['organization_id']]);
                 $org = $stOrg->fetch(PDO::FETCH_ASSOC);
                 if ($org) {
+                    $nextWebUrl = $org['website_url'];
+                    if (array_key_exists('websiteUrl', $payload)) {
+                        $rawWeb = trim((string)$payload['websiteUrl']);
+                        if ($rawWeb === '') {
+                            $nextWebUrl = null;
+                        } else {
+                            $safeWeb = pfgValidateSafeUrl($rawWeb, false);
+                            if ($safeWeb === null) {
+                                jsonResponse(['error' => 'Invalid partner websiteUrl. Only http:// and https:// URLs are permitted.'], 400);
+                            }
+                            $nextWebUrl = $safeWeb;
+                        }
+                    }
                     $upOrg = $pdo->prepare('UPDATE organizations SET name = :name, website_url = :web WHERE id = :oid');
                     $upOrg->execute([
                         ':name' => !empty($payload['organizationName']) ? trim((string)$payload['organizationName']) : $org['name'],
-                        ':web'  => array_key_exists('websiteUrl', $payload) ? (trim((string)$payload['websiteUrl']) ?: null) : $org['website_url'],
+                        ':web'  => $nextWebUrl,
                         ':oid'  => $existing['organization_id'],
                     ]);
                 }
@@ -845,7 +881,10 @@ try {
             $category = isset($payload['category']) ? trim((string)$payload['category']) : $existing['category'];
             $up = $pdo->prepare('UPDATE media_assets SET alt_text = :alt, category = :cat WHERE id = :id');
             $up->execute([':alt' => $altText, ':cat' => $category, ':id' => $id]);
-            jsonResponse(['item' => ['id' => $id, 'altText' => $altText, 'category' => $category]]);
+            $updatedMedia = ['id' => $id, 'altText' => $altText, 'category' => $category];
+            pfgCmsRecordRevision($pdo, 'media_asset', $id, $updatedMedia, (string)$user['id'], 'Updated media asset metadata');
+            logAudit(['actorUserId' => $user['id'], 'action' => 'CMS_MEDIA_UPDATED', 'resourceType' => 'media_asset', 'resourceId' => $id, 'metadata' => $updatedMedia]);
+            jsonResponse(['item' => $updatedMedia]);
         }
 
         jsonResponse(['error' => 'Unsupported CMS entityType for update.'], 400);

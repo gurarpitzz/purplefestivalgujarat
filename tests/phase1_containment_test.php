@@ -98,12 +98,13 @@ pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean schema & seed initialization
     $catCount = (int)$pdo->query('SELECT COUNT(*) FROM registration_categories WHERE is_active = 1')->fetchColumn();
     $partnerCount = (int)$pdo->query('SELECT COUNT(*) FROM partners WHERE status = \'PUBLISHED\'')->fetchColumn();
 
-    pfgAssert(count($tables) === 57, 'Expected 57 tables, got ' . count($tables));
+    pfgAssert(count($tables) === 58, 'Expected 58 tables (57 schema + security_rate_limits), got ' . count($tables));
+    pfgAssert(in_array('security_rate_limits', $tables, true), 'Missing Phase 2 security_rate_limits table');
     pfgAssert($edCount === 1, 'Expected 1 active festival edition, got ' . $edCount);
     pfgAssert($catCount === 8, 'Expected 8 active categories, got ' . $catCount);
     pfgAssert($partnerCount === 11, 'Expected 11 seeded partners, got ' . $partnerCount);
 
-    return "Fresh MariaDB pfg27_test initialized: 57 tables, 1 active edition, 8 categories, 11 partners";
+    return "Fresh MariaDB pfg27_test initialized: 58 tables (57 core + security_rate_limits), 1 active edition, 8 categories, 11 partners";
 });
 
 // T1-03: Fail-closed when AUTH_SECRET / QR_SIGNING_SECRET missing
@@ -215,7 +216,9 @@ pfgTest('T1-10', 'Live native PHP 8.2 + MariaDB HTTP routing & containment smoke
     if (!is_array($env)) {
         $env = [];
     }
-    $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $p1Log = __DIR__ . DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR . 'php_p1_server.log';
+    @unlink($p1Log);
+    $desc = [0 => ['pipe', 'r'], 1 => ['file', $p1Log, 'a'], 2 => ['file', $p1Log, 'a']];
     $proc = proc_open([$phpBin, '-S', '127.0.0.1:8088', $root . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'router.php'], $desc, $pipes, $root, $env);
     pfgAssert(is_resource($proc), 'Failed to start local PHP test server');
 
@@ -276,9 +279,15 @@ pfgTest('T1-10', 'Live native PHP 8.2 + MariaDB HTTP routing & containment smoke
         return 'All 17 live HTTP checks passed (including GET /api/registrations -> 200 w/ 8 DB categories & 403 on all 7 internal/doc paths)';
     } finally {
         proc_terminate($proc);
-        @fclose($pipes[0]);
-        @fclose($pipes[1]);
-        @fclose($pipes[2]);
+        if (isset($pipes[0]) && is_resource($pipes[0])) {
+            @fclose($pipes[0]);
+        }
+        if (isset($pipes[1]) && is_resource($pipes[1])) {
+            @fclose($pipes[1]);
+        }
+        if (isset($pipes[2]) && is_resource($pipes[2])) {
+            @fclose($pipes[2]);
+        }
         proc_close($proc);
     }
 });

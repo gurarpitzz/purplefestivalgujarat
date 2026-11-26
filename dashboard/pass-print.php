@@ -18,6 +18,7 @@ if (!$user) {
     header('Location: /login?next=' . rawurlencode($next));
     exit;
 }
+enforceStaffMfaGate($user);
 
 $registrationId = trim((string)($_GET['registrationId'] ?? $_GET['id'] ?? $_GET['code'] ?? ''));
 if ($registrationId === '') {
@@ -227,10 +228,10 @@ $autoPrint = isset($_GET['print']) && $_GET['print'] === '1';
     <?php if (!$reg || !$credential): ?>
       <div class="max-w-[480px] mx-auto rounded-2xl bg-white border border-[#59436D]/25 p-8 text-center space-y-4">
         <h1 class="text-xl font-bold text-[#17151C]">
-          <?= htmlspecialchars($errorMsg ?? 'No Active QR Entry Pass Available', ENT_QUOTES, 'UTF-8') ?>
+          <?= htmlspecialchars($errorMsg ?? 'QR Entry Pass Issuance Discontinued', ENT_QUOTES, 'UTF-8') ?>
         </h1>
         <p class="text-sm text-[#4B4257]">
-          Passes are automatically issued once your registration is confirmed or approved by festival coordinators.
+          New participant QR entry passes are no longer issued (Decision D-01). Please use your official Registration ID at the festival Registration Desk in Vadodara.
         </p>
         <a
           href="/dashboard"

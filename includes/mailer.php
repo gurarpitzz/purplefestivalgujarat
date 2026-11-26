@@ -3,28 +3,17 @@ declare(strict_types=1);
 
 /**
  * Purple Festival Gujarat 2027 — Email & Resend API Delivery Service
- * Delivers participant QR entry passes and application confirmations via email
- * using Resend API (when RESEND_API_KEY is configured) or local PHP mail() fallback,
- * while logging every notification in `notification_queue`.
+ * Phase 2 Hardened:
+ * - Zero third-party QR rendering APIs (api.qrserver.com removed per D-01).
+ * - Zero raw credentials, QR entry pass tokens, or password-reset URLs persisted in notification_queue.payload.
+ * - Safe local file capture sink (MAIL_DRIVER=file) and disabled mode (MAIL_DRIVER=disabled).
  */
 
 require_once __DIR__ . '/config.php';
 
 if (!function_exists('sendFestivalEmail')) {
     /**
-     * Sends an email via Resend API (or PHP mail fallback) and logs into notification_queue.
-     *
-     * @param PDO $pdo
-     * @param array{
-     *   to:string,
-     *   subject:string,
-     *   html:string,
-     *   text?:string,
-     *   templateCode?:string,
-     *   recipientUserId?:?string,
-     *   metadata?:array
-     * } $options
-     * @return array{sent:bool, provider:string, messageId:?string, status:string, error:?string}
+     * Sends an email via Resend API (or safe local file sink) and logs scrubbed metadata in notification_queue.
      */
     function sendFestivalEmail(PDO $pdo, array $options): array
     {
@@ -50,6 +39,12 @@ if (!function_exists('sendFestivalEmail')) {
             ];
         }
 
+        // Scrub any sensitive tokens or URLs before writing to file sink OR notification_queue
+        $safeMetadata = function_exists('pfgScrubSensitiveArray')
+            ? pfgScrubSensitiveArray($metadata)
+            : $metadata;
+        unset($safeMetadata['rawToken'], $safeMetadata['resetUrl'], $safeMetadata['token'], $safeMetadata['secret']);
+
         $mailDriver = defined('MAIL_DRIVER') ? strtolower(trim((string)MAIL_DRIVER)) : 'resend';
         $apiKey = defined('RESEND_API_KEY') ? trim((string)RESEND_API_KEY) : '';
         $fromAddress = defined('EMAIL_FROM') && EMAIL_FROM !== ''
@@ -72,8 +67,6 @@ if (!function_exists('sendFestivalEmail')) {
                 @mkdir($sinkDir, 0775, true);
             }
             $captureId = 'local-' . uuid4();
-            $safeMetadata = $metadata;
-            unset($safeMetadata['rawToken'], $safeMetadata['resetUrl']);
             $envelope = [
                 'captureId'    => $captureId,
                 'capturedAt'   => nowIso(),
@@ -152,6 +145,12 @@ if (!function_exists('sendFestivalEmail')) {
             }
         }
 
+        $queuePayload = jsonEncode(array_merge($safeMetadata, [
+            'provider'  => $provider,
+            'messageId' => $messageId,
+            'error'     => $errMsg,
+        ]));
+
         try {
             $now = nowSql();
             $stmt = $pdo->prepare(
@@ -165,11 +164,7 @@ if (!function_exists('sendFestivalEmail')) {
                 ':uid'           => $recipientUserId,
                 ':email'         => $to,
                 ':subject'       => $subject,
-                ':payload'       => jsonEncode(array_merge($metadata, [
-                    'provider'  => $provider,
-                    'messageId' => $messageId,
-                    'error'     => $errMsg,
-                ])),
+                ':payload'       => $queuePayload,
                 ':status'        => $status,
                 ':provider'      => $provider,
                 ':msg_id'        => $messageId,
@@ -191,11 +186,7 @@ if (!function_exists('sendFestivalEmail')) {
                     ':uid'           => $recipientUserId,
                     ':email'         => $to,
                     ':subject'       => $subject,
-                    ':payload'       => jsonEncode(array_merge($metadata, [
-                        'provider'  => $provider,
-                        'messageId' => $messageId,
-                        'error'     => $errMsg,
-                    ])),
+                    ':payload'       => $queuePayload,
                     ':status'        => $status,
                     ':created_at'    => $now,
                     ':updated_at'    => $now,
@@ -215,25 +206,20 @@ if (!function_exists('sendFestivalEmail')) {
     }
 }
 
-if (!function_exists('sendRegistrationQrPassEmail')) {
+if (!function_exists('sendRegistrationConfirmationEmail')) {
     /**
-     * Sends the official Digital QR Entry Pass email to an attendee, delegate, volunteer, or SLI professional.
+     * Sends the official Registration Confirmation / Approval email with human-readable Registration ID
+     * and optional duty schedule. Contains ZERO QR entry pass images and ZERO third-party image URLs (D-01).
      */
-    function sendRegistrationQrPassEmail(PDO $pdo, array $params): array
+    function sendRegistrationConfirmationEmail(PDO $pdo, array $params): array
     {
         $to = (string)($params['to'] ?? '');
         $fullName = trim((string)($params['fullName'] ?? 'Participant'));
         $registrationCode = trim((string)($params['registrationCode'] ?? ''));
-        $credentialCode = trim((string)($params['credentialCode'] ?? $registrationCode));
         $categoryName = trim((string)($params['categoryName'] ?? 'Festival Participant'));
         $status = trim((string)($params['status'] ?? 'CONFIRMED'));
-        $rawToken = trim((string)($params['rawToken'] ?? ''));
         $recipientUserId = isset($params['recipientUserId']) ? (string)$params['recipientUserId'] : null;
         $dutyDetails = isset($params['dutyDetails']) && is_array($params['dutyDetails']) ? $params['dutyDetails'] : null;
-
-        $qrImgUrl = $rawToken !== ''
-            ? 'https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=12&data=' . rawurlencode($rawToken)
-            : '';
 
         $esc = static fn(string $v): string => htmlspecialchars($v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
@@ -256,15 +242,6 @@ if (!function_exists('sendRegistrationQrPassEmail')) {
             }
         }
 
-        $qrBlockHtml = $qrImgUrl !== ''
-            ? '<div style="margin:24px 0;padding:20px;text-align:center;background:#F8F6FC;border:2px solid #A459FF;border-radius:16px;">'
-                . '<img src="' . $esc($qrImgUrl) . '" alt="QR Entry Pass for ' . $esc($registrationCode) . '" width="240" height="240" style="display:block;margin:0 auto;border-radius:8px;background:#ffffff;padding:10px;" />'
-                . '<p style="margin:12px 0 4px 0;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#46537C;">Credential ID</p>'
-                . '<p style="margin:0;font-family:monospace;font-size:18px;font-weight:700;color:#202D59;">' . $esc($credentialCode) . '</p>'
-                . '<p style="margin:10px 0 0 0;font-size:12px;color:#46537C;">This QR contains an opaque verification token with zero personal or medical disclosures.</p>'
-                . '</div>'
-            : '';
-
         $html = '<!DOCTYPE html><html><body style="margin:0;padding:24px;background:#F2E9FE;font-family:Arial,Helvetica,sans-serif;color:#202D59;">'
             . '<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #C7C7F4;">'
             . '<div style="background:#202D59;color:#ffffff;padding:24px 28px;">'
@@ -273,12 +250,11 @@ if (!function_exists('sendRegistrationQrPassEmail')) {
             . '</div>'
             . '<div style="padding:28px;">'
             . '<p style="margin:0 0 14px 0;font-size:16px;">Dear <strong>' . $esc($fullName) . '</strong>,</p>'
-            . '<p style="margin:0 0 18px 0;font-size:15px;line-height:1.6;color:#46537C;">Your registration is <strong>' . $esc($status) . '</strong> under the category <strong>' . $esc($categoryName) . '</strong>. Please present this email QR code or your Registration Code at the reception desk in Vadodara for check-in.</p>'
-            . '<div style="padding:14px 16px;background:#DDDDF9;border-radius:10px;">'
-            . '<p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#46537C;">Registration Code</p>'
+            . '<p style="margin:0 0 18px 0;font-size:15px;line-height:1.6;color:#46537C;">Your registration is <strong>' . $esc($status) . '</strong> under the category <strong>' . $esc($categoryName) . '</strong>. Please quote your official Registration ID below at the Registration Desk in Vadodara for check-in.</p>'
+            . '<div style="padding:16px 18px;background:#DDDDF9;border-radius:10px;">'
+            . '<p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#46537C;">Official Registration ID</p>'
             . '<p style="margin:4px 0 0 0;font-family:monospace;font-size:20px;font-weight:700;color:#202D59;">' . $esc($registrationCode) . '</p>'
             . '</div>'
-            . $qrBlockHtml
             . $dutyHtml
             . '<p style="margin:24px 0 0 0;font-size:13px;line-height:1.5;color:#46537C;">If you require any accessibility assistance at the venue, write to <a href="mailto:purplefestivalvadodara@gmail.com" style="color:#A459FF;">purplefestivalvadodara@gmail.com</a>.</p>'
             . '</div>'
@@ -287,29 +263,37 @@ if (!function_exists('sendRegistrationQrPassEmail')) {
         $text = "Purple Festival Gujarat 2027 (21–23 January 2027 · Vadodara, Gujarat)\n\n"
             . "Dear {$fullName},\n"
             . "Your registration ({$registrationCode}) for {$categoryName} is {$status}.\n"
-            . "Credential ID: {$credentialCode}\n"
-            . ($rawToken !== '' ? "Verification Token: {$rawToken}\n" : '')
-            . ($qrImgUrl !== '' ? "QR Pass Image: {$qrImgUrl}\n" : '')
+            . "Official Registration ID: {$registrationCode}\n"
             . $dutyText
-            . "\nPresent this email or Registration ID at any festival reception desk.\n";
+            . "\nPlease quote your Registration ID at the festival Registration Desk in Vadodara.\n";
 
-        $subject = "Your QR Entry Pass: Purple Festival Gujarat 2027 ({$registrationCode})";
+        $subject = "Registration Confirmation: Purple Festival Gujarat 2027 ({$registrationCode})";
 
         return sendFestivalEmail($pdo, [
             'to'              => $to,
             'subject'         => $subject,
             'html'            => $html,
             'text'            => $text,
-            'templateCode'    => 'REGISTRATION_QR_PASS',
+            'templateCode'    => 'REGISTRATION_CONFIRMED',
             'recipientUserId' => $recipientUserId,
             'metadata'        => [
                 'registrationCode' => $registrationCode,
-                'credentialCode'   => $credentialCode,
                 'category'         => $categoryName,
                 'status'           => $status,
-                'rawToken'         => $rawToken,
             ],
         ]);
+    }
+}
+
+if (!function_exists('sendRegistrationQrPassEmail')) {
+    /**
+     * Backward-compatible wrapper preserved during QR retirement (D-01).
+     * Delegates to sendRegistrationConfirmationEmail() with ZERO QR image and ZERO rawToken storage.
+     */
+    function sendRegistrationQrPassEmail(PDO $pdo, array $params): array
+    {
+        unset($params['rawToken'], $params['credentialCode']);
+        return sendRegistrationConfirmationEmail($pdo, $params);
     }
 }
 
@@ -337,15 +321,15 @@ if (!function_exists('sendApplicationReceivedEmail')) {
             . '<p style="margin:0 0 14px 0;font-size:16px;">Dear <strong>' . $esc($fullName) . '</strong>,</p>'
             . '<p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#46537C;">Thank you for submitting your <strong>' . $esc($categoryName) . '</strong> application. Our festival coordinators are reviewing your details.</p>'
             . '<div style="padding:14px 16px;background:#DDDDF9;border-radius:10px;margin-bottom:16px;">'
-            . '<p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#46537C;">Application Reference</p>'
+            . '<p style="margin:0;font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#46537C;">Application Reference ID</p>'
             . '<p style="margin:4px 0 0 0;font-family:monospace;font-size:20px;font-weight:700;color:#202D59;">' . $esc($registrationCode) . '</p>'
             . '</div>'
-            . '<p style="margin:0;font-size:14px;line-height:1.6;color:#46537C;">Once approved, your official <strong>Digital QR Entry Pass</strong> and venue duty schedule will be sent straight to this email address.</p>'
+            . '<p style="margin:0;font-size:14px;line-height:1.6;color:#46537C;">Once approved, your official registration confirmation and venue duty schedule will be sent to this email address.</p>'
             . '</div></div></body></html>';
 
         $text = "Dear {$fullName},\n\n"
             . "Thank you for submitting your {$categoryName} application for Purple Festival Gujarat 2027 (Ref: {$registrationCode}).\n"
-            . "Once our coordinators approve your application, your official Digital QR Entry Pass and duty schedule will be sent to this email address.\n";
+            . "Once our coordinators approve your application, your official confirmation and duty schedule will be sent to this email address.\n";
 
         return sendFestivalEmail($pdo, [
             'to'              => $to,
@@ -361,4 +345,3 @@ if (!function_exists('sendApplicationReceivedEmail')) {
         ]);
     }
 }
-

@@ -19,6 +19,7 @@ if (!$user) {
     header('Location: /login?next=/rgst');
     exit;
 }
+enforceStaffMfaGate($user);
 
 $userRoles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
 $canScan = (function_exists('hasPermission') && hasPermission($user, PERMISSIONS['QR_SCAN']))
@@ -211,6 +212,14 @@ require_once dirname(__DIR__) . '/includes/header.php';
   </header>
 
   <main id="rgst-main" class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+    <!-- Phase 2 Transition Notice (Decision D-01) -->
+    <div role="status" class="rounded-2xl border border-[#D5B77B]/60 bg-[#2A2236] p-4 text-sm text-[#F9F7FC] space-y-1">
+      <p class="font-bold text-[#D5B77B]">QR Pass Scanning Discontinued (Decision D-01)</p>
+      <p class="text-xs text-[#E8DFF2]">
+        Event-day QR credential scanning and new QR pass issuance have been discontinued. Historical check-in logs remain preserved read-only below while the manual checkbox Registration Desk workflow is prepared in Phase 9.
+      </p>
+    </div>
+
     <!-- Top Row: Camera QR Scanner + USB/Manual Entry -->
     <section
       aria-label="Scan or enter participant credential"
@@ -1047,11 +1056,15 @@ require_once dirname(__DIR__) . '/includes/header.php';
   }
 
   // Logout
+  var rgstCsrfToken = <?= pfgSafeJsonForScript(getCsrfToken()) ?>;
   if (logoutBtn) {
     logoutBtn.addEventListener("click", function () {
       logoutBtn.disabled = true;
       stopCamera();
-      fetch("/api/auth/logout", { method: "POST" })
+      fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "X-CSRF-Token": rgstCsrfToken }
+      })
         .catch(function () {})
         .finally(function () {
           window.location.href = "/login";

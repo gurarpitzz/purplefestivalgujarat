@@ -20,6 +20,9 @@ $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
     requirePermission(PERMISSIONS['COUPONS_MANAGE'], $user);
+    if (in_array($method, ['POST', 'PATCH', 'PUT', 'DELETE'], true)) {
+        requireCsrfToken($user);
+    }
     $pdo = getDb();
 
     // =========================================================================

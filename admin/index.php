@@ -30,12 +30,15 @@ if (!hasRole($user, ['SUPERADMIN', 'ADMIN'])) {
 $isSuperadmin = in_array('SUPERADMIN', $user['roles'] ?? [], true);
 
 $currentUserPayload = [
-    'id'          => (string)$user['id'],
-    'fullName'    => (string)$user['fullName'],
-    'email'       => (string)$user['email'],
-    'roles'       => array_values($user['roles'] ?? []),
-    'permissions' => array_values($user['permissions'] ?? []),
-    'mfaEnabled'  => !empty($user['mfaEnabled']),
+    'id'                    => (string)$user['id'],
+    'fullName'              => (string)$user['fullName'],
+    'email'                 => (string)$user['email'],
+    'roles'                 => array_values($user['roles'] ?? []),
+    'permissions'           => array_values($user['permissions'] ?? []),
+    'mfaEnabled'            => !empty($user['mfaEnabled']),
+    'mfaVerified'           => !empty($user['mfaVerified']),
+    'mfaRequiredForRole'    => !empty($user['mfaRequiredForRole']),
+    'mfaEnrollmentRequired' => !empty($user['mfaEnrollmentRequired']),
 ];
 
 function h_admin(string $val): string
@@ -185,8 +188,8 @@ function h_admin(string $val): string
   <div id="admin-modal-root"></div>
 
   <script>
-    window.PFG_ADMIN_USER = <?= json_encode($currentUserPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
-    window.PFG_CSRF_TOKEN = <?= json_encode(getCsrfToken(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    window.PFG_ADMIN_USER = <?= pfgSafeJsonForScript($currentUserPayload) ?>;
+    window.PFG_CSRF_TOKEN = <?= pfgSafeJsonForScript(getCsrfToken()) ?>;
   </script>
   <script src="/assets/js/qrcode-gen.js" defer></script>
   <script src="/assets/js/admin-portal.js" defer></script>

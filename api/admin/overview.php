@@ -21,6 +21,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
+    $canReadAccomm = hasPermission($user, PERMISSIONS['ACCOMMODATIONS_READ']);
+    $canReadPayments = hasPermission($user, PERMISSIONS['PAYMENTS_READ']);
+    $canReadAttendance = hasPermission($user, PERMISSIONS['ATTENDANCE_READ_FULL']);
     $pdo = getDb();
     $todayIst = getIstDateString();
 
@@ -417,21 +420,21 @@ try {
             'approvedSli'                          => $approvedSli,
             'pendingSli'                           => $sliPendingCount,
             'alliesSupporters'                     => $alliesSupporters,
-            'participantsRequestingAccommodations' => count($accommByReg),
-            'totalCheckins'                        => count($allCheckins),
-            'uniqueCheckedInParticipants'          => $uniqueCheckedInParticipants,
-            'notYetArrived'                        => $notYetArrived,
-            'todayCheckins'                        => $todayCheckins,
+            'participantsRequestingAccommodations' => $canReadAccomm ? count($accommByReg) : null,
+            'totalCheckins'                        => $canReadAttendance ? count($allCheckins) : null,
+            'uniqueCheckedInParticipants'          => $canReadAttendance ? $uniqueCheckedInParticipants : null,
+            'notYetArrived'                        => $canReadAttendance ? $notYetArrived : null,
+            'todayCheckins'                        => $canReadAttendance ? $todayCheckins : null,
         ],
-        'accommodationSummary'        => $accommodationSummary,
-        'paymentReconciliation'       => $paymentReconciliation,
+        'accommodationSummary'        => $canReadAccomm ? $accommodationSummary : null,
+        'paymentReconciliation'       => $canReadPayments ? $paymentReconciliation : null,
         'dailyRegistrationTrends'     => $dailyRegistrationTrends,
         'categoryDistribution'        => $categoryDistribution,
-        'attendanceByDay'             => $attendanceByDay,
-        'attendanceByVenue'           => $attendanceByVenue,
+        'attendanceByDay'             => $canReadAttendance ? $attendanceByDay : [],
+        'attendanceByVenue'           => $canReadAttendance ? $attendanceByVenue : [],
         'volunteerPipeline'           => $volunteerPipeline,
         'sliPipeline'                 => $sliPipeline,
-        'recentCheckins'              => $recentCheckins,
+        'recentCheckins'              => $canReadAttendance ? $recentCheckins : [],
     ]);
 } catch (Throwable $e) {
     error_log('GET /api/admin/overview.php error: ' . $e->getMessage());

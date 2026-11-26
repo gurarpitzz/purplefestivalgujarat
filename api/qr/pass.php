@@ -35,6 +35,7 @@ try {
         echo jsonEncode(['error' => 'Authentication required.']);
         exit;
     }
+    enforceStaffMfaGate($user);
 
     if ($registrationId === '') {
         http_response_code(400);
@@ -168,10 +169,12 @@ try {
     }
 
     if ($method === 'POST' || $method === 'PATCH') {
+        requireCsrfToken($user);
+
         $action = strtolower(trim((string)($body['action'] ?? 'reissue')));
         if (!in_array($action, ['reissue', 'revoke', 'issue'], true)) {
             http_response_code(400);
-            echo jsonEncode(['error' => 'Invalid action. Use reissue or revoke.']);
+            echo jsonEncode(['error' => 'Invalid action.']);
             exit;
         }
         $reason = trim((string)($body['reason'] ?? ''));
@@ -179,11 +182,20 @@ try {
             $reason = substr($reason, 0, 300);
         }
 
+        if ($action === 'issue' || $action === 'reissue') {
+            http_response_code(410);
+            echo jsonEncode([
+                'error'      => 'Participant QR entry pass issuance has been discontinued (Decision D-01). Use official Registration IDs for check-in.',
+                'deprecated' => true,
+            ]);
+            exit;
+        }
+
         if ($action === 'revoke') {
-            $canRevoke = (function_exists('hasPermission') && hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE'])) || $isAdmin;
+            $canRevoke = function_exists('hasPermission') && hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE']);
             if (!$canRevoke) {
                 http_response_code(403);
-                echo jsonEncode(['error' => 'Insufficient permissions to revoke credentials.']);
+                echo jsonEncode(['error' => 'Insufficient permissions to revoke legacy credentials.']);
                 exit;
             }
 
@@ -219,46 +231,6 @@ try {
                 'action'     => 'revoke',
                 'credential' => $revoked,
             ]);
-            exit;
-        }
-
-        // Reissue / issue action
-        $canIssue = (function_exists('hasPermission') && hasPermission($user, PERMISSIONS['CREDENTIALS_ISSUE'])) || $isAdmin;
-        if (!$canIssue) {
-            http_response_code(403);
-            echo jsonEncode(['error' => 'Insufficient permissions to issue or reissue credentials.']);
-            exit;
-        }
-
-        try {
-            $issued = issueCredentialForRegistration($pdo, $registrationId, (string)$user['id']);
-
-            if (function_exists('logAudit')) {
-                logAudit((string)$user['id'], 'CREDENTIAL_REISSUED', 'qr_credential', (string)$issued['credential']['id'], [
-                    'registrationId' => $registrationId,
-                    'credentialCode' => $issued['credential']['credentialCode'],
-                ]);
-            }
-
-            http_response_code(201);
-            echo jsonEncode([
-                'success'    => true,
-                'action'     => 'reissue',
-                'credential' => [
-                    'id'             => $issued['credential']['id'],
-                    'credentialCode' => $issued['credential']['credentialCode'],
-                    'status'         => $issued['credential']['status'],
-                    'issuedAt'       => $issued['credential']['issuedAt'],
-                    'issuedAtIst'    => $issued['credential']['issuedAtIst'],
-                ],
-                'rawToken'   => $issued['rawToken'],
-                'qrPayload'  => $issued['rawToken'],
-                'qrDataUrl'  => $issued['qrDataUrl'],
-            ]);
-            exit;
-        } catch (Throwable $issueErr) {
-            http_response_code(400);
-            echo jsonEncode(['error' => $issueErr->getMessage()]);
             exit;
         }
     }

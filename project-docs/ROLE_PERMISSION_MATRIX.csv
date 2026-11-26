@@ -1,0 +1,23 @@
+Endpoint / Capability,HTTP Method,Required Permission / Policy,Unauthenticated,PARTICIPANT,RGST,ADMIN (Default),ADMIN (Custom CMS/Audit),SUPERADMIN,CSRF Required,Mandatory MFA Gate (D-20),Verified Test ID
+/api/auth/login,POST,Staff role after password verify + Rate limit,200 (Staff) / 401,403 (Staff portal),200 (MFA opt),200 (MFA req),200 (MFA req),200 (MFA req),No (pre-auth),Enforces D-20,T2-01..T2-06
+/api/auth/logout,POST (GET=405),Authenticated + CSRF,403 (No CSRF),200,200,200,200,200,Yes,Allowed during enrollment,T2-04
+/api/auth/mfa,GET,Authenticated (Read-only),401,200 (RO),200 (RO),200 (RO),200 (RO),200 (RO),No (RO),Allowed during enrollment,T2-07
+/api/auth/mfa,POST (setup/enable),Authenticated + CSRF (+ re-auth on replace),401,200,200,200,200,200,Yes,Allowed during enrollment,T2-07..T2-10
+/api/auth/mfa,POST (disable),Optional MFA roles only + CSRF + re-auth,401,200,200,403 (Mandatory),403 (Mandatory),403 (Mandatory),Yes,Blocked for ADMIN/SUPERADMIN,T2-09..T2-10
+/api/auth/signup,POST,Contained pending Phase 5,403,403,403,403,403,403,N/A,Contained,T2-05
+/api/registrations,POST,Public new email / Auth own email + CSRF,201 (new) / 409 (exists),201 (own) / 403,403 (other),403 (other),403 (other),403 (other),Yes when auth,N/A,T2-17..T2-18
+/api/account/profile,GET / PATCH,Authenticated owner (+ CSRF on PATCH),401,200,200,200 (w/ MFA),200 (w/ MFA),200 (w/ MFA),Yes on PATCH,Yes for ADMIN/SUPERADMIN,T2-11
+/api/account/accommodations,GET / POST,Authenticated owner (+ CSRF on POST),401,200 / 201,200 / 201,200 / 201 (w/ MFA),200 / 201 (w/ MFA),200 / 201 (w/ MFA),Yes on POST,Yes for ADMIN/SUPERADMIN,T2-11
+/dashboard,GET,Authenticated (302 -> /login if unauth),302 /login,200,200,200 (w/ MFA),200 (w/ MFA),200 (w/ MFA),No,Yes for ADMIN/SUPERADMIN,T2-14 / A-12
+/api/admin/overview,GET,ADMIN/SUPERADMIN + field-level gating,401,403,403,200,200,200,No,Yes (403 until enrolled),T2-06 / T2-12
+/api/admin/registrations,GET,registrations.read.all (+ accommodations.read for sensitive),401,403,403,200,200,200,No,Yes,T2-12 / T2-20
+/api/admin/registrations?export=csv,GET,registrations.export (+ accommodations.read if included),401,403,403,200 (CSV safe),200 (CSV safe),200 (CSV safe),No,Yes,T2-20
+/api/admin/registrations,PATCH / POST,registrations.write / volunteers.review / sli.review + CSRF,401,403,403,200 (410 on QR ISSUE),200 (410 on QR ISSUE),200 (410 on QR ISSUE),Yes,Yes,T2-11 / T2-19
+/api/admin/accommodations,GET / PATCH,accommodations.read / accommodations.manage + CSRF,401,403,403,200,200,200,Yes on PATCH,Yes,T2-11 / T2-12
+/api/admin/coupons,GET / POST / PATCH,coupons.manage + CSRF,401,403,403,200,200,200,Yes on write,Yes,T2-11 / T2-12
+/api/admin/cms,GET / POST / PATCH / DELETE,cms.manage + CSRF,401,403,403,403,200,200,Yes on write,Yes,T2-11 / T2-12 / T2-16
+/api/admin/audit-logs,GET,audit_logs.read,401,403,403,403,200,200,No,Yes,T2-12 / T2-21
+/api/admin/users,GET / POST / PATCH,SUPERADMIN + admin_accounts.manage + CSRF,401,403,403,403,403,200 (self/last guards),Yes on write,Yes,T2-11..T2-13
+/api/checkins,GET,attendance.read.own (RGST) / attendance.read.full (ADMIN),401,403,200 (OWN only),200 (FULL),200 (FULL),200 (FULL),No,Yes for ADMIN/SUPERADMIN,T2-12
+/api/qr/verify & /api/checkins/confirm,POST,RGST/ADMIN/SUPERADMIN + CSRF -> Discontinued (D-01),401,403,410 Gone,410 Gone,410 Gone,410 Gone,Yes,Yes for ADMIN/SUPERADMIN,T2-11 / T2-19
+/api/qr/pass,POST (issue/reissue),Discontinued (D-01) + CSRF,401,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,Yes,Yes for ADMIN/SUPERADMIN,T2-19

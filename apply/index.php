@@ -175,7 +175,7 @@ $ssrPathways = [
     [
         'id'    => 'ATTENDEE',
         'title' => 'General Attendee',
-        'badge' => 'Instant QR Pass',
+        'badge' => 'Instant Registration ID',
     ],
     [
         'id'    => 'ACCESSIBLE',
@@ -272,10 +272,9 @@ require_once __DIR__ . '/../includes/header.php';
   </main>
 
 <?php
-$bootJson = json_encode($wizardBootData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+$bootJson = pfgSafeJsonForScript($wizardBootData);
 $extraFooterHtml = <<<HTML
 <script>window.__PFG_WIZARD_BOOT__ = {$bootJson};</script>
-<script src="/assets/js/qrcode-gen.js"></script>
 <script src="/assets/js/registration-wizard.js"></script>
 HTML;
 

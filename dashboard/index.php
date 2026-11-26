@@ -11,11 +11,12 @@ require_once dirname(__DIR__) . '/includes/database.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
 require_once dirname(__DIR__) . '/includes/qr-service.php';
 
-$user = function_exists('requireAuth') ? requireAuth('/login?next=/dashboard') : getCurrentUser();
+$user = getCurrentUser();
 if (!$user) {
-    header('Location: /login?next=/dashboard');
+    header('Location: /login?next=' . rawurlencode('/dashboard'));
     exit;
 }
+enforceStaffMfaGate($user);
 
 $pdo = getDb();
 $userId = (string)$user['id'];
@@ -162,8 +163,8 @@ if (count($regIds) > 0) {
             'registrationCode' => $regCodeMap[$rId]['code'] ?? '',
             'categoryCode'     => $regCodeMap[$rId]['categoryCode'] ?? '',
             'selectedTypes'    => array_values($selTypes),
-            'freeTextDetails'  => $ar['free_text_details'] ?? $ar['notes'] ?? null,
-            'coordinatorNotes' => $ar['coordinator_notes'] ?? null,
+            'freeTextDetails'  => pfgDecryptValue($ar['free_text_details'] ?? $ar['notes'] ?? null, 'data'),
+            'coordinatorNotes' => pfgDecryptValue($ar['coordinator_notes'] ?? null, 'data'),
             'status'           => (string)($ar['status'] ?? 'REQUESTED'),
             'createdAt'        => (string)$ar['created_at'],
         ];
@@ -937,7 +938,8 @@ require_once dirname(__DIR__) . '/includes/header.php';
 (function () {
   "use strict";
 
-  var accLabelMap = <?= jsonEncode($accLabelMap) ?>;
+  var csrfToken = <?= pfgSafeJsonForScript(getCsrfToken()) ?>;
+  var accLabelMap = <?= pfgSafeJsonForScript($accLabelMap) ?>;
   var accCount = <?= count($accommodations) ?>;
 
   // 1. Tab switching
@@ -983,7 +985,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
     logoutBtn.addEventListener("click", function () {
       logoutBtn.disabled = true;
       if (logoutLabel) logoutLabel.textContent = "Signing out...";
-      fetch("/api/auth/logout", { method: "POST" })
+      fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "X-CSRF-Token": csrfToken }
+      })
         .catch(function () {})
         .finally(function () {
           window.location.href = "/login";
@@ -1046,7 +1051,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
 
       fetch("/api/account/accommodations.php", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
         body: JSON.stringify({
           registrationId: registrationId,
           selectedTypes: selectedTypes,
@@ -1167,7 +1175,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
 
       fetch("/api/account/profile.php", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
         body: JSON.stringify(payload)
       })
         .then(function (res) {
@@ -1225,7 +1236,14 @@ require_once dirname(__DIR__) . '/includes/header.php';
       mfaStartBtn.disabled = true;
       mfaStartBtn.textContent = "Generating QR Code...";
 
-      fetch("/api/auth/mfa")
+      fetch("/api/auth/mfa", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken
+        },
+        body: JSON.stringify({ action: "setup" })
+      })
         .then(function (res) {
           return res.json().then(function (data) {
             return { ok: res.ok, data: data };
@@ -1273,7 +1291,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
 
     fetch("/api/auth/mfa", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken
+      },
       body: JSON.stringify({ code: code, action: action })
     })
       .then(function (res) {

@@ -106,13 +106,14 @@ try {
                     }
 
                     $assign = $assignmentsByReq[$rowId] ?? $assignmentsByReq[$regId] ?? null;
-                    $coordNotes = $assign['coordinatorNotes']
+                    $rawCoordNotes = $assign['coordinatorNotes']
                         ?? $row['coordinator_notes']
                         ?? '';
+                    $coordNotes = pfgDecryptValue($rawCoordNotes !== '' ? (string)$rawCoordNotes : null, 'data') ?? '';
                     $assignedUser = $assign['assignedToUserId']
                         ?? $row['assigned_to_user_id']
                         ?? null;
-                    $freeText = $row['free_text_details'] ?? $row['notes'] ?? null;
+                    $freeText = pfgDecryptValue($row['free_text_details'] ?? $row['notes'] ?? null, 'data');
 
                     if (!isset($groupedByReg[$regId])) {
                         $groupedByReg[$regId] = [
@@ -180,6 +181,18 @@ try {
             $items[] = $item;
         }
 
+        logAudit([
+            'actorUserId'  => $user['id'],
+            'action'       => 'SENSITIVE_DATA_READ',
+            'resourceType' => 'accommodation_request',
+            'resourceId'   => null,
+            'metadata'     => [
+                'endpoint'     => '/api/admin/accommodations',
+                'recordCount'  => count($items),
+                'statusFilter' => $statusFilter !== '' ? $statusFilter : null,
+            ],
+        ]);
+
         jsonResponse([
             'items' => $items,
             'total' => count($items),
@@ -191,6 +204,7 @@ try {
     // =========================================================================
     if ($method === 'PATCH' || $method === 'POST') {
         requirePermission(PERMISSIONS['ACCOMMODATIONS_MANAGE'], $user);
+        requireCsrfToken($user);
 
         $input = readRequestInput();
         $requestId = trim((string)($input['requestId'] ?? $input['id'] ?? $input['registrationId'] ?? ''));
@@ -224,6 +238,9 @@ try {
         $targetRegId = (string)$existing['registration_id'];
         $targetReqId = (string)$existing['id'];
         $now = nowSql();
+        $encryptedNotes = ($coordinatorNotes !== null && $coordinatorNotes !== '')
+            ? pfgEncryptValue($coordinatorNotes, 'data')
+            : $coordinatorNotes;
 
         // Update both accommodation_requests and registration_accommodations so tables stay in sync
         foreach (['accommodation_requests', 'registration_accommodations'] as $tbl) {
@@ -238,7 +255,7 @@ try {
                 ");
                 $up->execute([
                     ':status' => $status,
-                    ':notes'  => $coordinatorNotes,
+                    ':notes'  => $encryptedNotes,
                     ':uid'    => $user['id'],
                     ':now'    => $now,
                     ':id'     => $targetReqId,
@@ -265,7 +282,7 @@ try {
                 ");
                 $upAs->execute([
                     ':uid'    => $user['id'],
-                    ':notes'  => $coordinatorNotes ?? $existingAssign['coordinator_notes'],
+                    ':notes'  => $encryptedNotes ?? $existingAssign['coordinator_notes'],
                     ':status' => $status,
                     ':now'    => $now,
                     ':id'     => $existingAssign['id'],
@@ -279,7 +296,7 @@ try {
                     ':id'     => uuid4(),
                     ':req_id' => $targetReqId,
                     ':uid'    => $user['id'],
-                    ':notes'  => $coordinatorNotes,
+                    ':notes'  => $encryptedNotes,
                     ':status' => $status,
                     ':now'    => $now,
                 ]);

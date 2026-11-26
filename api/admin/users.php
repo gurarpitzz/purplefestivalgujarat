@@ -21,6 +21,9 @@ $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 try {
     $user = requireRole(['SUPERADMIN']);
     requirePermission(PERMISSIONS['ADMIN_ACCOUNTS_MANAGE'], $user);
+    if (in_array($method, ['POST', 'PATCH', 'PUT', 'DELETE'], true)) {
+        requireCsrfToken($user);
+    }
     $pdo = getDb();
 
     // =========================================================================
@@ -280,25 +283,90 @@ try {
             jsonResponse(['error' => 'User not found.'], 404);
         }
 
+        $targetRp = getUserRolesAndPermissions($targetUserId, $pdo);
+        $targetRoles = $targetRp['roles'];
+        $targetIsSuperadmin = in_array('SUPERADMIN', $targetRoles, true);
+
+        $newRoleCode = (!empty($input['roleCode']) && is_string($input['roleCode']))
+            ? strtoupper(trim($input['roleCode']))
+            : null;
+        if ($newRoleCode !== null && !in_array($newRoleCode, ['ADMIN', 'RGST', 'SUPERADMIN', 'PARTICIPANT'], true)) {
+            jsonResponse(['error' => 'Invalid roleCode. Allowed: ADMIN, RGST, SUPERADMIN, PARTICIPANT.'], 400);
+        }
+
+        // Prevent self-demotion
+        if ($targetUserId === (string)$user['id'] && $newRoleCode !== null && $newRoleCode !== 'SUPERADMIN') {
+            jsonResponse(['error' => 'You cannot demote your own Superadmin account.'], 400);
+        }
+
         $now = nowSql();
         $nextActive = array_key_exists('isActive', $input)
             ? (!empty($input['isActive']) ? 1 : 0)
             : (int)$target['is_active'];
+
+        // Protect the last active SUPERADMIN from deactivation or demotion
+        $demotingSuperadmin = $targetIsSuperadmin && ($nextActive === 0 || ($newRoleCode !== null && $newRoleCode !== 'SUPERADMIN'));
+        if ($demotingSuperadmin) {
+            $cntStmt = $pdo->query("
+                SELECT COUNT(DISTINCT u.id)
+                FROM users u
+                INNER JOIN user_roles ur ON ur.user_id = u.id
+                INNER JOIN roles r ON r.id = ur.role_id
+                WHERE r.code = 'SUPERADMIN' AND u.is_active = 1 AND u.deleted_at IS NULL
+            ");
+            $activeSuperadmins = (int)($cntStmt ? $cntStmt->fetchColumn() : 0);
+            if ($activeSuperadmins <= 1) {
+                jsonResponse(['error' => 'Cannot deactivate or demote the last active Superadmin account.'], 400);
+            }
+        }
+
+        // Reject custom administrative permissions on RGST or PARTICIPANT accounts
+        $effectiveRoleAfter = $newRoleCode ?? ($targetRoles[0] ?? 'PARTICIPANT');
+        if (isset($input['customPermissions']) && is_array($input['customPermissions']) && count($input['customPermissions']) > 0) {
+            if (!in_array($effectiveRoleAfter, ['ADMIN', 'SUPERADMIN'], true)) {
+                jsonResponse(['error' => 'Custom administrative permissions cannot be assigned to RGST or PARTICIPANT accounts.'], 400);
+            }
+        }
 
         $newPassword = (string)($input['newPassword'] ?? $input['password'] ?? '');
         if ($newPassword !== '' && strlen($newPassword) < 8) {
             jsonResponse(['error' => 'New password must be at least 8 characters.'], 400);
         }
 
+        // Superadmin-assisted audited MFA recovery for another locked-out staff member (never self-bypass)
+        $resetMfa = !empty($input['resetMfa']);
+        if ($resetMfa) {
+            if ($targetUserId === (string)$user['id']) {
+                jsonResponse(['error' => 'You cannot reset your own MFA through admin recovery. Use authenticated MFA replacement instead.'], 400);
+            }
+            $pdo->prepare('UPDATE users SET mfa_enabled = 0, mfa_secret_encrypted = NULL, mfa_secret = NULL, updated_at = :now WHERE id = :id')
+                ->execute([':now' => $now, ':id' => $targetUserId]);
+            $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider IN ('mfa_setup', 'mfa_recovery', 'mfa_replay')")
+                ->execute([':uid' => $targetUserId]);
+            revokeAllUserSessions($targetUserId, null, $pdo, (string)$user['id'], 'superadmin_mfa_reset');
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => 'MFA_ADMIN_RESET',
+                'resourceType' => 'user',
+                'resourceId'   => $targetUserId,
+                'metadata'     => ['targetEmail' => $target['email']],
+            ]);
+        }
+
+        $shouldRevokeSessions = false;
+        $revokeReason = 'admin_account_update';
+
         if (array_key_exists('isActive', $input) || $newPassword !== '') {
             if ($newPassword !== '') {
-                $up = $pdo->prepare('UPDATE users SET is_active = :active, password_hash = :pw, updated_at = :now WHERE id = :id');
+                $up = $pdo->prepare('UPDATE users SET is_active = :active, password_hash = :pw, failed_login_attempts = 0, locked_until = NULL, updated_at = :now WHERE id = :id');
                 $up->execute([
                     ':active' => $nextActive,
                     ':pw'     => hashPassword($newPassword),
                     ':now'    => $now,
                     ':id'     => $targetUserId,
                 ]);
+                $shouldRevokeSessions = true;
+                $revokeReason = 'admin_password_reset';
             } else {
                 $up = $pdo->prepare('UPDATE users SET is_active = :active, updated_at = :now WHERE id = :id');
                 $up->execute([
@@ -309,34 +377,40 @@ try {
             }
 
             if ($nextActive === 0) {
-                $rev = $pdo->prepare('UPDATE sessions SET revoked_at = :now WHERE user_id = :uid');
-                $rev->execute([':now' => $now, ':uid' => $targetUserId]);
+                $shouldRevokeSessions = true;
+                $revokeReason = 'account_deactivated';
             }
         }
 
         // Optional role change
-        if (!empty($input['roleCode']) && is_string($input['roleCode'])) {
-            $newRoleCode = strtoupper(trim($input['roleCode']));
-            if (in_array($newRoleCode, ['ADMIN', 'RGST', 'SUPERADMIN', 'PARTICIPANT'], true)) {
-                $stR = $pdo->prepare('SELECT id FROM roles WHERE code = :code LIMIT 1');
-                $stR->execute([':code' => $newRoleCode]);
-                $rRow = $stR->fetch(PDO::FETCH_ASSOC);
-                if ($rRow) {
-                    $delUr = $pdo->prepare('DELETE FROM user_roles WHERE user_id = :uid');
-                    $delUr->execute([':uid' => $targetUserId]);
-                    $insUr = $pdo->prepare('
-                        INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_by, assigned_at)
-                        VALUES (:id, :uid, :rid, :perms, :by, :now)
-                    ');
-                    $insUr->execute([
-                        ':id'    => uuid4(),
-                        ':uid'   => $targetUserId,
-                        ':rid'   => $rRow['id'],
-                        ':perms' => '[]',
-                        ':by'    => $user['id'],
-                        ':now'   => $now,
-                    ]);
-                }
+        if ($newRoleCode !== null) {
+            $stR = $pdo->prepare('SELECT id FROM roles WHERE code = :code LIMIT 1');
+            $stR->execute([':code' => $newRoleCode]);
+            $rRow = $stR->fetch(PDO::FETCH_ASSOC);
+            if ($rRow) {
+                $delUr = $pdo->prepare('DELETE FROM user_roles WHERE user_id = :uid');
+                $delUr->execute([':uid' => $targetUserId]);
+                $insUr = $pdo->prepare('
+                    INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_by, assigned_at)
+                    VALUES (:id, :uid, :rid, :perms, :by, :now)
+                ');
+                $insUr->execute([
+                    ':id'    => uuid4(),
+                    ':uid'   => $targetUserId,
+                    ':rid'   => $rRow['id'],
+                    ':perms' => '[]',
+                    ':by'    => $user['id'],
+                    ':now'   => $now,
+                ]);
+                $shouldRevokeSessions = true;
+                $revokeReason = 'role_changed';
+                logAudit([
+                    'actorUserId'  => $user['id'],
+                    'action'       => 'ROLE_CHANGED',
+                    'resourceType' => 'user',
+                    'resourceId'   => $targetUserId,
+                    'metadata'     => ['previousRoles' => $targetRoles, 'newRole' => $newRoleCode],
+                ]);
             }
         }
 
@@ -344,9 +418,11 @@ try {
         if (isset($input['customPermissions']) && is_array($input['customPermissions'])) {
             $validPermValues = array_values(PERMISSIONS);
             $cleanPerms = [];
-            foreach ($input['customPermissions'] as $p) {
-                if (is_string($p) && in_array($p, $validPermValues, true) && !in_array($p, $cleanPerms, true)) {
-                    $cleanPerms[] = $p;
+            if (in_array($effectiveRoleAfter, ['ADMIN', 'SUPERADMIN'], true)) {
+                foreach ($input['customPermissions'] as $p) {
+                    if (is_string($p) && in_array($p, $validPermValues, true) && !in_array($p, $cleanPerms, true)) {
+                        $cleanPerms[] = $p;
+                    }
                 }
             }
 
@@ -355,6 +431,19 @@ try {
                 ':perms' => jsonEncode($cleanPerms),
                 ':uid'   => $targetUserId,
             ]);
+            $shouldRevokeSessions = true;
+            $revokeReason = 'permissions_changed';
+            logAudit([
+                'actorUserId'  => $user['id'],
+                'action'       => 'PERMISSIONS_CHANGED',
+                'resourceType' => 'user',
+                'resourceId'   => $targetUserId,
+                'metadata'     => ['customPermissions' => $cleanPerms],
+            ]);
+        }
+
+        if ($shouldRevokeSessions) {
+            revokeAllUserSessions($targetUserId, null, $pdo, (string)$user['id'], $revokeReason);
         }
 
         try {

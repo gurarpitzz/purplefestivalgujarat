@@ -31,6 +31,15 @@
       .replace(/'/g, "&#39;");
   }
 
+  function safeHref(url) {
+    if (!url || typeof url !== "string") return "";
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      return trimmed;
+    }
+    return "";
+  }
+
   function statusBadgeClass(status) {
     switch (String(status || "").toUpperCase()) {
       case "APPROVED":
@@ -121,18 +130,21 @@
     { id: "SLI", label: "SLI Professionals", visible: can("sli.review") },
     { id: "ACCOMMODATIONS", label: "Accommodations", visible: can("accommodations.read") },
     { id: "ATTENDANCE", label: "Attendance / Check-In", visible: can("attendance.read.full") },
-    { id: "CMS", label: "Programme & CMS", visible: true },
+    { id: "CMS", label: "Programme & CMS", visible: can("cms.manage") },
     { id: "COUPONS", label: "Coupons", visible: can("coupons.manage") },
     { id: "USERS", label: "Staff & Roles", visible: isSuperadmin },
     { id: "SECURITY", label: "Security & MFA", visible: true },
-    { id: "AUDIT_LOGS", label: "Audit Logs", visible: true },
+    { id: "AUDIT_LOGS", label: "Audit Logs", visible: can("audit_logs.read") },
   ].filter(function (i) {
     return i.visible;
   });
 
   // Portal State
+  const mustEnrollMfa = Boolean(currentUser.mfaEnrollmentRequired);
   const state = {
-    activeTab: "OVERVIEW",
+    activeTab: mustEnrollMfa ? "SECURITY" : "OVERVIEW",
+    mfaEnrollmentRequired: mustEnrollMfa,
+    mfaRecoveryCodes: null,
     chartViewMode: "chart",
     overview: null,
     overviewLoading: false,
@@ -294,6 +306,10 @@
     navListEl.querySelectorAll("[data-nav-tab]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         const tabId = btn.getAttribute("data-nav-tab");
+        if (state.mfaEnrollmentRequired && tabId !== "SECURITY") {
+          notify("error", "Mandatory MFA enrollment must be completed before accessing administrative tabs.");
+          return;
+        }
         switchTab(tabId);
         closeMobileSidebar();
       });
@@ -662,15 +678,13 @@
           '<select id="modal-reg-status" class="w-full px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg bg-white">' +
           ["SUBMITTED", "UNDER_REVIEW", "ADDITIONAL_INFO_REQUIRED", "APPROVED", "CONFIRMED", "WAITLISTED", "REJECTED", "CANCELLED"]
             .map(function (st) {
-              const label =
-                st === "APPROVED" || st === "CONFIRMED" ? st + " (Auto-issues QR Pass)" : st;
               return (
                 '<option value="' +
                 esc(st) +
                 '" ' +
                 (state.detailStatus === st ? "selected" : "") +
                 ">" +
-                esc(label) +
+                esc(st) +
                 "</option>"
               );
             })
@@ -689,15 +703,10 @@
           'class="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-[#6B4E96] hover:bg-[#5A3F82] text-white disabled:opacity-50">' +
           (state.savingDetail ? "Saving…" : "Save Review") +
           "</button>" +
-          (can("credentials.issue")
-            ? '<button type="button" id="modal-reg-reissue" ' +
-              (state.savingDetail ? "disabled " : "") +
-              'class="px-3 py-2 rounded-lg text-xs font-semibold border border-[#D4C7EA] text-[#4C3273] hover:bg-[#F3EEF9]">Reissue QR Pass</button>'
-            : "") +
-          (can("credentials.revoke")
+          (can("credentials.revoke") && activeCred
             ? '<button type="button" id="modal-reg-revoke" ' +
               (state.savingDetail ? "disabled " : "") +
-              'class="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-100 hover:bg-rose-200 text-rose-900">Revoke Pass</button>'
+              'class="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-100 hover:bg-rose-200 text-rose-900">Revoke Legacy Pass</button>'
             : "") +
           "</div>";
 
@@ -1313,8 +1322,8 @@
                 : "") +
               "</div>" +
               '<p class="text-xs text-[#645C75]">' + esc(s.email) + " • " + esc(s.phone) + " • Experience: " + esc(sd.yearsOfExperience || 0) + " yrs • " + esc(sd.qualifications || "Qualifications not listed") + "</p>" +
-              (sd.videoDemoUrl
-                ? '<a href="' + esc(sd.videoDemoUrl) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs font-semibold text-[#6B4E96] hover:underline">View ISL Video Demo &rarr;</a>'
+              (safeHref(sd.videoDemoUrl)
+                ? '<a href="' + esc(safeHref(sd.videoDemoUrl)) + '" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-xs font-semibold text-[#6B4E96] hover:underline">View ISL Video Demo &rarr;</a>'
                 : "") +
               (sd.assignedVenue
                 ? '<p class="text-xs text-emerald-800 font-medium">Assigned Venue: ' + esc(sd.assignedVenue) + " • Duty: " + esc(sd.dutyTimes || "TBD") + " (" + ((sd.assignedSessions || []).length) + " sessions)</p>"
@@ -1817,12 +1826,33 @@
 
   function renderSecurityTab() {
     let html = '<div class="max-w-2xl space-y-6">';
+    if (state.mfaEnrollmentRequired) {
+      html +=
+        '<div role="alert" class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-950 space-y-1">' +
+        '<p class="font-bold">Mandatory Two-Factor Authentication Required (Policy D-20)</p>' +
+        '<p>All SUPERADMIN and ADMIN accounts must enroll a TOTP authenticator app before accessing administrative data or operations.</p>' +
+        "</div>";
+    }
+    if (Array.isArray(state.mfaRecoveryCodes) && state.mfaRecoveryCodes.length > 0) {
+      html +=
+        '<div class="rounded-xl border border-emerald-300 bg-emerald-50 p-5 space-y-3">' +
+        '<h3 class="text-sm font-bold text-emerald-950">Save Your Single-Use Recovery Codes (Shown Once)</h3>' +
+        '<p class="text-xs text-emerald-900">Store these codes securely offline. Each code can be used once if you lose access to your authenticator device.</p>' +
+        '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">' +
+        state.mfaRecoveryCodes
+          .map(function (c) {
+            return '<code class="block text-center font-mono text-xs font-bold bg-white border border-emerald-200 rounded px-2 py-1.5 text-emerald-950 select-all">' + esc(c) + "</code>";
+          })
+          .join("") +
+        "</div></div>";
+    }
+
     html +=
       '<div class="bg-white border border-[#E5DFEF] rounded-xl p-6 space-y-4">' +
       '<div class="flex items-start justify-between gap-4">' +
       "<div>" +
       '<h3 class="text-base font-bold text-[#17151C]">Two-Factor Authentication (RFC 6238 TOTP MFA)</h3>' +
-      '<p class="text-xs text-[#645C75] mt-1">Protect your administrative account with a time-based 6-digit authenticator code (Google Authenticator, Authy, 1Password, Microsoft Authenticator).</p>' +
+      '<p class="text-xs text-[#645C75] mt-1">160-bit TOTP secrets encrypted with AES-256-GCM. Compatible with Google Authenticator, Authy, 1Password, and Microsoft Authenticator.</p>' +
       "</div>" +
       '<span class="px-3 py-1 rounded-full text-xs font-semibold border ' +
       statusBadgeClass(state.mfaEnabled ? "ACTIVE" : "PENDING") +
@@ -1831,31 +1861,15 @@
       "</span>" +
       "</div>";
 
-    if (state.mfaEnabled) {
-      html +=
-        '<form id="mfa-disable-form" class="pt-4 border-t border-[#ECE7F5] space-y-3">' +
-        '<p class="text-xs text-[#4C4263]">Enter a current 6-digit code from your authenticator app to disable MFA:</p>' +
-        '<div class="flex flex-wrap items-center gap-3">' +
-        '<input id="mfa-disable-code" required type="text" inputmode="numeric" maxlength="8" placeholder="000 000" class="px-3 py-2 text-sm font-mono tracking-widest border border-[#DDD5EA] rounded-lg w-40 text-center" />' +
-        '<button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-700 hover:bg-rose-800 text-white">Disable MFA</button>' +
-        "</div></form>";
-    } else if (!state.mfaSetupData) {
-      html +=
-        '<div class="pt-3 border-t border-[#ECE7F5]">' +
-        '<button type="button" id="mfa-init-btn" ' +
-        (state.mfaLoading ? "disabled " : "") +
-        'class="px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#6B4E96] hover:bg-[#5A3F82] text-white">' +
-        (state.mfaLoading ? "Generating Secret…" : "Set Up Authenticator App (TOTP)") +
-        "</button></div>";
-    } else {
+    if (state.mfaSetupData) {
       html +=
         '<div class="pt-4 border-t border-[#ECE7F5] space-y-4">' +
         '<div class="flex flex-col sm:flex-row items-center gap-6 p-4 rounded-xl bg-[#FAF8FD] border border-[#ECE7F5]">' +
         '<div data-qr-payload="' + esc(state.mfaSetupData.otpauthUrl || state.mfaSetupData.secret) + '" data-qr-size="180" class="bg-white p-2 rounded-lg border border-[#E5DFEF] shrink-0"></div>' +
         '<div class="space-y-2 text-xs">' +
         '<p class="font-bold text-[#17151C]">1. Scan QR Code in your Authenticator App</p>' +
-        '<p class="text-[#5C536E]">Or manually enter this Base32 Setup Key:</p>' +
-        '<p class="font-mono text-sm font-bold px-3 py-1.5 rounded bg-white border border-[#DDD5EA] text-[#4C3273] select-all">' + esc(state.mfaSetupData.secret) + "</p>" +
+        '<p class="text-[#5C536E]">Or manually enter this 160-bit Base32 Setup Key:</p>' +
+        '<p class="font-mono text-xs font-bold break-all px-3 py-1.5 rounded bg-white border border-[#DDD5EA] text-[#4C3273] select-all">' + esc(state.mfaSetupData.secret) + "</p>" +
         "</div></div>" +
         '<form id="mfa-verify-form" class="space-y-3">' +
         '<label for="mfa-verify-code" class="block text-xs font-semibold text-[#17151C]">2. Enter the 6-digit verification code from your app</label>' +
@@ -1863,6 +1877,24 @@
         '<input id="mfa-verify-code" required type="text" inputmode="numeric" maxlength="8" placeholder="000 000" class="px-3 py-2 text-sm font-mono tracking-widest border border-[#DDD5EA] rounded-lg w-44 text-center" />' +
         '<button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white">Verify &amp; Activate MFA</button>' +
         "</div></form></div>";
+    } else if (state.mfaEnabled) {
+      html +=
+        '<form id="mfa-replace-form" class="pt-4 border-t border-[#ECE7F5] space-y-3">' +
+        '<p class="text-xs text-[#4C4263]">MFA is mandatory for your role and cannot be disabled. To replace your authenticator device, confirm your current password and a current 6-digit code:</p>' +
+        '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+        '<input id="mfa-reauth-pw" required type="password" placeholder="Current password" class="px-3 py-2 text-sm border border-[#DDD5EA] rounded-lg" />' +
+        '<input id="mfa-reauth-code" required type="text" inputmode="numeric" maxlength="10" placeholder="Current 6-digit code" class="px-3 py-2 text-sm font-mono tracking-widest border border-[#DDD5EA] rounded-lg text-center" />' +
+        "</div>" +
+        '<button type="submit" class="px-4 py-2 rounded-lg text-xs font-semibold bg-[#6B4E96] hover:bg-[#5A3F82] text-white">Start Authenticator Replacement</button>' +
+        "</form>";
+    } else {
+      html +=
+        '<div class="pt-3 border-t border-[#ECE7F5]">' +
+        '<button type="button" id="mfa-init-btn" ' +
+        (state.mfaLoading ? "disabled " : "") +
+        'class="px-4 py-2.5 rounded-lg text-xs font-semibold bg-[#6B4E96] hover:bg-[#5A3F82] text-white">' +
+        (state.mfaLoading ? "Generating Secret…" : "Set Up Authenticator App (TOTP)") +
+        "</button></div>";
     }
 
     html += "</div></div>";
@@ -2612,19 +2644,50 @@
       });
     });
 
-    // Security & MFA events
+    // Security & MFA events (POST + CSRF; GET /api/auth/mfa is strictly read-only)
     const mfaInitBtn = document.getElementById("mfa-init-btn");
     if (mfaInitBtn) {
       mfaInitBtn.addEventListener("click", async function () {
         state.mfaLoading = true;
         renderMain();
         try {
-          const res = await apiFetch("/api/auth/mfa");
+          const res = await apiFetch("/api/auth/mfa", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "setup" }),
+          });
           const data = await res.json().catch(function () { return {}; });
           if (res.ok && data.secret) {
             state.mfaSetupData = data;
           } else {
             notify("error", data.error || "Unable to initialize MFA setup.");
+          }
+        } finally {
+          state.mfaLoading = false;
+          renderMain();
+        }
+      });
+    }
+
+    const mfaReplaceForm = document.getElementById("mfa-replace-form");
+    if (mfaReplaceForm) {
+      mfaReplaceForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const currentPassword = (document.getElementById("mfa-reauth-pw") || {}).value || "";
+        const currentCode = ((document.getElementById("mfa-reauth-code") || {}).value || "").trim();
+        state.mfaLoading = true;
+        renderMain();
+        try {
+          const res = await apiFetch("/api/auth/mfa", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "setup", currentPassword: currentPassword, currentCode: currentCode }),
+          });
+          const data = await res.json().catch(function () { return {}; });
+          if (res.ok && data.secret) {
+            state.mfaSetupData = data;
+          } else {
+            notify("error", data.error || "Re-authentication failed.");
           }
         } finally {
           state.mfaLoading = false;
@@ -2649,29 +2712,11 @@
           return;
         }
         state.mfaEnabled = true;
+        state.mfaEnrollmentRequired = false;
         state.mfaSetupData = null;
-        notify("success", "Multi-factor authentication is now active on your account.");
-        renderMain();
-      });
-    }
-
-    const mfaDisableForm = document.getElementById("mfa-disable-form");
-    if (mfaDisableForm) {
-      mfaDisableForm.addEventListener("submit", async function (e) {
-        e.preventDefault();
-        const code = ((document.getElementById("mfa-disable-code") || {}).value || "").trim();
-        const res = await apiFetch("/api/auth/mfa", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: code, action: "disable" }),
-        });
-        const data = await res.json().catch(function () { return {}; });
-        if (!res.ok) {
-          notify("error", data.error || "Could not disable MFA.");
-          return;
-        }
-        state.mfaEnabled = false;
-        notify("success", "MFA has been disabled.");
+        state.mfaRecoveryCodes = Array.isArray(data.recoveryCodes) ? data.recoveryCodes : null;
+        notify("success", data.message || "Multi-factor authentication is now active on your account.");
+        renderNav();
         renderMain();
       });
     }
@@ -2736,5 +2781,7 @@
   // Initialize Portal
   renderNav();
   renderMain();
-  fetchOverview();
+  if (!state.mfaEnrollmentRequired) {
+    fetchOverview();
+  }
 })();

@@ -46,6 +46,9 @@ try {
         exit;
     }
 
+    enforceStaffMfaGate($user);
+    requireCsrfToken($user);
+
     $body = readRequestInput();
     $setClauses = ['updated_at = :updated_at'];
     $params = [
@@ -133,6 +136,16 @@ try {
     $updateSql = 'UPDATE users SET ' . implode(', ', $setClauses) . ' WHERE id = :id';
     $updStmt = $pdo->prepare($updateSql);
     $updStmt->execute($params);
+
+    if ($passwordChanged) {
+        revokeAllUserSessions(
+            (string)$user['id'],
+            !empty($user['sessionId']) ? (string)$user['sessionId'] : null,
+            $pdo,
+            (string)$user['id'],
+            'password_changed'
+        );
+    }
 
     $selStmt = $pdo->prepare('SELECT id, email, full_name, phone, country, mfa_enabled FROM users WHERE id = :id LIMIT 1');
     $selStmt->execute([':id' => $user['id']]);

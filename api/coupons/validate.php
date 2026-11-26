@@ -54,6 +54,10 @@ try {
     $categoryCode = strtoupper($rawCategoryCode);
 
     $pdo = getDb();
+    if (function_exists('pfgRequireRateLimit')) {
+        $clientIp = getClientIp() ?: 'unknown';
+        pfgRequireRateLimit($pdo, 'coupon_validate_ip', $clientIp, 30, 900, 900);
+    }
 
     // Resolve active festival edition
     $stmtEd = $pdo->prepare('SELECT * FROM festival_editions WHERE slug = :slug LIMIT 1');

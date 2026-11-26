@@ -186,17 +186,16 @@ function h_login(string $val): string {
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                   <path d="m9 12 2 2 4-4"></path>
                 </svg>
-                6-Digit Authenticator Code
+                6-Digit Authenticator Code or Recovery Code
               </label>
               <input
                 id="login-mfa"
                 name="mfaCode"
                 type="text"
-                inputmode="numeric"
                 autocomplete="one-time-code"
-                maxlength="8"
-                placeholder="000 000"
-                class="w-full min-h-[42px] rounded-md border border-[#DCE5F7] bg-white px-3 text-center font-mono text-base tracking-[0.25em] text-[#202D59]"
+                maxlength="12"
+                placeholder="000000 or XXXX-XXXX"
+                class="w-full min-h-[42px] rounded-md border border-[#DCE5F7] bg-white px-3 text-center font-mono text-base tracking-[0.15em] text-[#202D59]"
               />
             </div>
 
@@ -225,7 +224,7 @@ function h_login(string $val): string {
   <script src="/assets/js/accessibility.js" defer></script>
   <script>
     (function () {
-      const nextParam = <?= json_encode($nextParam, JSON_UNESCAPED_SLASHES) ?>;
+      const nextParam = <?= pfgSafeJsonForScript($nextParam) ?>;
       let mfaRequired = false;
 
       const errorAlert = document.getElementById("auth-error-alert");
@@ -351,10 +350,17 @@ function h_login(string $val): string {
             return;
           }
 
-          const target =
-            nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
-              ? nextParam
-              : data.redirectTo || "/admin";
+          if (data.mfaEnrollmentRequired) {
+            window.location.href = data.redirectTo || "/admin?mfa_setup=1";
+            return;
+          }
+
+          const isSafeNext =
+            typeof nextParam === "string" &&
+            nextParam.startsWith("/") &&
+            !nextParam.startsWith("//") &&
+            !nextParam.includes("\\");
+          const target = isSafeNext ? nextParam : data.redirectTo || "/admin";
           window.location.href = target;
         } catch (err) {
           showError("Network error while signing in. Please try again.");

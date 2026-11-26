@@ -139,6 +139,27 @@ if (!defined('AUTH_SECRET')) {
 if (!defined('QR_SIGNING_SECRET')) {
     define('QR_SIGNING_SECRET', pfgValidateSecret('QR_SIGNING_SECRET', pfgEnv('QR_SIGNING_SECRET', '')));
 }
+if (!defined('MFA_ENCRYPTION_KEY')) {
+    $rawMfaKey = trim(pfgEnv('MFA_ENCRYPTION_KEY', ''));
+    if ($rawMfaKey !== '') {
+        define('MFA_ENCRYPTION_KEY', pfgValidateSecret('MFA_ENCRYPTION_KEY', $rawMfaKey));
+        define('MFA_ENCRYPTION_KEY_DEDICATED', true);
+    } else {
+        // Domain-separated HKDF-style derivation from AUTH_SECRET when dedicated env key is not yet provisioned
+        define('MFA_ENCRYPTION_KEY', hash_hmac('sha256', 'pfg27:mfa-encryption-key:v1', AUTH_SECRET));
+        define('MFA_ENCRYPTION_KEY_DEDICATED', false);
+    }
+}
+if (!defined('DATA_ENCRYPTION_KEY')) {
+    $rawDataKey = trim(pfgEnv('DATA_ENCRYPTION_KEY', ''));
+    if ($rawDataKey !== '') {
+        define('DATA_ENCRYPTION_KEY', pfgValidateSecret('DATA_ENCRYPTION_KEY', $rawDataKey));
+        define('DATA_ENCRYPTION_KEY_DEDICATED', true);
+    } else {
+        define('DATA_ENCRYPTION_KEY', hash_hmac('sha256', 'pfg27:sensitive-data-encryption-key:v1', AUTH_SECRET));
+        define('DATA_ENCRYPTION_KEY_DEDICATED', false);
+    }
+}
 if (!defined('APP_URL')) {
     $configuredUrl = trim(pfgEnv('APP_URL', pfgEnv('NEXT_PUBLIC_APP_URL', '')));
     if ($configuredUrl === '') {
@@ -268,6 +289,182 @@ if (!function_exists('jsonEncode')) {
     {
         $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         return $encoded !== false ? $encoded : 'null';
+    }
+}
+
+if (!function_exists('pfgSafeJsonForScript')) {
+    /**
+     * Safely encodes PHP values for embedding inside HTML <script> tags,
+     * neutralizing </script>, HTML tags, quotes, and ampersands while preserving UTF-8 (Gujarati/Hindi).
+     */
+    function pfgSafeJsonForScript($value): string
+    {
+        $encoded = json_encode(
+            $value,
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        );
+        return $encoded !== false ? $encoded : 'null';
+    }
+}
+
+if (!function_exists('pfgValidateSafeUrl')) {
+    /**
+     * Validates that a URL uses an allowed scheme (http/https) or clean relative path (when permitted).
+     * Rejects javascript:, data:, vbscript:, protocol-relative //, backslashes, and control characters.
+     */
+    function pfgValidateSafeUrl(string $url, bool $allowRelative = false): ?string
+    {
+        $trimmed = trim($url);
+        if ($trimmed === '') {
+            return '';
+        }
+        if (preg_match('/[\x00-\x1F\x7F\\\\]/', $trimmed)) {
+            return null;
+        }
+        if ($allowRelative && str_starts_with($trimmed, '/') && !str_starts_with($trimmed, '//')) {
+            return $trimmed;
+        }
+        if (!filter_var($trimmed, FILTER_VALIDATE_URL)) {
+            return null;
+        }
+        $scheme = strtolower((string)parse_url($trimmed, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return null;
+        }
+        $host = (string)parse_url($trimmed, PHP_URL_HOST);
+        if ($host === '') {
+            return null;
+        }
+        return $trimmed;
+    }
+}
+
+if (!function_exists('pfgValidateSafeRedirect')) {
+    /**
+     * Validates an internal redirect path (prevents open redirects, //host, /\, and CRLF injection).
+     */
+    function pfgValidateSafeRedirect(?string $path, string $fallback = '/admin'): string
+    {
+        if (!is_string($path)) {
+            return $fallback;
+        }
+        $trimmed = trim($path);
+        if ($trimmed === '' || !str_starts_with($trimmed, '/') || str_starts_with($trimmed, '//')) {
+            return $fallback;
+        }
+        if (preg_match('/[\x00-\x1F\x7F\\\\]/', $trimmed)) {
+            return $fallback;
+        }
+        if (preg_match('#^/[a-zA-Z0-9/_\-.?=&%+]*$#', $trimmed) !== 1) {
+            return $fallback;
+        }
+        return $trimmed;
+    }
+}
+
+if (!function_exists('pfgDeriveEncryptionKeyBytes')) {
+    function pfgDeriveEncryptionKeyBytes(string $purpose): string
+    {
+        $source = $purpose === 'mfa' ? (string)MFA_ENCRYPTION_KEY : (string)DATA_ENCRYPTION_KEY;
+        return hash_hmac('sha256', 'pfg27:aes256gcm:' . $purpose, $source, true);
+    }
+}
+
+if (!function_exists('pfgEncryptValue')) {
+    /**
+     * Authenticated AES-256-GCM encryption with random 96-bit IV and 128-bit tag.
+     * Format: enc:v1:<base64(iv[12] . tag[16] . ciphertext)>
+     */
+    function pfgEncryptValue(string $plaintext, string $purpose = 'data'): string
+    {
+        if ($plaintext === '') {
+            return '';
+        }
+        if (str_starts_with($plaintext, 'enc:v1:')) {
+            return $plaintext;
+        }
+        if (!function_exists('openssl_encrypt')) {
+            throw new RuntimeException('OpenSSL extension is required for authenticated encryption.');
+        }
+        $key = pfgDeriveEncryptionKeyBytes($purpose);
+        $iv = random_bytes(12);
+        $tag = '';
+        $ciphertext = openssl_encrypt(
+            $plaintext,
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            'pfg27:' . $purpose,
+            16
+        );
+        if ($ciphertext === false || strlen($tag) !== 16) {
+            throw new RuntimeException('Authenticated encryption failed.');
+        }
+        return 'enc:v1:' . base64_encode($iv . $tag . $ciphertext);
+    }
+}
+
+if (!function_exists('pfgDecryptValue')) {
+    /**
+     * Decrypts an enc:v1: AES-256-GCM payload; returns legacy plaintext untouched if not encrypted.
+     */
+    function pfgDecryptValue(?string $stored, string $purpose = 'data'): ?string
+    {
+        if ($stored === null || $stored === '') {
+            return $stored;
+        }
+        if (!str_starts_with($stored, 'enc:v1:')) {
+            return $stored;
+        }
+        if (!function_exists('openssl_decrypt')) {
+            throw new RuntimeException('OpenSSL extension is required for authenticated decryption.');
+        }
+        $raw = base64_decode(substr($stored, 7), true);
+        if ($raw === false || strlen($raw) < 28) {
+            return null;
+        }
+        $iv = substr($raw, 0, 12);
+        $tag = substr($raw, 12, 16);
+        $ciphertext = substr($raw, 28);
+        $key = pfgDeriveEncryptionKeyBytes($purpose);
+        $plaintext = openssl_decrypt(
+            $ciphertext,
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            'pfg27:' . $purpose
+        );
+        return $plaintext === false ? null : $plaintext;
+    }
+}
+
+if (!function_exists('pfgScrubSensitiveArray')) {
+    /**
+     * Recursively redacts secret/token/password keys before persisting audit or notification metadata.
+     */
+    function pfgScrubSensitiveArray(array $data): array
+    {
+        $clean = [];
+        foreach ($data as $k => $v) {
+            $keyStr = is_string($k) ? strtolower($k) : '';
+            if (
+                $keyStr !== '' &&
+                preg_match('/(password|secret|rawtoken|reseturl|reset_url|token_hash|tokenhash|mfa_secret|otpauth|recovery_code|recoverycode|authorization|cookie|api_key|apikey)/i', $keyStr)
+            ) {
+                $clean[$k] = '[REDACTED]';
+                continue;
+            }
+            if (is_array($v)) {
+                $clean[$k] = pfgScrubSensitiveArray($v);
+            } else {
+                $clean[$k] = $v;
+            }
+        }
+        return $clean;
     }
 }
 

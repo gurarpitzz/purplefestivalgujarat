@@ -211,6 +211,49 @@ if (!function_exists('ensureUsersUsernameColumn')) {
     }
 }
 
+if (!function_exists('ensurePhase2SecurityTables')) {
+    /**
+     * Idempotently applies the narrow Phase 2 security controls migration (security_rate_limits).
+     */
+    function ensurePhase2SecurityTables(PDO $pdo): void
+    {
+        $isSqlite = ($pdo instanceof PfgPdo && $pdo->isSqlite)
+            || ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite');
+
+        try {
+            if ($isSqlite) {
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS `security_rate_limits` (
+                        `bucket_key` VARCHAR(191) NOT NULL PRIMARY KEY,
+                        `scope` VARCHAR(64) NOT NULL,
+                        `attempts` INT NOT NULL DEFAULT 0,
+                        `window_started_at` DATETIME NOT NULL,
+                        `blocked_until` DATETIME DEFAULT NULL,
+                        `updated_at` DATETIME NOT NULL
+                    )
+                ");
+                $pdo->exec("CREATE INDEX IF NOT EXISTS `idx_security_rate_limits_scope_updated` ON `security_rate_limits` (`scope`, `updated_at`)");
+            } else {
+                $pdo->exec("
+                    CREATE TABLE IF NOT EXISTS `security_rate_limits` (
+                        `bucket_key` VARCHAR(191) NOT NULL,
+                        `scope` VARCHAR(64) NOT NULL,
+                        `attempts` INT NOT NULL DEFAULT 0,
+                        `window_started_at` DATETIME NOT NULL,
+                        `blocked_until` DATETIME DEFAULT NULL,
+                        `updated_at` DATETIME NOT NULL,
+                        PRIMARY KEY (`bucket_key`),
+                        KEY `idx_security_rate_limits_scope_updated` (`scope`, `updated_at`),
+                        KEY `idx_security_rate_limits_blocked` (`blocked_until`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ");
+            }
+        } catch (Throwable $e) {
+            error_log('ensurePhase2SecurityTables warning: ' . $e->getMessage());
+        }
+    }
+}
+
 if (!function_exists('ensureDatabaseInitialized')) {
     /**
      * Automatically creates tables and seeds reference data on first run if `roles` table is missing or empty.
@@ -228,6 +271,7 @@ if (!function_exists('ensureDatabaseInitialized')) {
             $row = $stmt ? $stmt->fetch() : false;
             if ($row && (int)($row['cnt'] ?? 0) >= 4) {
                 ensureUsersUsernameColumn($pdo);
+                ensurePhase2SecurityTables($pdo);
                 $initializing = false;
                 return;
             }
@@ -265,6 +309,7 @@ if (!function_exists('ensureDatabaseInitialized')) {
         }
 
         ensureUsersUsernameColumn($pdo);
+        ensurePhase2SecurityTables($pdo);
         seedDatabase($pdo);
         $initializing = false;
     }
@@ -1006,6 +1051,7 @@ if (!function_exists('queueNotification')) {
             (id, template_code, recipient_user_id, recipient_email, subject, body_html, body_text, payload, status, attempts, max_attempts, created_at, updated_at)
             VALUES (:id, :template_code, :recipient_user_id, :recipient_email, :subject, :body_html, :body_text, :payload, 'QUEUED', 0, 3, :now, :now)
         ");
+        $safePayloadVars = function_exists('pfgScrubSensitiveArray') ? pfgScrubSensitiveArray($variables) : $variables;
         $ins->execute([
             ':id'                => $jobId,
             ':template_code'     => $templateCode,
@@ -1014,7 +1060,7 @@ if (!function_exists('queueNotification')) {
             ':subject'           => $subject,
             ':body_html'         => $bodyHtml,
             ':body_text'         => $bodyText,
-            ':payload'           => jsonEncode($variables),
+            ':payload'           => jsonEncode($safePayloadVars),
             ':now'               => $now,
         ]);
 

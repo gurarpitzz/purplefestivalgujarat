@@ -4,6 +4,9 @@ declare(strict_types=1);
 /**
  * Purple Festival Gujarat 2027 — Immutable Security & Operations Audit Trail API
  * Endpoint: GET /api/admin/audit-logs (or /api/admin/audit-logs.php)
+ * Phase 2 Hardened:
+ * - Requires AUDIT_LOGS_READ permission (FND-03) and mandatory MFA gate (D-20).
+ * - True SQL COUNT(*) + LIMIT/OFFSET pagination (removes 500-row cap, FND-28).
  */
 
 require_once __DIR__ . '/../../includes/config.php';
@@ -21,6 +24,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 
 try {
     $user = requireRole(['ADMIN', 'SUPERADMIN']);
+    requirePermission(PERMISSIONS['AUDIT_LOGS_READ'], $user);
     $pdo = getDb();
 
     $page = max(1, (int)($_GET['page'] ?? 1));
@@ -47,6 +51,21 @@ try {
 
     $whereSql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
 
+    // True total count across full audit trail (no artificial 500-row truncation)
+    $countStmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM audit_logs a
+        LEFT JOIN users u ON a.actor_user_id = u.id
+        {$whereSql}
+    ");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+    $totalPages = max(1, (int)ceil($total / $pageSize));
+    if ($page > $totalPages) {
+        $page = $totalPages;
+    }
+    $offset = ($page - 1) * $pageSize;
+
     $stmt = $pdo->prepare("
         SELECT
             a.id,
@@ -62,15 +81,15 @@ try {
         FROM audit_logs a
         LEFT JOIN users u ON a.actor_user_id = u.id
         {$whereSql}
-        ORDER BY a.created_at DESC
-        LIMIT 500
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT {$pageSize} OFFSET {$offset}
     ");
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-    $formatted = [];
+    $items = [];
     foreach ($rows as $row) {
-        $formatted[] = [
+        $items[] = [
             'id'           => (string)$row['id'],
             'action'       => (string)$row['action'],
             'resourceType' => (string)$row['resource_type'],
@@ -83,11 +102,6 @@ try {
             'actorEmail'   => $row['actor_email'] ?? null,
         ];
     }
-
-    $total = count($formatted);
-    $totalPages = max(1, (int)ceil($total / $pageSize));
-    $offset = ($page - 1) * $pageSize;
-    $items = array_slice($formatted, $offset, $pageSize);
 
     jsonResponse([
         'items'      => $items,

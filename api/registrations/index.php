@@ -479,12 +479,20 @@ try {
 
     if ($sliDetails && !empty($sliDetails['videoDemoUrl'])) {
         $videoUrl = trim((string)$sliDetails['videoDemoUrl']);
-        if ($videoUrl !== '' && !filter_var($videoUrl, FILTER_VALIDATE_URL)) {
-            pfgRegJson(['error' => 'Please enter a valid URL.'], 400);
+        if ($videoUrl !== '') {
+            $safeVideoUrl = pfgValidateSafeUrl($videoUrl, false);
+            if ($safeVideoUrl === null) {
+                pfgRegJson(['error' => 'Please enter a valid http:// or https:// video demo URL.'], 400);
+            }
+            $sliDetails['videoDemoUrl'] = $safeVideoUrl;
         }
     }
 
     $pdo = getDb();
+    if (function_exists('pfgRequireRateLimit')) {
+        $clientIp = getClientIp() ?: 'unknown';
+        pfgRequireRateLimit($pdo, 'public_registration_ip', $clientIp, 25, 900, 900);
+    }
     $edition = pfgGetActiveEdition($pdo);
     if (!$edition) {
         pfgRegJson(['error' => 'Festival registration is not currently active.'], 404);
@@ -520,26 +528,41 @@ try {
     $ipAddress = getClientIp();
     $userAgent = getClientUserAgent();
 
-    // 2. Resolve or create single user account (supports multiple registrations under ONE account)
+    // 2. Identity & ownership protection (FND-07):
+    // NEVER allow an unauthenticated caller to attach a new registration to ANY existing user record
+    // (participant or staff) and NEVER leak existingRegistrationCode to unauthenticated requests.
     $currentUser = function_exists('getCurrentUser') ? getCurrentUser() : null;
     $normalizedEmail = strtolower($email);
     $userId = '';
     $sessionCreated = false;
 
     if (is_array($currentUser) && !empty($currentUser['id'])) {
+        requireCsrfToken($currentUser);
+        if (strtolower((string)($currentUser['email'] ?? '')) !== $normalizedEmail) {
+            pfgRegJson([
+                'error' => 'Authenticated submissions must use your signed-in account email address.',
+            ], 403);
+        }
         $userId = (string)$currentUser['id'];
     } else {
-        $stmtUser = $pdo->prepare('SELECT * FROM users WHERE LOWER(email) = :email LIMIT 1');
+        $stmtUser = $pdo->prepare('SELECT id, is_active, deleted_at FROM users WHERE LOWER(email) = :email LIMIT 1');
         $stmtUser->execute([':email' => $normalizedEmail]);
         $existingUser = $stmtUser->fetch(PDO::FETCH_ASSOC);
 
         if ($existingUser) {
-            if (empty($existingUser['is_active']) || !empty($existingUser['deleted_at'])) {
-                pfgRegJson([
-                    'error' => 'This email is associated with a deactivated account. Please contact the festival desk.',
-                ], 403);
-            }
-            $userId = (string)$existingUser['id'];
+            pfgRecordAuditCompat(
+                $pdo,
+                null,
+                'UNAUTHORIZED_ACCOUNT_ATTACHMENT_BLOCKED',
+                'user',
+                (string)$existingUser['id'],
+                $ipAddress,
+                $userAgent,
+                ['categoryCode' => $categoryCode]
+            );
+            pfgRegJson([
+                'error' => 'Unable to complete registration with this email address. If you already registered or hold an account, please contact the festival secretariat.',
+            ], 409);
         } else {
             $passwordHash = null;
             if ($password !== '') {
@@ -619,10 +642,13 @@ try {
     $duplicateReg = $stmtDup->fetch(PDO::FETCH_ASSOC);
 
     if ($duplicateReg) {
-        pfgRegJson([
-            'error'                    => "You already have an active {$category['name']} registration ({$duplicateReg['registration_code']}). You can still register for a different role under the same account.",
-            'existingRegistrationCode' => (string)$duplicateReg['registration_code'],
-        ], 409);
+        $dupPayload = [
+            'error' => "You already have an active {$category['name']} registration. You can still register for a different role under your account.",
+        ];
+        if (is_array($currentUser) && !empty($currentUser['id'])) {
+            $dupPayload['existingRegistrationCode'] = (string)$duplicateReg['registration_code'];
+        }
+        pfgRegJson($dupPayload, 409);
     }
 
     // 4. Server-side coupon validation & fee calculation
@@ -773,9 +799,18 @@ try {
             ':updated_at'                => $now,
         ]);
 
-        // Store sanitized form response snapshot (never store password)
+        // Store sanitized form response snapshot (never store password or sensitive disability/accommodation free-text — FND-11)
         $safeAnswers = $body;
-        unset($safeAnswers['password']);
+        unset(
+            $safeAnswers['password'],
+            $safeAnswers['csrfToken'],
+            $safeAnswers['csrf_token'],
+            $safeAnswers['isPersonWithDisability'],
+            $safeAnswers['disabilityCategoryCodes'],
+            $safeAnswers['disabilitySelfDescription'],
+            $safeAnswers['accommodationTypes'],
+            $safeAnswers['accommodationFreeText']
+        );
         $stmtResp = $pdo->prepare(
             'INSERT INTO registration_responses (id, registration_id, answers, created_at, updated_at)
              VALUES (:id, :registration_id, :answers, :created_at, :updated_at)'
@@ -931,7 +966,10 @@ try {
             ]);
         }
 
-        // Protected Disability Disclosure Tables (optional & independent of category)
+        // Protected Disability Disclosure Tables (encrypted free-text — FND-11)
+        $encryptedDisabilityDesc = $disabilitySelfDescription !== ''
+            ? pfgEncryptValue($disabilitySelfDescription, 'data')
+            : null;
         if (
             $isPersonWithDisability === 'YES' &&
             (!empty($disabilityCategoryCodes) || $disabilitySelfDescription !== '')
@@ -946,7 +984,7 @@ try {
 
                 if (!empty($matchedCats)) {
                     foreach ($matchedCats as $idx => $mc) {
-                        $selfDesc = ($idx === 0 && $disabilitySelfDescription !== '') ? $disabilitySelfDescription : null;
+                        $selfDesc = ($idx === 0 && $encryptedDisabilityDesc !== null) ? $encryptedDisabilityDesc : null;
                         foreach (['registration_disabilities', 'participant_disability_disclosures'] as $disTable) {
                             try {
                                 $stmtInsDis = $pdo->prepare(
@@ -973,7 +1011,7 @@ try {
                     }
                 } else {
                     foreach ($disabilityCategoryCodes as $idx => $dCode) {
-                        $selfDesc = ($idx === 0 && $disabilitySelfDescription !== '') ? $disabilitySelfDescription : null;
+                        $selfDesc = ($idx === 0 && $encryptedDisabilityDesc !== null) ? $encryptedDisabilityDesc : null;
                         foreach (['registration_disabilities', 'participant_disability_disclosures'] as $disTable) {
                             try {
                                 $stmtInsDis = $pdo->prepare(
@@ -1011,8 +1049,8 @@ try {
                         $stmtInsDis->execute([
                             ':id'               => uuid4(),
                             ':registration_id'  => $registrationId,
-                            ':self_description' => $disabilitySelfDescription,
-                            ':notes'            => $disabilitySelfDescription,
+                            ':self_description' => $encryptedDisabilityDesc,
+                            ':notes'            => $encryptedDisabilityDesc,
                             ':created_at'       => $now,
                         ]);
                     } catch (Throwable $e) {
@@ -1022,9 +1060,12 @@ try {
             }
         }
 
-        // Protected Accommodation Requests Tables
+        // Protected Accommodation Requests Tables (encrypted free-text — FND-11)
         if (!empty($accommodationTypes) || $accommodationFreeText !== '') {
             $firstCode = !empty($accommodationTypes) ? (string)$accommodationTypes[0] : null;
+            $encryptedAccommText = $accommodationFreeText !== ''
+                ? pfgEncryptValue($accommodationFreeText, 'data')
+                : null;
             foreach (['registration_accommodations', 'accommodation_requests'] as $accTable) {
                 try {
                     $stmtInsAcc = $pdo->prepare(
@@ -1040,8 +1081,8 @@ try {
                         ':user_id'            => $userId,
                         ':accommodation_code' => $firstCode,
                         ':selected_types'     => jsonEncode($accommodationTypes),
-                        ':free_text_details'  => $accommodationFreeText !== '' ? $accommodationFreeText : null,
-                        ':notes'              => $accommodationFreeText !== '' ? $accommodationFreeText : null,
+                        ':free_text_details'  => $encryptedAccommText,
+                        ':notes'              => $encryptedAccommText,
                         ':created_at'         => $now,
                         ':updated_at'         => $now,
                     ]);
@@ -1081,22 +1122,10 @@ try {
             }
         }
 
-        // QR Pass Issuance (delivered via email rather than public portal login)
+        // D-01: Participant QR entry credential issuance is discontinued; Registration ID is the official identifier.
         $qrPass = null;
         $qrEmailed = false;
         $emailResult = null;
-        $issuedCredentialCode = null;
-        $issuedRawToken = '';
-
-        if ($shouldIssueQr) {
-            $issued = issueCredentialForRegistration($pdo, $registrationId, $userId);
-            $issuedCredentialCode = (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? $registrationCode);
-            $issuedRawToken = (string)($issued['rawToken'] ?? '');
-            $qrPass = [
-                'credentialCode' => $issuedCredentialCode,
-                'emailed'        => true,
-            ];
-        }
 
         $pdo->commit();
     } catch (Throwable $txErr) {
@@ -1106,18 +1135,15 @@ try {
         throw $txErr;
     }
 
-    if ($shouldIssueQr && $issuedCredentialCode !== null) {
-        $emailResult = sendRegistrationQrPassEmail($pdo, [
+    if ($shouldIssueQr) {
+        $emailResult = sendRegistrationConfirmationEmail($pdo, [
             'to'               => $normalizedEmail,
             'fullName'         => $fullName,
             'registrationCode' => $registrationCode,
-            'credentialCode'   => $issuedCredentialCode,
             'categoryName'     => (string)$category['name'],
             'status'           => $status,
-            'rawToken'         => $issuedRawToken,
             'recipientUserId'  => $userId,
         ]);
-        $qrEmailed = true;
     } elseif (!empty($category['requires_approval'])) {
         $emailResult = sendApplicationReceivedEmail($pdo, [
             'to'               => $normalizedEmail,

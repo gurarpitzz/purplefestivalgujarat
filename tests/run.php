@@ -25,22 +25,26 @@ if (!is_dir($sinkDir)) {
 $testEnvFile = $tmpDir . DIRECTORY_SEPARATOR . 'test_env.php';
 $testAuthSecret = bin2hex(random_bytes(24));
 $testQrSecret = bin2hex(random_bytes(24));
+$testMfaKey = bin2hex(random_bytes(24));
+$testDataKey = bin2hex(random_bytes(24));
 
 $testEnvContent = "<?php\nreturn " . var_export([
-    'APP_ENV'           => 'testing',
-    'APP_URL'           => 'http://127.0.0.1:8088',
-    'DB_DRIVER'         => 'mysql',
-    'DB_HOST'           => '127.0.0.1',
-    'DB_PORT'           => '3306',
-    'DB_NAME'           => 'pfg27_test',
-    'DB_USER'           => 'root',
-    'DB_PASS'           => '',
-    'AUTH_SECRET'       => $testAuthSecret,
-    'QR_SIGNING_SECRET' => $testQrSecret,
-    'MAIL_DRIVER'       => 'file',
-    'MAIL_SINK_DIR'     => $sinkDir,
-    'RESEND_API_KEY'    => '',
-    'EMAIL_FROM'        => 'Purple Festival Test <noreply@test.local>',
+    'APP_ENV'             => 'testing',
+    'APP_URL'             => 'http://127.0.0.1:8088',
+    'DB_DRIVER'           => 'mysql',
+    'DB_HOST'             => '127.0.0.1',
+    'DB_PORT'             => '3306',
+    'DB_NAME'             => 'pfg27_test',
+    'DB_USER'             => 'root',
+    'DB_PASS'             => '',
+    'AUTH_SECRET'         => $testAuthSecret,
+    'QR_SIGNING_SECRET'   => $testQrSecret,
+    'MFA_ENCRYPTION_KEY'  => $testMfaKey,
+    'DATA_ENCRYPTION_KEY' => $testDataKey,
+    'MAIL_DRIVER'         => 'file',
+    'MAIL_SINK_DIR'       => $sinkDir,
+    'RESEND_API_KEY'      => '',
+    'EMAIL_FROM'          => 'Purple Festival Test <noreply@test.local>',
 ], true) . ";\n";
 
 file_put_contents($testEnvFile, $testEnvContent);
@@ -83,6 +87,7 @@ function pfgAssert(bool $cond, string $message): void
 }
 
 require_once __DIR__ . '/phase1_containment_test.php';
+require_once __DIR__ . '/phase2_security_test.php';
 
 echo "\n============================================================\n";
 printf("TOTAL: %d | PASSED: %d | FAILED: %d\n", $passed + $failed, $passed, $failed);
@@ -90,7 +95,7 @@ echo "============================================================\n";
 
 // Write JSON summary for reporting
 file_put_contents(
-    $tmpDir . DIRECTORY_SEPARATOR . 'phase1_results.json',
+    $tmpDir . DIRECTORY_SEPARATOR . 'phase2_results.json',
     json_encode(['passed' => $passed, 'failed' => $failed, 'results' => $results], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
 );
 

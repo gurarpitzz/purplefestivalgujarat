@@ -35,12 +35,10 @@ try {
         echo jsonEncode(['error' => 'Authentication required.']);
         exit;
     }
+    enforceStaffMfaGate($user);
 
     $userRoles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
-    $canReadFull = (function_exists('hasPermission') && hasPermission($user, PERMISSIONS['ATTENDANCE_READ_FULL']))
-        || in_array('ADMIN', $userRoles, true)
-        || in_array('SUPERADMIN', $userRoles, true);
-
+    $canReadFull = function_exists('hasPermission') && hasPermission($user, PERMISSIONS['ATTENDANCE_READ_FULL']);
     $canReadOwn = $canReadFull
         || (function_exists('hasPermission') && hasPermission($user, PERMISSIONS['ATTENDANCE_READ_OWN']))
         || in_array('RGST', $userRoles, true);

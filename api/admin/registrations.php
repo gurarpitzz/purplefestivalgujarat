@@ -187,6 +187,10 @@ function pfgFormatRegistrationRow(array $r, bool $canReadAccomm = true): array
 function pfgEscapeCsvCell($value): string
 {
     $str = $value === null ? '' : (string)$value;
+    // Neutralize spreadsheet formula injection (CSV/Excel/Calc DDE & formula execution — FND-25)
+    if ($str !== '' && preg_match('/^\s*[=+\-@\t\r]/', $str)) {
+        $str = "'" . $str;
+    }
     if (preg_match('/[",\r\n]/', $str)) {
         return '"' . str_replace('"', '""', $str) . '"';
     }
@@ -205,6 +209,7 @@ try {
     // GET: Single Registration Detail OR Filterable List / CSV Export
     // =========================================================================
     if ($method === 'GET') {
+        requirePermission(PERMISSIONS['REGISTRATIONS_READ_ALL'], $user);
         $singleId = pfgResolveRegistrationId();
 
         if ($singleId !== '') {
@@ -254,13 +259,13 @@ try {
             $stSli->execute([':rid' => $singleId]);
             $sliRow = pfgFormatSliRow($stSli->fetch(PDO::FETCH_ASSOC) ?: null);
 
-            // Credentials
+            // Credentials (historical read-only; no raw QR token reconstruction per D-01)
             $stCred = $pdo->prepare('SELECT * FROM qr_credentials WHERE registration_id = :rid ORDER BY issued_at DESC');
             $stCred->execute([':rid' => $singleId]);
             $credRows = $stCred->fetchAll(PDO::FETCH_ASSOC) ?: [];
             $credentials = array_map(static function (array $cr): array {
                 $formatted = pfgFormatCredentialRow($cr);
-                $formatted['qrPayload'] = reconstructQrTokenForCredential($cr);
+                unset($formatted['token_hash'], $formatted['tokenHash']);
                 return $formatted;
             }, $credRows);
 
@@ -333,9 +338,9 @@ try {
                                     'id'               => $aid,
                                     'registrationId'   => (string)$ar['registration_id'],
                                     'selectedTypes'    => $types,
-                                    'freeTextDetails'  => $ar['free_text_details'] ?? $ar['notes'] ?? null,
+                                    'freeTextDetails'  => pfgDecryptValue($ar['free_text_details'] ?? $ar['notes'] ?? null, 'data'),
                                     'status'           => (string)($ar['status'] ?? 'REQUESTED'),
-                                    'coordinatorNotes' => $ar['coordinator_notes'] ?? null,
+                                    'coordinatorNotes' => pfgDecryptValue($ar['coordinator_notes'] ?? null, 'data'),
                                     'updatedAt'        => $ar['updated_at'] ?? null,
                                 ];
                             }
@@ -361,7 +366,7 @@ try {
                             foreach ($dRows as $dr) {
                                 $disclosures[] = [
                                     'id'              => (string)$dr['id'],
-                                    'selfDescription' => $dr['self_description'] ?? $dr['notes'] ?? null,
+                                    'selfDescription' => pfgDecryptValue($dr['self_description'] ?? $dr['notes'] ?? null, 'data'),
                                     'categoryCode'    => $dr['category_code'] ?? $dr['disability_code'] ?? null,
                                     'categoryName'    => $dr['category_name'] ?? $dr['disability_code'] ?? null,
                                     'rpwdGroup'       => $dr['rpwd_group'] ?? null,
@@ -373,6 +378,14 @@ try {
                     }
                 }
                 $disabilityDisclosures = $disclosures;
+
+                if (count($accommodations) > 0 || count($disabilityDisclosures) > 0) {
+                    pfgAdminRecordAudit($pdo, (string)$user['id'], 'SENSITIVE_DATA_READ', 'registration', $singleId, [
+                        'registrationCode'   => $reg['registration_code'],
+                        'accommodationCount' => count($accommodations),
+                        'disclosureCount'    => count($disabilityDisclosures),
+                    ]);
+                }
             }
 
             jsonResponse([
@@ -406,7 +419,15 @@ try {
         $page = max(1, (int)($_GET['page'] ?? 1));
         $pageSize = min(200, max(1, (int)($_GET['pageSize'] ?? 25)));
 
-        if (in_array($exportFormat, ['csv', 'xlsx'], true)) {
+        if ($hasAccommodations !== '' && !$canReadAccomm) {
+            jsonResponse(['error' => 'Accommodations read permission required to filter by accommodation status.'], 403);
+        }
+
+        if ($exportFormat === 'xlsx') {
+            jsonResponse(['error' => 'XLSX export is not supported. Use format=csv for RFC-4180 CSV export.'], 400);
+        }
+
+        if ($exportFormat === 'csv') {
             if (!hasPermission($user, PERMISSIONS['REGISTRATIONS_EXPORT'])) {
                 jsonResponse(['error' => 'Export permission required.'], 403);
             }
@@ -500,29 +521,32 @@ try {
                 }
             }
 
-            foreach (['accommodation_requests', 'registration_accommodations'] as $acTbl) {
-                try {
-                    $stmtAc = $pdo->query("SELECT registration_id, status, selected_types, accommodation_code, free_text_details, notes FROM {$acTbl}");
-                    foreach (($stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : []) as $ac) {
-                        $rid = (string)$ac['registration_id'];
-                        $types = jsonDecode($ac['selected_types'] ?? '[]', []);
-                        if (empty($types) && !empty($ac['accommodation_code'])) {
-                            $types = [(string)$ac['accommodation_code']];
+            if ($canReadAccomm) {
+                foreach (['accommodation_requests', 'registration_accommodations'] as $acTbl) {
+                    try {
+                        $stmtAc = $pdo->query("SELECT registration_id, status, selected_types, accommodation_code, free_text_details, notes FROM {$acTbl}");
+                        foreach (($stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : []) as $ac) {
+                            $rid = (string)$ac['registration_id'];
+                            $types = jsonDecode($ac['selected_types'] ?? '[]', []);
+                            if (empty($types) && !empty($ac['accommodation_code'])) {
+                                $types = [(string)$ac['accommodation_code']];
+                            }
+                            $decryptedFreeText = pfgDecryptValue($ac['free_text_details'] ?? $ac['notes'] ?? null, 'data');
+                            if (!isset($accommByReg[$rid])) {
+                                $accommByReg[$rid] = [
+                                    'status'          => (string)($ac['status'] ?? 'REQUESTED'),
+                                    'selectedTypes'   => is_array($types) ? $types : [],
+                                    'freeTextDetails' => $decryptedFreeText,
+                                ];
+                            } else {
+                                $accommByReg[$rid]['selectedTypes'] = array_values(array_unique(array_merge(
+                                    $accommByReg[$rid]['selectedTypes'],
+                                    is_array($types) ? $types : []
+                                )));
+                            }
                         }
-                        if (!isset($accommByReg[$rid])) {
-                            $accommByReg[$rid] = [
-                                'status'          => (string)($ac['status'] ?? 'REQUESTED'),
-                                'selectedTypes'   => is_array($types) ? $types : [],
-                                'freeTextDetails' => $ac['free_text_details'] ?? $ac['notes'] ?? null,
-                            ];
-                        } else {
-                            $accommByReg[$rid]['selectedTypes'] = array_values(array_unique(array_merge(
-                                $accommByReg[$rid]['selectedTypes'],
-                                is_array($types) ? $types : []
-                            )));
-                        }
+                    } catch (Throwable $e) {
                     }
-                } catch (Throwable $e) {
                 }
             }
 
@@ -551,9 +575,9 @@ try {
             $item['lastCheckinVenue'] = $ck['lastVenue'] ?? null;
             $item['credentialStatus'] = $cred['status'] ?? null;
             $item['credentialCode'] = $cred['code'] ?? null;
-            $item['hasAccommodationRequest'] = $accomm !== null;
-            $item['accommodationStatus'] = $accomm['status'] ?? null;
             if ($canReadAccomm) {
+                $item['hasAccommodationRequest'] = $accomm !== null;
+                $item['accommodationStatus'] = $accomm['status'] ?? null;
                 $item['accommodationTypes'] = $accomm['selectedTypes'] ?? [];
                 $item['accommodationFreeText'] = $accomm['freeTextDetails'] ?? null;
             }
@@ -566,18 +590,18 @@ try {
             if ($checkinStatus === 'NOT_CHECKED_IN' && $item['checkedIn']) {
                 continue;
             }
-            if ($hasAccommodations === 'true' && !$item['hasAccommodationRequest']) {
+            if ($canReadAccomm && $hasAccommodations === 'true' && !$item['hasAccommodationRequest']) {
                 continue;
             }
-            if ($hasAccommodations === 'false' && $item['hasAccommodationRequest']) {
+            if ($canReadAccomm && $hasAccommodations === 'false' && $item['hasAccommodationRequest']) {
                 continue;
             }
 
             $enriched[] = $item;
         }
 
-        // CSV / XLSX Export Mode
-        if (in_array($exportFormat, ['csv', 'xlsx'], true)) {
+        // CSV Export Mode (strictly RFC-4180 CSV with formula neutralization; XLSX rejected above)
+        if ($exportFormat === 'csv') {
             $exportRows = [];
             foreach ($enriched as $r) {
                 $base = [
@@ -654,14 +678,49 @@ try {
     }
 
     // =========================================================================
-    // PATCH / POST: Update Registration Status, Volunteer/SLI Duty, or QR Pass
+    // PATCH / POST: Update Registration Status, Volunteer/SLI Duty, or Legacy Credential Revocation
     // =========================================================================
     if ($method === 'PATCH' || $method === 'POST') {
+        requireCsrfToken($user);
+
         $input = readRequestInput();
         $id = pfgResolveRegistrationId($input);
 
         if ($id === '') {
             jsonResponse(['error' => 'Registration ID is required.'], 400);
+        }
+
+        $credentialAction = isset($input['credentialAction']) && is_string($input['credentialAction'])
+            ? strtoupper(trim($input['credentialAction']))
+            : '';
+
+        // D-01: Participant QR entry pass issuance is permanently discontinued
+        if ($credentialAction === 'ISSUE' || $credentialAction === 'REISSUE') {
+            jsonResponse([
+                'error'      => 'Participant QR entry pass issuance has been discontinued (Decision D-01). Registrations use official Registration IDs and manual desk verification.',
+                'deprecated' => true,
+            ], 410);
+        }
+
+        // Enforce granular write permissions BEFORE any database mutation
+        $hasStatusOrNotesChange = isset($input['status']) || array_key_exists('reviewNotes', $input);
+        $hasVolunteerAssign = !empty($input['volunteerAssignment']) && is_array($input['volunteerAssignment']);
+        $hasSliAssign = !empty($input['sliAssignment']) && is_array($input['sliAssignment']);
+
+        if ($hasStatusOrNotesChange && !hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE'])) {
+            requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
+        }
+        if ($hasVolunteerAssign && !hasPermission($user, PERMISSIONS['VOLUNTEERS_REVIEW'])) {
+            requirePermission(PERMISSIONS['VOLUNTEERS_REVIEW'], $user);
+        }
+        if ($hasSliAssign && !hasPermission($user, PERMISSIONS['SLI_REVIEW'])) {
+            requirePermission(PERMISSIONS['SLI_REVIEW'], $user);
+        }
+        if ($credentialAction === 'REVOKE' && !hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE'])) {
+            requirePermission(PERMISSIONS['CREDENTIALS_REVOKE'], $user);
+        }
+        if (!$hasStatusOrNotesChange && !$hasVolunteerAssign && !$hasSliAssign && $credentialAction === '') {
+            requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
         }
 
         $stmt = $pdo->prepare('SELECT * FROM registrations WHERE id = :id AND deleted_at IS NULL LIMIT 1');
@@ -841,79 +900,29 @@ try {
             $updatedSli = pfgFormatSliRow($stSli->fetch(PDO::FETCH_ASSOC) ?: null);
         }
 
-        // Credential issuance / revocation logic
-        $credentialAction = isset($input['credentialAction']) && is_string($input['credentialAction'])
-            ? strtoupper(trim($input['credentialAction']))
-            : '';
-        $revocationReason = trim((string)($input['revocationReason'] ?? $reviewNotes ?? 'Revoked by festival administrator'));
+        // Credential revocation (legacy historical records only; new issuance discontinued per D-01)
+        $revocationReason = trim((string)($input['revocationReason'] ?? 'Revoked by festival administrator'));
+        if ($revocationReason === '') {
+            $revocationReason = 'Revoked by festival administrator';
+        }
         $credentialResult = null;
 
         $transitionedToApproved = in_array($nextStatus, ['APPROVED', 'CONFIRMED'], true)
             && !in_array((string)$existing['status'], ['APPROVED', 'CONFIRMED'], true);
 
         $emailDeliveryResult = null;
-        $issuedEmailToken = '';
-        $issuedEmailCredCode = '';
 
         if ($credentialAction === 'REVOKE') {
-            if (!hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE'])) {
-                jsonResponse(['error' => 'Permission required to revoke credentials.'], 403);
-            }
             $stAct = $pdo->prepare("SELECT id FROM qr_credentials WHERE registration_id = :rid AND status = 'ACTIVE'");
             $stAct->execute([':rid' => $id]);
             foreach (($stAct->fetchAll(PDO::FETCH_ASSOC) ?: []) as $ac) {
                 revokeCredential($pdo, (string)$ac['id'], $revocationReason, (string)$user['id']);
             }
             $credentialResult = ['action' => 'REVOKED'];
-        } elseif ($credentialAction === 'ISSUE' || $credentialAction === 'REISSUE') {
-            if (!hasPermission($user, PERMISSIONS['CREDENTIALS_ISSUE'])) {
-                jsonResponse(['error' => 'Permission required to issue credentials.'], 403);
-            }
-            try {
-                $issued = issueCredentialForRegistration($pdo, $id, (string)$user['id']);
-                $issuedEmailCredCode = (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? '');
-                $issuedEmailToken = (string)($issued['rawToken'] ?? '');
-                $credentialResult = [
-                    'action'         => $credentialAction,
-                    'credentialCode' => $issuedEmailCredCode !== '' ? $issuedEmailCredCode : null,
-                    'credentialId'   => $issued['credential']['id'] ?? null,
-                    'qrPayload'      => $issuedEmailToken !== '' ? $issuedEmailToken : null,
-                ];
-            } catch (Throwable $e) {
-                $credentialResult = [
-                    'action'  => 'SKIPPED',
-                    'warning' => $e->getMessage(),
-                ];
-            }
-        } elseif ($transitionedToApproved) {
-            $stAct = $pdo->prepare("SELECT id, credential_code FROM qr_credentials WHERE registration_id = :rid AND status = 'ACTIVE' LIMIT 1");
-            $stAct->execute([':rid' => $id]);
-            $existingActive = $stAct->fetch(PDO::FETCH_ASSOC);
-
-            if (!$existingActive) {
-                try {
-                    $issued = issueCredentialForRegistration($pdo, $id, (string)$user['id']);
-                    $issuedEmailCredCode = (string)($issued['credential']['credentialCode'] ?? $issued['credentialCode'] ?? '');
-                    $issuedEmailToken = (string)($issued['rawToken'] ?? '');
-                    $credentialResult = [
-                        'action'         => 'AUTO_ISSUED',
-                        'credentialCode' => $issuedEmailCredCode !== '' ? $issuedEmailCredCode : null,
-                        'credentialId'   => $issued['credential']['id'] ?? null,
-                        'qrPayload'      => $issuedEmailToken !== '' ? $issuedEmailToken : null,
-                    ];
-                } catch (Throwable $e) {
-                    $credentialResult = [
-                        'action'  => 'AUTO_ISSUE_SKIPPED',
-                        'warning' => $e->getMessage(),
-                    ];
-                }
-            } else {
-                $issuedEmailCredCode = (string)$existingActive['credential_code'];
-            }
         }
 
-        // Send QR Pass email whenever credential is issued/reissued or registration transitions to approved/confirmed
-        if ($issuedEmailToken !== '' || $transitionedToApproved) {
+        // Send clean confirmation / approval email (with Registration ID & duty details, ZERO QR pass per D-01)
+        if ($transitionedToApproved) {
             try {
                 $dutyDetails = null;
                 if ($updatedVolunteer) {
@@ -931,14 +940,12 @@ try {
                     ];
                 }
 
-                $emailDeliveryResult = sendRegistrationQrPassEmail($pdo, [
+                $emailDeliveryResult = sendRegistrationConfirmationEmail($pdo, [
                     'to'               => (string)$updatedReg['email'],
                     'fullName'         => (string)$updatedReg['full_name'],
                     'registrationCode' => (string)$updatedReg['registration_code'],
-                    'credentialCode'   => $issuedEmailCredCode !== '' ? $issuedEmailCredCode : (string)$updatedReg['registration_code'],
                     'categoryName'     => (string)$updatedReg['category_code'],
                     'status'           => (string)$updatedReg['status'],
-                    'rawToken'         => $issuedEmailToken,
                     'recipientUserId'  => $updatedReg['user_id'] ?? null,
                     'dutyDetails'      => $dutyDetails,
                 ]);
