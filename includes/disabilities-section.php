@@ -304,7 +304,9 @@ $totalDisabilities = isset($disabilityList) && is_array($disabilityList) ? count
     <div id="disability-grid" class="pfg-dis-grid">
       <?php foreach ($disabilityList as $dIdx => $dItem):
           $isOpen = $initialExpandedCount > 0 && $dIdx < $initialExpandedCount;
-          $panelId = 'disability-panel-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$dItem['code']);
+          $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$dItem['code']);
+          $panelId = 'disability-panel-' . $safeCode;
+          $btnId = 'disability-btn-' . $safeCode;
           $displayOrder = (int)($dItem['displayOrder'] ?? ($dIdx + 1));
           $accommList = isset($dItem['accommodationExamples']) && is_array($dItem['accommodationExamples'])
               ? $dItem['accommodationExamples']
@@ -322,38 +324,43 @@ $totalDisabilities = isset($disabilityList) && is_array($disabilityList) ? count
           data-search-text="<?= htmlspecialchars($searchBlob, ENT_QUOTES, 'UTF-8') ?>"
           class="pfg-dis-card"
         >
-          <button
-            type="button"
-            data-disability-toggle="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
-            aria-expanded="<?= $isOpen ? 'true' : 'false' ?>"
-            aria-controls="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
-            class="pfg-dis-card-btn"
-          >
-            <span class="pfg-dis-icon-box" aria-hidden="true">
-              <?= renderDisabilityIconSvg((string)$dItem['code'], $displayOrder) ?>
-            </span>
+          <h3 class="pfg-dis-card-heading">
+            <button
+              id="<?= htmlspecialchars($btnId, ENT_QUOTES, 'UTF-8') ?>"
+              type="button"
+              data-disability-toggle="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
+              aria-expanded="<?= $isOpen ? 'true' : 'false' ?>"
+              aria-controls="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
+              class="pfg-dis-card-btn"
+            >
+              <span class="pfg-dis-icon-box" aria-hidden="true">
+                <?= renderDisabilityIconSvg((string)$dItem['code'], $displayOrder) ?>
+              </span>
 
-            <div class="pfg-dis-card-body">
-              <div class="pfg-dis-card-meta">
-                <span class="pfg-dis-num">
-                  <?= str_pad((string)$displayOrder, 2, '0', STR_PAD_LEFT) ?>
+              <span class="pfg-dis-card-body">
+                <span class="pfg-dis-card-meta">
+                  <span class="pfg-dis-num">
+                    <?= str_pad((string)$displayOrder, 2, '0', STR_PAD_LEFT) ?>
+                  </span>
+                  <span class="pfg-dis-group">
+                    <?= htmlspecialchars((string)$dItem['rpwdGroup'], ENT_QUOTES, 'UTF-8') ?>
+                  </span>
                 </span>
-                <span class="pfg-dis-group">
-                  <?= htmlspecialchars((string)$dItem['rpwdGroup'], ENT_QUOTES, 'UTF-8') ?>
+                <span class="pfg-dis-card-title">
+                  <?= htmlspecialchars((string)$dItem['name'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
-              </div>
-              <h3 class="pfg-dis-card-title">
-                <?= htmlspecialchars((string)$dItem['name'], ENT_QUOTES, 'UTF-8') ?>
-              </h3>
-            </div>
+              </span>
 
-            <svg data-chevron="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pfg-dis-chevron" aria-hidden="true">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
+              <svg data-chevron="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pfg-dis-chevron" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          </h3>
 
           <div
             id="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
+            role="region"
+            aria-labelledby="<?= htmlspecialchars($btnId, ENT_QUOTES, 'UTF-8') ?>"
             class="pfg-dis-panel<?= $isOpen ? '' : ' hidden' ?>"
           >
             <p class="pfg-dis-desc">
@@ -470,6 +477,17 @@ $totalDisabilities = isset($disabilityList) && is_array($disabilityList) ? count
       }
 
       var toggleBtns = container.querySelectorAll("[data-disability-toggle]");
+      function getVisibleToggleBtns() {
+        var visible = [];
+        for (var v = 0; v < toggleBtns.length; v++) {
+          var cardEl = toggleBtns[v].closest("[data-disability-card]");
+          if (!cardEl || !cardEl.classList.contains("hidden")) {
+            visible.push(toggleBtns[v]);
+          }
+        }
+        return visible;
+      }
+
       for (var t = 0; t < toggleBtns.length; t++) {
         toggleBtns[t].addEventListener("click", function () {
           var panelId = this.getAttribute("data-disability-toggle");
@@ -482,6 +500,34 @@ $totalDisabilities = isset($disabilityList) && is_array($disabilityList) ? count
           } else {
             panel.classList.add("hidden");
           }
+        });
+
+        toggleBtns[t].addEventListener("keydown", function (e) {
+          if (
+            e.key !== "ArrowDown" &&
+            e.key !== "ArrowUp" &&
+            e.key !== "Home" &&
+            e.key !== "End"
+          ) {
+            return;
+          }
+          var visibleBtns = getVisibleToggleBtns();
+          var currentIdx = visibleBtns.indexOf(this);
+          if (currentIdx === -1 || visibleBtns.length === 0) return;
+
+          var targetIdx = currentIdx;
+          if (e.key === "ArrowDown") {
+            targetIdx = (currentIdx + 1) % visibleBtns.length;
+          } else if (e.key === "ArrowUp") {
+            targetIdx = (currentIdx - 1 + visibleBtns.length) % visibleBtns.length;
+          } else if (e.key === "Home") {
+            targetIdx = 0;
+          } else if (e.key === "End") {
+            targetIdx = visibleBtns.length - 1;
+          }
+
+          e.preventDefault();
+          visibleBtns[targetIdx].focus();
         });
       }
     })(root);
