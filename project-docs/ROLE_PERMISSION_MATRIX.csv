@@ -1,23 +1,36 @@
-Endpoint / Capability,HTTP Method,Required Permission / Policy,Unauthenticated,PARTICIPANT,RGST,ADMIN (Default),ADMIN (Custom CMS/Audit),SUPERADMIN,CSRF Required,Mandatory MFA Gate (D-20),Verified Test ID
-/api/auth/login,POST,Staff role after password verify + Rate limit,200 (Staff) / 401,403 (Staff portal),200 (MFA opt),200 (MFA req),200 (MFA req),200 (MFA req),No (pre-auth),Enforces D-20,T2-01..T2-06
-/api/auth/logout,POST (GET=405),Authenticated + CSRF,403 (No CSRF),200,200,200,200,200,Yes,Allowed during enrollment,T2-04
-/api/auth/mfa,GET,Authenticated (Read-only),401,200 (RO),200 (RO),200 (RO),200 (RO),200 (RO),No (RO),Allowed during enrollment,T2-07
-/api/auth/mfa,POST (setup/enable),Authenticated + CSRF (+ re-auth on replace),401,200,200,200,200,200,Yes,Allowed during enrollment,T2-07..T2-10
-/api/auth/mfa,POST (disable),Optional MFA roles only + CSRF + re-auth,401,200,200,403 (Mandatory),403 (Mandatory),403 (Mandatory),Yes,Blocked for ADMIN/SUPERADMIN,T2-09..T2-10
-/api/auth/signup,POST,Contained pending Phase 5,403,403,403,403,403,403,N/A,Contained,T2-05
-/api/registrations,POST,Public new email / Auth own email + CSRF,201 (new) / 409 (exists),201 (own) / 403,403 (other),403 (other),403 (other),403 (other),Yes when auth,N/A,T2-17..T2-18
-/api/account/profile,GET / PATCH,Authenticated owner (+ CSRF on PATCH),401,200,200,200 (w/ MFA),200 (w/ MFA),200 (w/ MFA),Yes on PATCH,Yes for ADMIN/SUPERADMIN,T2-11
-/api/account/accommodations,GET / POST,Authenticated owner (+ CSRF on POST),401,200 / 201,200 / 201,200 / 201 (w/ MFA),200 / 201 (w/ MFA),200 / 201 (w/ MFA),Yes on POST,Yes for ADMIN/SUPERADMIN,T2-11
-/dashboard,GET,Authenticated (302 -> /login if unauth),302 /login,200,200,200 (w/ MFA),200 (w/ MFA),200 (w/ MFA),No,Yes for ADMIN/SUPERADMIN,T2-14 / A-12
-/api/admin/overview,GET,ADMIN/SUPERADMIN + field-level gating,401,403,403,200,200,200,No,Yes (403 until enrolled),T2-06 / T2-12
-/api/admin/registrations,GET,registrations.read.all (+ accommodations.read for sensitive),401,403,403,200,200,200,No,Yes,T2-12 / T2-20
-/api/admin/registrations?export=csv,GET,registrations.export (+ accommodations.read if included),401,403,403,200 (CSV safe),200 (CSV safe),200 (CSV safe),No,Yes,T2-20
-/api/admin/registrations,PATCH / POST,registrations.write / volunteers.review / sli.review + CSRF,401,403,403,200 (410 on QR ISSUE),200 (410 on QR ISSUE),200 (410 on QR ISSUE),Yes,Yes,T2-11 / T2-19
-/api/admin/accommodations,GET / PATCH,accommodations.read / accommodations.manage + CSRF,401,403,403,200,200,200,Yes on PATCH,Yes,T2-11 / T2-12
-/api/admin/coupons,GET / POST / PATCH,coupons.manage + CSRF,401,403,403,200,200,200,Yes on write,Yes,T2-11 / T2-12
-/api/admin/cms,GET / POST / PATCH / DELETE,cms.manage + CSRF,401,403,403,403,200,200,Yes on write,Yes,T2-11 / T2-12 / T2-16
-/api/admin/audit-logs,GET,audit_logs.read,401,403,403,403,200,200,No,Yes,T2-12 / T2-21
-/api/admin/users,GET / POST / PATCH,SUPERADMIN + admin_accounts.manage + CSRF,401,403,403,403,403,200 (self/last guards),Yes on write,Yes,T2-11..T2-13
-/api/checkins,GET,attendance.read.own (RGST) / attendance.read.full (ADMIN),401,403,200 (OWN only),200 (FULL),200 (FULL),200 (FULL),No,Yes for ADMIN/SUPERADMIN,T2-12
-/api/qr/verify & /api/checkins/confirm,POST,RGST/ADMIN/SUPERADMIN + CSRF -> Discontinued (D-01),401,403,410 Gone,410 Gone,410 Gone,410 Gone,Yes,Yes for ADMIN/SUPERADMIN,T2-11 / T2-19
-/api/qr/pass,POST (issue/reissue),Discontinued (D-01) + CSRF,401,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,Yes,Yes for ADMIN/SUPERADMIN,T2-19
+Endpoint / Capability,HTTP Method,Required Permission / Policy,Unauthenticated,PARTICIPANT,RGST,ADMIN (registration_manager),ADMIN (volunteer_coordinator),ADMIN (sli_coordinator),ADMIN (accessibility_coordinator),ADMIN (programme_coordinator),ADMIN (content_manager),ADMIN (communications_manager),ADMIN (Legacy Unprofiled),SUPERADMIN,CSRF Required,Mandatory MFA Gate (D-20)
+/api/auth/signup,POST,Public + IP/Email Rate Limit (Uniform 202),202,202,202,202,202,202,202,202,202,202,202,202,No,No
+/api/auth/verify-email,GET / POST,Public + IP Rate Limit (Atomic single-use POST),200,200,200,200,200,200,200,200,200,200,200,200,No,No
+/api/auth/resend-verification,POST,Public or Auth + Rate Limit (3/hr per email),200,200,200,200,200,200,200,200,200,200,200,200,No,No
+/api/auth/login (Participant Portal),POST,Public + Rate Limit + Verified Email check post-password,200 (or 403 unverified),200,200,200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),No (pre-auth),Enforces D-20 for ADMIN/SUPERADMIN
+/api/auth/login (Staff Portal portal=staff),POST,Staff Role (SUPERADMIN/ADMIN/RGST) + Rate Limit + D-20 MFA,200 (Staff) / 401,403 (Staff only),200 (MFA opt),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),200 (MFA req),No (pre-auth),Enforces D-20 for ADMIN/SUPERADMIN
+/api/auth/logout,POST (GET=405),Authenticated + Session-Bound CSRF,403 (No CSRF),200,200,200,200,200,200,200,200,200,200,200,Yes,Allowed during enrollment
+/api/auth/mfa (Status & Setup/Enable),GET / POST,Authenticated (+ CSRF on POST; currentPassword on replace),401,200,200,200,200,200,200,200,200,200,200,200,Yes on POST,Allowed during enrollment
+/api/auth/mfa (action=disable),POST,Optional MFA roles only + CSRF + currentPassword,401,200,200,403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),403 (Mandatory D-20),Yes,Blocked for ADMIN/SUPERADMIN
+/api/auth/password-reset,POST,Public + Rate Limit + Complexity Policy + Atomic Token Consume,200,200,200,200,200,200,200,200,200,200,200,200,No,No
+/api/auth/claim-legacy,GET / POST,Verified PARTICIPANT only (non-staff) + CSRF on POST,401,200,403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),403 (Non-staff only),Yes on POST,N/A
+/api/registrations,POST,Verified Account + account.read.own + CSRF + PRIMARY Category,401,201 (Max 1/cat),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),201 (Own personal),Yes,Yes for ADMIN/SUPERADMIN
+/api/account/profile,GET / PATCH,account.read.own + CSRF on PATCH (+ currentPassword on email/pw),401,200,200,200,200,200,200,200,200,200,200,200,Yes on PATCH,Yes for ADMIN/SUPERADMIN
+/api/account/registrations,GET / PATCH / POST,account.read.own (Owner-scoped; actorType=PARTICIPANT) + CSRF,401,200,200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),Yes on write,Yes for ADMIN/SUPERADMIN
+/api/account/drafts,GET / POST / DELETE,account.read.own (Owner-scoped) + CSRF on write,401,200,200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),200 (Own),Yes on write,Yes for ADMIN/SUPERADMIN
+/api/account/accommodations,GET / POST,account.read.own (Owner-scoped) + CSRF on POST,401,200 / 201,200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),200 / 201 (Own),Yes on POST,Yes for ADMIN/SUPERADMIN
+/api/account/dashboard & /api/account/notifications,GET / PATCH,account.read.own (Owner-scoped) + CSRF on PATCH,401,200,200,200,200,200,200,200,200,200,200,200,Yes on PATCH,Yes for ADMIN/SUPERADMIN
+/api/attendance (Desk Search & Metrics),GET,RGST role OR attendance.read.full / registrations.read.all / checkins.confirm / qr.scan,401,403,200 (Desk-safe only),200 (Desk-safe only),200 (Desk-safe only),200 (Desk-safe only),200 (Desk-safe only),200 (Desk-safe only),403,200 (Desk-safe only),200 (Desk-safe only),200 (Desk-safe only),No,Yes for ADMIN/SUPERADMIN
+/api/attendance/mark,POST,RGST role OR checkins.confirm / qr.scan / registrations.write + CSRF,401,403,201 / 200,201 / 200,403,403,403,403,403,403,201 / 200,201 / 200,Yes,Yes for ADMIN/SUPERADMIN
+/api/attendance/correct (D-03 Undo / Override),POST,RGST (own mark <=15m) OR SUPERADMIN / ADMIN (registrations.write) + CSRF,401,403,200 (Own <=15m) / 403,200 (Override anytime),403,403,403,403,403,403,200 (Override anytime),200 (Override anytime),Yes,Yes for ADMIN/SUPERADMIN
+/api/qr/pass & /api/qr/verify & /api/checkins/confirm,GET / POST,Permanently Discontinued under Decision D-01 (CAD-13),410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,410 Gone,N/A (410),N/A (410)
+/api/admin/overview,GET,ADMIN or SUPERADMIN (Sensitive accommodation/payment blocks gated),401,403,403,200 (No a11y/pay),200 (No a11y/pay),200 (A11y summary),200 (A11y summary),200 (No a11y/pay),200 (No a11y/pay),200 (No a11y/pay),200 (Full default),200 (Full),No,Yes (403 until enrolled)
+/api/admin/registrations (Read List/Detail),GET,registrations.read.all / volunteers.review / sli.review (+ accommodations.read for sensitive),401,403,403,200 (A11y masked),200 (A11y masked),200 (A11y decrypted),200 (A11y decrypted),200 (A11y masked),403,200 (A11y masked),200 (A11y decrypted),200 (A11y decrypted),No,Yes
+/api/admin/registrations?export=csv,GET,registrations.export (+ accommodations.read if includeAccommodations=true),401,403,403,200 (No a11y cols),403,403,403,403,403,200 (No a11y cols),200 (With a11y cols),200 (With a11y cols),No,Yes
+/api/admin/registrations (Update / Status Review),PATCH / POST,registrations.write (All) / volunteers.review (VOL) / sli.review (SLI) + CSRF,401,403,403,200 (All categories),200 (VOLUNTEER only),200 (SLI only),403,200 (VOL/SLI review),403,403,200 (All categories),200 (All categories),Yes,Yes
+/api/admin/accommodations (Read),GET,accommodations.read (Logs SENSITIVE_DATA_READ),401,403,403,403,403,200,200,403,403,403,200,200,No,Yes
+/api/admin/accommodations (Manage),PATCH,accommodations.manage + CSRF,401,403,403,403,403,403,200,403,403,403,200,200,Yes,Yes
+/api/admin/venues & /api/admin/programme,GET / POST / PATCH,programme.manage or cms.manage + CSRF on write,401,403,403,403,403,403,403,200,200,403,403,200,Yes on write,Yes
+/api/admin/assignments (Duty Roster),GET / POST / PATCH / DELETE,volunteers.review / sli.review / programme.manage / registrations.write + CSRF,401,403,403,200 (All),200 (VOLUNTEER),200 (SLI),403,200 (VOL & SLI),403,403,200 (All),200 (All),Yes on write,Yes
+/api/admin/announcements (Comms Broadcast),GET / POST / PATCH,communications.manage or cms.manage + CSRF on write,401,403,403,403,403,403,403,403,200,200,403,200,Yes on write,Yes
+/api/admin/notifications (Queue Inspect/Retry/Resend),GET / POST,ADMIN or SUPERADMIN + CSRF on POST,401,403,403,200,200,200,200,200,200,200,200,200,Yes on POST,Yes
+/api/admin/cms,GET / POST / PATCH / DELETE,cms.manage + CSRF on write,401,403,403,403,403,403,403,403,200,403,403,200,Yes on write,Yes
+/api/admin/coupons,GET / POST / PATCH,coupons.manage + CSRF on write,401,403,403,403,403,403,403,403,403,403,200,200,Yes on write,Yes
+/api/admin/permission-profiles,GET / POST / PATCH / DELETE,SUPERADMIN + admin_accounts.manage + CSRF on write,401,403,403,403,403,403,403,403,403,403,403,200,Yes on write,Yes
+/api/admin/users (Staff Lifecycle),GET / POST / PATCH,SUPERADMIN + admin_accounts.manage + CSRF on write,401,403,403,403,403,403,403,403,403,403,403,200 (Self/Last guards),Yes on write,Yes
+/api/admin/audit-logs,GET,audit_logs.read (Forbidden in operational profiles per MED-05),401,403,403,403,403,403,403,403,403,403,403,200,No,Yes
