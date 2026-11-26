@@ -704,12 +704,6 @@ require_once __DIR__ . '/../includes/header.php';
           Registration for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) is not yet open. Please check back once registration opens or contact <a href="mailto:purplefestivalvadodara@gmail.com" style="font-weight:700;text-decoration:underline;">purplefestivalvadodara@gmail.com</a>.
         </p>
       </div>
-    <?php else: ?>
-      <div class="pfg-apply-account">
-        <p class="pfg-apply-account-text">
-          <strong>No website account or login required.</strong> Choose your category below to register directly — confirmation and official updates will be sent via email.
-        </p>
-      </div>
     <?php endif; ?>
 
     <!-- Strictly 3 Stacked Primary Category Boxes -->
