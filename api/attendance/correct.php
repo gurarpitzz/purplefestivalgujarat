@@ -48,7 +48,8 @@ function pfgAttCorrIsOverrideActor(array $user): bool
     if (!hasRole($user, ['ADMIN'])) {
         return false;
     }
-    return hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']);
+    return hasPermission($user, PERMISSIONS['ATTENDANCE_OVERRIDE'])
+        || hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']);
 }
 
 function pfgAttCorrLoadConfig(PDO $pdo): array

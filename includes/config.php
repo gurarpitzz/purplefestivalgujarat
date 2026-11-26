@@ -18,24 +18,45 @@ date_default_timezone_set('Asia/Kolkata');
 // ============================================================================
 
 $GLOBALS['pfgLoadedEnv'] = [];
+$GLOBALS['pfgLoadedEnvPath'] = null;
 
 $explicitEnvFile = getenv('PFG_ENV_FILE');
+if ((!is_string($explicitEnvFile) || trim($explicitEnvFile) === '') && isset($_SERVER['PFG_ENV_FILE']) && is_string($_SERVER['PFG_ENV_FILE'])) {
+    $explicitEnvFile = $_SERVER['PFG_ENV_FILE'];
+}
+
 $candidateEnvFiles = [];
 if (is_string($explicitEnvFile) && trim($explicitEnvFile) !== '') {
     $candidateEnvFiles[] = trim($explicitEnvFile);
 } else {
-    $candidateEnvFiles = [
-        '/home1/tstpllmy/.pfg27_env.php',
-        dirname(__DIR__, 2) . '/.pfg27_env.php',
-        dirname(__DIR__) . '/.env.php',
-    ];
+    // §14 Dynamic Account-Agnostic Loader (zero hardcoded hosting usernames):
+    // 1. Explicit PFG_ENV_FILE (handled above)
+    // 2. Immediate parent outside document root (e.g. /home/<user>/.pfg27_env.php for public_html or subdomain)
+    // 3. Account home when deployed in a nested subdir (e.g. /home/<user>/public_html/staging/)
+    // 4. Dynamic HOME environment directory
+    // 5. Project-local .env.php (local development only)
+    $candidateEnvFiles[] = dirname(__DIR__, 2) . '/.pfg27_env.php';
+    $candidateEnvFiles[] = dirname(__DIR__, 3) . '/.pfg27_env.php';
+
+    $dynamicHome = $_SERVER['HOME'] ?? getenv('HOME');
+    if (is_string($dynamicHome) && trim($dynamicHome) !== '') {
+        $candidateEnvFiles[] = rtrim(trim($dynamicHome), "/\\") . '/.pfg27_env.php';
+    }
+
+    $candidateEnvFiles[] = dirname(__DIR__) . '/.env.php';
 }
 
+$seenEnvCandidates = [];
 foreach ($candidateEnvFiles as $envFile) {
-    if (is_string($envFile) && is_file($envFile) && is_readable($envFile)) {
+    if (!is_string($envFile) || $envFile === '' || isset($seenEnvCandidates[$envFile])) {
+        continue;
+    }
+    $seenEnvCandidates[$envFile] = true;
+    if (@is_file($envFile) && @is_readable($envFile)) {
         $loaded = include $envFile;
         if (is_array($loaded)) {
             $GLOBALS['pfgLoadedEnv'] = array_merge($GLOBALS['pfgLoadedEnv'], $loaded);
+            $GLOBALS['pfgLoadedEnvPath'] = $envFile;
         }
         break;
     }
@@ -224,6 +245,94 @@ if (!defined('NOTIFICATION_MAX_ATTEMPTS')) {
 }
 if (!defined('NOTIFICATION_SUPPORT_EMAIL')) {
     define('NOTIFICATION_SUPPORT_EMAIL', pfgEnv('NOTIFICATION_SUPPORT_EMAIL', MAIL_REPLY_TO));
+}
+if (!defined('REGISTRATION_PUBLIC_OPEN')) {
+    define('REGISTRATION_PUBLIC_OPEN', pfgEnv('REGISTRATION_PUBLIC_OPEN', IS_LOCAL_DEV_ENV ? '1' : '0') === '1');
+}
+if (!defined('ATTENDANCE_ENFORCE_EVENT_DAY_WINDOW')) {
+    define('ATTENDANCE_ENFORCE_EVENT_DAY_WINDOW', pfgEnv('ATTENDANCE_ENFORCE_EVENT_DAY_WINDOW', IS_LOCAL_DEV_ENV ? '0' : '1') === '1');
+}
+
+if (!function_exists('pfgParseBooleanSetting')) {
+    /**
+     * Parses a boolean flag from system_settings (plain scalar, JSON scalar, or JSON object).
+     */
+    function pfgParseBooleanSetting($rawValue, bool $default): bool
+    {
+        if (is_bool($rawValue)) {
+            return $rawValue;
+        }
+        if (is_int($rawValue)) {
+            return $rawValue === 1;
+        }
+        if (is_array($rawValue)) {
+            foreach (['enabled', 'open', 'enforced', 'value'] as $k) {
+                if (array_key_exists($k, $rawValue)) {
+                    return pfgParseBooleanSetting($rawValue[$k], $default);
+                }
+            }
+            return $default;
+        }
+        if (is_string($rawValue)) {
+            $trimmed = trim($rawValue);
+            if ($trimmed === '') {
+                return $default;
+            }
+            $decoded = json_decode($trimmed, true);
+            if (json_last_error() === JSON_ERROR_NONE && $decoded !== null && !is_string($decoded)) {
+                return pfgParseBooleanSetting($decoded, $default);
+            }
+            $norm = strtolower(is_string($decoded) && json_last_error() === JSON_ERROR_NONE ? trim($decoded) : $trimmed);
+            if (in_array($norm, ['1', 'true', 'yes', 'on', 'open'], true)) {
+                return true;
+            }
+            if (in_array($norm, ['0', 'false', 'no', 'off', 'closed'], true)) {
+                return false;
+            }
+        }
+        return $default;
+    }
+}
+
+if (!function_exists('pfgReadSystemSettingBool')) {
+    function pfgReadSystemSettingBool(?PDO $pdo, string $settingKey, bool $fallback): bool
+    {
+        if ($pdo instanceof PDO) {
+            try {
+                $stmt = $pdo->prepare('SELECT `value` FROM system_settings WHERE `key` = :k LIMIT 1');
+                $stmt->execute([':k' => $settingKey]);
+                $val = $stmt->fetchColumn();
+                if ($val !== false && $val !== null && trim((string)$val) !== '') {
+                    return pfgParseBooleanSetting($val, $fallback);
+                }
+            } catch (Throwable $e) {
+                // Fall back safely when table is absent or unavailable
+            }
+        }
+        return $fallback;
+    }
+}
+
+if (!function_exists('pfgIsPublicRegistrationOpen')) {
+    /**
+     * §6 Centralized Registration Launch Activation Gate:
+     * Checks `system_settings` key `registration_public_open` first, falling back to `REGISTRATION_PUBLIC_OPEN`.
+     */
+    function pfgIsPublicRegistrationOpen(?PDO $pdo = null): bool
+    {
+        return pfgReadSystemSettingBool($pdo, 'registration_public_open', REGISTRATION_PUBLIC_OPEN);
+    }
+}
+
+if (!function_exists('pfgIsAttendanceEventDayWindowEnforced')) {
+    /**
+     * §8 Configurable IST Event-Day Attendance Enforcement:
+     * Checks `system_settings` key `attendance_enforce_event_day_window` first, falling back to `ATTENDANCE_ENFORCE_EVENT_DAY_WINDOW`.
+     */
+    function pfgIsAttendanceEventDayWindowEnforced(?PDO $pdo = null): bool
+    {
+        return pfgReadSystemSettingBool($pdo, 'attendance_enforce_event_day_window', ATTENDANCE_ENFORCE_EVENT_DAY_WINDOW);
+    }
 }
 
 // ============================================================================
@@ -593,20 +702,25 @@ if (!defined('PERMISSIONS')) {
         'SLI_REVIEW'             => 'sli.review',
         'ACCOMMODATIONS_READ'    => 'accommodations.read',
         'ACCOMMODATIONS_MANAGE'  => 'accommodations.manage',
-        'CMS_MANAGE'             => 'cms.manage',
-        'PROGRAMME_MANAGE'       => 'programme.manage',
-        'COMMUNICATIONS_MANAGE'  => 'communications.manage',
-        'ADMIN_ACCOUNTS_MANAGE'  => 'admin_accounts.manage',
-        'CREDENTIALS_ISSUE'      => 'credentials.issue',
-        'CREDENTIALS_REVOKE'     => 'credentials.revoke',
-        'QR_SCAN'                => 'qr.scan',
-        'CHECKINS_CONFIRM'       => 'checkins.confirm',
-        'ATTENDANCE_READ_FULL'   => 'attendance.read.full',
-        'ATTENDANCE_READ_OWN'    => 'attendance.read.own',
-        'COUPONS_MANAGE'         => 'coupons.manage',
-        'PAYMENTS_READ'          => 'payments.read',
-        'AUDIT_LOGS_READ'        => 'audit_logs.read',
-        'SETTINGS_MANAGE'        => 'settings.manage',
+        'CMS_MANAGE'                => 'cms.manage',
+        'PROGRAMME_MANAGE'          => 'programme.manage',
+        'COMMUNICATIONS_MANAGE'     => 'communications.manage',
+        'NOTIFICATIONS_READ'        => 'notifications.read',
+        'NOTIFICATIONS_RETRY'       => 'notifications.retry',
+        'NOTIFICATIONS_RESEND'      => 'notifications.resend',
+        'NOTIFICATIONS_AUTH_MANAGE' => 'notifications.auth.manage',
+        'ADMIN_ACCOUNTS_MANAGE'     => 'admin_accounts.manage',
+        'CREDENTIALS_ISSUE'         => 'credentials.issue',
+        'CREDENTIALS_REVOKE'        => 'credentials.revoke',
+        'QR_SCAN'                   => 'qr.scan',
+        'CHECKINS_CONFIRM'          => 'checkins.confirm',
+        'ATTENDANCE_READ_FULL'      => 'attendance.read.full',
+        'ATTENDANCE_READ_OWN'       => 'attendance.read.own',
+        'ATTENDANCE_OVERRIDE'       => 'attendance.override',
+        'COUPONS_MANAGE'            => 'coupons.manage',
+        'PAYMENTS_READ'             => 'payments.read',
+        'AUDIT_LOGS_READ'           => 'audit_logs.read',
+        'SETTINGS_MANAGE'           => 'settings.manage',
     ]);
 }
 

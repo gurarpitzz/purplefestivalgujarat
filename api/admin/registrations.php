@@ -908,6 +908,27 @@ try {
         }
         $catUpper = strtoupper((string)$existing['category_code']);
 
+        // §5.3 Staff Self-Approval / Self-Modification Prevention
+        if (!empty($existing['user_id']) && (string)$existing['user_id'] === (string)$user['id']) {
+            pfgAdminRecordAudit($pdo, (string)$user['id'], 'SELF_APPROVAL_BLOCKED', 'registration', $id, [
+                'registrationCode' => (string)($existing['registration_code'] ?? ''),
+                'categoryCode'     => $catUpper,
+                'currentStatus'    => (string)($existing['status'] ?? ''),
+                'requestedStatus'  => $hasStatusChange ? strtoupper(trim((string)$input['status'])) : null,
+                'attemptedActions' => array_values(array_filter([
+                    $hasStatusChange ? 'status_change' : null,
+                    $hasNotesChange ? 'review_notes' : null,
+                    $hasVolunteerAssign ? 'volunteer_assignment' : null,
+                    $hasSliAssign ? 'sli_assignment' : null,
+                    $credentialAction !== '' ? 'credential_' . strtolower($credentialAction) : null,
+                ])),
+            ]);
+            jsonResponse([
+                'error' => 'Staff members cannot review, approve, or modify their own personal registration.',
+                'code'  => 'SELF_APPROVAL_BLOCKED',
+            ], 403);
+        }
+
         // Granular write permissions BEFORE any database mutation.
         // Volunteer / SLI coordinators may review their own category through volunteers.review / sli.review.
         $canReviewCategory = ($catUpper === 'VOLUNTEER' && hasPermission($user, PERMISSIONS['VOLUNTEERS_REVIEW']))

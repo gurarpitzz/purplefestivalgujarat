@@ -42,6 +42,7 @@ $canAccessDesk = $isSuperadmin
     || $isRgstRole
     || ($isAdminRole && $hasAnyDeskPerm($user, [
         PERMISSIONS['ATTENDANCE_READ_FULL'],
+        PERMISSIONS['ATTENDANCE_OVERRIDE'],
         PERMISSIONS['REGISTRATIONS_READ_ALL'],
         PERMISSIONS['CHECKINS_CONFIRM'],
     ]));
@@ -52,7 +53,10 @@ if (!$canAccessDesk) {
 }
 
 $canOverrideAnytime = $isSuperadmin
-    || ($isAdminRole && hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']));
+    || ($isAdminRole && (
+        hasPermission($user, PERMISSIONS['ATTENDANCE_OVERRIDE'])
+        || hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE'])
+    ));
 
 $pdo = getDb();
 $todayIst = getIstDateString();
@@ -154,12 +158,13 @@ if (count($stations) === 0) {
 }
 
 $bootstrapData = [
-    'csrfToken'       => getCsrfToken(),
-    'todayIst'        => $todayIst,
-    'attendanceScope' => $attendanceScope,
-    'festivalDates'   => $festivalDates,
-    'days'            => $festivalDays,
-    'operator'        => [
+    'csrfToken'             => getCsrfToken(),
+    'todayIst'              => $todayIst,
+    'enforceEventDayWindow' => pfgIsAttendanceEventDayWindowEnforced($pdo),
+    'attendanceScope'       => $attendanceScope,
+    'festivalDates'         => $festivalDates,
+    'days'                  => $festivalDays,
+    'operator'              => [
         'id'                 => $operatorId,
         'fullName'           => $operatorName,
         'role'               => $roleLabel,

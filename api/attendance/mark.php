@@ -48,7 +48,8 @@ function pfgAttMarkIsOverrideActor(array $user): bool
     if (!hasRole($user, ['ADMIN'])) {
         return false;
     }
-    return hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']);
+    return hasPermission($user, PERMISSIONS['ATTENDANCE_OVERRIDE'])
+        || hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']);
 }
 
 function pfgAttMarkLoadConfig(PDO $pdo): array
@@ -331,6 +332,7 @@ try {
             'attendance.mark',
             PERMISSIONS['CHECKINS_CONFIRM'],
             PERMISSIONS['QR_SCAN'],
+            PERMISSIONS['ATTENDANCE_OVERRIDE'],
             PERMISSIONS['REGISTRATIONS_WRITE'],
             'registrations.manage',
         ]));
@@ -370,6 +372,62 @@ try {
             'error'         => 'Invalid attendanceDateIst. Allowed festival dates: ' . implode(', ', $festivalDates) . '.',
             'allowedDates'  => $festivalDates,
         ], 400);
+    }
+
+    // §8 Configurable IST Event-Day Attendance Window Restriction
+    $actorId = (string)$user['id'];
+    $isOverrideActor = pfgAttMarkIsOverrideActor($user);
+    $todayIst = getIstDateString();
+    $enforceEventDayWindow = pfgIsAttendanceEventDayWindowEnforced($pdo);
+    $isFutureDateOverride = false;
+    $futureOverrideReason = '';
+
+    if ($enforceEventDayWindow && $attendanceDateIst > $todayIst) {
+        $overrideRequested = !empty($input['overrideFutureDate']) || !empty($input['override_future_date']);
+        $overrideReasonRaw = trim((string)($input['overrideReason'] ?? $input['override_reason'] ?? ''));
+
+        if (!$isOverrideActor) {
+            logAudit([
+                'actorUserId'  => $actorId,
+                'action'       => 'ACCESS_DENIED',
+                'resourceType' => 'attendance',
+                'resourceId'   => '/api/attendance/mark',
+                'metadata'     => [
+                    'reason'            => 'FUTURE_EVENT_DAY_BLOCKED',
+                    'attendanceDateIst' => $attendanceDateIst,
+                    'todayIst'          => $todayIst,
+                    'roles'             => $user['roles'] ?? [],
+                ],
+            ]);
+            jsonResponse([
+                'error'             => sprintf('Cannot mark attendance for future festival date %s before that event day (IST).', $attendanceDateIst),
+                'code'              => 'FUTURE_EVENT_DAY_BLOCKED',
+                'attendanceDateIst' => $attendanceDateIst,
+                'todayIst'          => $todayIst,
+            ], 403);
+        }
+
+        if (!$overrideRequested) {
+            jsonResponse([
+                'error'             => sprintf('Cannot mark attendance for future festival date %s before that event day (IST). Authorized override actors must pass overrideFutureDate=true with overrideReason (>= 10 characters).', $attendanceDateIst),
+                'code'              => 'FUTURE_EVENT_DAY_OVERRIDE_REQUIRED',
+                'attendanceDateIst' => $attendanceDateIst,
+                'todayIst'          => $todayIst,
+            ], 403);
+        }
+
+        $overrideReasonLen = function_exists('mb_strlen') ? mb_strlen($overrideReasonRaw, 'UTF-8') : strlen($overrideReasonRaw);
+        if ($overrideReasonLen < 10) {
+            jsonResponse([
+                'error' => 'A documented overrideReason of at least 10 characters is required to mark attendance for a future festival date.',
+                'code'  => 'OVERRIDE_REASON_REQUIRED',
+            ], 400);
+        }
+
+        $isFutureDateOverride = true;
+        $futureOverrideReason = function_exists('mb_substr') ? mb_substr($overrideReasonRaw, 0, 400, 'UTF-8') : substr($overrideReasonRaw, 0, 400);
+        $overrideTag = '[FUTURE_DATE_OVERRIDE: ' . $futureOverrideReason . ']';
+        $notes = $notes !== '' ? ($notes . ' ' . $overrideTag) : $overrideTag;
     }
 
     $allowedScopes = $cfg['allowedScopes'];
@@ -447,8 +505,6 @@ try {
         }
     }
 
-    $actorId = (string)$user['id'];
-    $isOverrideActor = pfgAttMarkIsOverrideActor($user);
     $now = nowSql();
 
     $pdo->beginTransaction();
@@ -545,15 +601,33 @@ try {
                 'resourceType' => 'attendance_record',
                 'resourceId'   => $recordId,
                 'metadata'     => [
-                    'registrationId'    => $regId,
-                    'registrationCode'  => $regCode,
-                    'attendanceDateIst' => $attendanceDateIst,
-                    'attendanceScope'   => $attendanceScope,
-                    'previousStatus'    => $prevStatus,
-                    'newStatus'         => 'PRESENT',
-                    'correctionLogId'   => $corrLogId,
+                    'registrationId'     => $regId,
+                    'registrationCode'   => $regCode,
+                    'attendanceDateIst'  => $attendanceDateIst,
+                    'attendanceScope'    => $attendanceScope,
+                    'previousStatus'     => $prevStatus,
+                    'newStatus'          => 'PRESENT',
+                    'correctionLogId'    => $corrLogId,
+                    'futureDateOverride' => $isFutureDateOverride,
                 ],
             ]);
+
+            if ($isFutureDateOverride) {
+                logAudit([
+                    'actorUserId'  => $actorId,
+                    'action'       => 'ATTENDANCE_FUTURE_DATE_OVERRIDE',
+                    'resourceType' => 'attendance_record',
+                    'resourceId'   => $recordId,
+                    'metadata'     => [
+                        'registrationId'    => $regId,
+                        'registrationCode'  => $regCode,
+                        'attendanceDateIst' => $attendanceDateIst,
+                        'todayIst'          => $todayIst,
+                        'overrideReason'    => $futureOverrideReason,
+                        'reinstated'        => true,
+                    ],
+                ]);
+            }
 
             $saved = pfgAttMarkFetchRecord($pdo, $editionId, $regId, $attendanceDateIst, $attendanceScope) ?? $existing;
             $metrics = pfgAttMarkComputeMetrics($pdo, $editionId, $attendanceScope, $festivalDates);
@@ -628,14 +702,32 @@ try {
         'resourceType' => 'attendance_record',
         'resourceId'   => $newRecordId,
         'metadata'     => [
-            'registrationId'    => $regId,
-            'registrationCode'  => $regCode,
-            'categoryCode'      => strtoupper((string)$reg['category_code']),
-            'attendanceDateIst' => $attendanceDateIst,
-            'attendanceScope'   => $attendanceScope,
-            'venueLabel'        => $venueLabel !== '' ? $venueLabel : null,
+            'registrationId'     => $regId,
+            'registrationCode'   => $regCode,
+            'categoryCode'       => strtoupper((string)$reg['category_code']),
+            'attendanceDateIst'  => $attendanceDateIst,
+            'attendanceScope'    => $attendanceScope,
+            'venueLabel'         => $venueLabel !== '' ? $venueLabel : null,
+            'futureDateOverride' => $isFutureDateOverride,
         ],
     ]);
+
+    if ($isFutureDateOverride) {
+        logAudit([
+            'actorUserId'  => $actorId,
+            'action'       => 'ATTENDANCE_FUTURE_DATE_OVERRIDE',
+            'resourceType' => 'attendance_record',
+            'resourceId'   => $newRecordId,
+            'metadata'     => [
+                'registrationId'    => $regId,
+                'registrationCode'  => $regCode,
+                'attendanceDateIst' => $attendanceDateIst,
+                'todayIst'          => $todayIst,
+                'overrideReason'    => $futureOverrideReason,
+                'reinstated'        => false,
+            ],
+        ]);
+    }
 
     $saved = pfgAttMarkFetchRecord($pdo, $editionId, $regId, $attendanceDateIst, $attendanceScope);
     $metrics = pfgAttMarkComputeMetrics($pdo, $editionId, $attendanceScope, $festivalDates);
