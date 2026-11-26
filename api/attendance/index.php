@@ -42,6 +42,7 @@ function pfgAttHasAnyPerm(array $user, array $perms): bool
 
 /**
  * Checks whether the actor has Admin/Superadmin override capability (D-03).
+ * Strictly restricted to SUPERADMIN or ADMIN with PERMISSIONS['REGISTRATIONS_WRITE'].
  */
 function pfgAttIsOverrideActor(array $user): bool
 {
@@ -51,12 +52,7 @@ function pfgAttIsOverrideActor(array $user): bool
     if (!hasRole($user, ['ADMIN'])) {
         return false;
     }
-    return pfgAttHasAnyPerm($user, [
-        'checkins.override',
-        'registrations.manage',
-        PERMISSIONS['REGISTRATIONS_WRITE'],
-        PERMISSIONS['CHECKINS_CONFIRM'],
-    ]);
+    return hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']);
 }
 
 /**
@@ -140,18 +136,40 @@ function pfgAttLoadConfig(PDO $pdo): array
             }
         }
 
+        $allowedScopes = [];
         $candidateScope = null;
         if (isset($map['attendance.scope'])) {
             $sv = $map['attendance.scope'];
             $candidateScope = is_array($sv) ? (string)($sv['scope'] ?? $sv['defaultScope'] ?? '') : (string)$sv;
+            if (is_array($sv) && isset($sv['allowedScopes']) && is_array($sv['allowedScopes'])) {
+                foreach ($sv['allowedScopes'] as $as) {
+                    $cleanAs = is_string($as) ? strtoupper(trim($as)) : '';
+                    if ($cleanAs !== '' && preg_match('/^[A-Z0-9_-]{2,64}$/', $cleanAs) === 1 && !in_array($cleanAs, $allowedScopes, true)) {
+                        $allowedScopes[] = $cleanAs;
+                    }
+                }
+            }
         } elseif (isset($map['attendance.mode']) && is_array($map['attendance.mode']) && !empty($map['attendance.mode']['defaultScope'])) {
             $candidateScope = (string)$map['attendance.mode']['defaultScope'];
+        }
+        if (isset($map['attendance.mode']) && is_array($map['attendance.mode']) && isset($map['attendance.mode']['allowedScopes']) && is_array($map['attendance.mode']['allowedScopes'])) {
+            foreach ($map['attendance.mode']['allowedScopes'] as $as) {
+                $cleanAs = is_string($as) ? strtoupper(trim($as)) : '';
+                if ($cleanAs !== '' && preg_match('/^[A-Z0-9_-]{2,64}$/', $cleanAs) === 1 && !in_array($cleanAs, $allowedScopes, true)) {
+                    $allowedScopes[] = $cleanAs;
+                }
+            }
         }
         if (is_string($candidateScope) && preg_match('/^[A-Z0-9_-]{2,64}$/', strtoupper(trim($candidateScope))) === 1) {
             $scope = strtoupper(trim($candidateScope));
         }
     } catch (Throwable $e) {
         // Fall back safely to defaults
+        $allowedScopes = [];
+    }
+
+    if (!in_array($scope, $allowedScopes, true)) {
+        array_unshift($allowedScopes, $scope);
     }
 
     if (count($dates) === 0) {
@@ -180,6 +198,7 @@ function pfgAttLoadConfig(PDO $pdo): array
         'festivalDates' => $dates,
         'days'          => $days,
         'defaultScope'  => $scope,
+        'allowedScopes' => $allowedScopes,
     ];
 }
 
@@ -289,10 +308,9 @@ try {
 
     $canReadAttendance = hasRole($user, ['SUPERADMIN', 'RGST'])
         || (hasRole($user, ['ADMIN']) && pfgAttHasAnyPerm($user, [
-            'checkins.read',
-            'registrations.read',
             PERMISSIONS['ATTENDANCE_READ_FULL'],
             PERMISSIONS['REGISTRATIONS_READ_ALL'],
+            PERMISSIONS['CHECKINS_CONFIRM'],
         ]));
 
     if (!$canReadAttendance) {
@@ -315,10 +333,15 @@ try {
 
     $cfg = pfgAttLoadConfig($pdo);
     $festivalDates = $cfg['festivalDates'];
+    $allowedScopes = $cfg['allowedScopes'];
     $scopeParam = strtoupper(trim((string)($_GET['scope'] ?? '')));
-    $scope = ($scopeParam !== '' && preg_match('/^[A-Z0-9_-]{2,64}$/', $scopeParam) === 1)
-        ? $scopeParam
-        : $cfg['defaultScope'];
+    if ($scopeParam !== '' && !in_array($scopeParam, $allowedScopes, true)) {
+        jsonResponse([
+            'error'         => 'Invalid attendance scope. Allowed scopes: ' . implode(', ', $allowedScopes) . '.',
+            'allowedScopes' => $allowedScopes,
+        ], 400);
+    }
+    $scope = $scopeParam !== '' ? $scopeParam : $cfg['defaultScope'];
 
     // Filters & Pagination (strictly server-side SQL; fixes FND-38)
     $q = trim((string)($_GET['q'] ?? ''));

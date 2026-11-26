@@ -41,13 +41,9 @@ $hasAnyDeskPerm = static function (array $u, array $perms): bool {
 $canAccessDesk = $isSuperadmin
     || $isRgstRole
     || ($isAdminRole && $hasAnyDeskPerm($user, [
-        'checkins.read',
-        'registrations.read',
-        'checkins.scan',
         PERMISSIONS['ATTENDANCE_READ_FULL'],
         PERMISSIONS['REGISTRATIONS_READ_ALL'],
         PERMISSIONS['CHECKINS_CONFIRM'],
-        PERMISSIONS['QR_SCAN'],
     ]));
 
 if (!$canAccessDesk) {
@@ -56,12 +52,7 @@ if (!$canAccessDesk) {
 }
 
 $canOverrideAnytime = $isSuperadmin
-    || ($isAdminRole && $hasAnyDeskPerm($user, [
-        'checkins.override',
-        'registrations.manage',
-        PERMISSIONS['REGISTRATIONS_WRITE'],
-        PERMISSIONS['CHECKINS_CONFIRM'],
-    ]));
+    || ($isAdminRole && hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']));
 
 $pdo = getDb();
 $todayIst = getIstDateString();

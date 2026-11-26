@@ -48,12 +48,7 @@ function pfgAttMarkIsOverrideActor(array $user): bool
     if (!hasRole($user, ['ADMIN'])) {
         return false;
     }
-    return pfgAttMarkHasAnyPerm($user, [
-        'checkins.override',
-        'registrations.manage',
-        PERMISSIONS['REGISTRATIONS_WRITE'],
-        PERMISSIONS['CHECKINS_CONFIRM'],
-    ]);
+    return hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']);
 }
 
 function pfgAttMarkLoadConfig(PDO $pdo): array
@@ -62,6 +57,7 @@ function pfgAttMarkLoadConfig(PDO $pdo): array
     $defaultScope = 'FESTIVAL_DAY';
     $dates = [];
     $scope = $defaultScope;
+    $allowedScopes = [];
 
     try {
         $stmt = $pdo->prepare(
@@ -104,13 +100,34 @@ function pfgAttMarkLoadConfig(PDO $pdo): array
         if (isset($map['attendance.scope'])) {
             $sv = $map['attendance.scope'];
             $candidateScope = is_array($sv) ? (string)($sv['scope'] ?? $sv['defaultScope'] ?? '') : (string)$sv;
+            if (is_array($sv) && isset($sv['allowedScopes']) && is_array($sv['allowedScopes'])) {
+                foreach ($sv['allowedScopes'] as $as) {
+                    $cleanAs = is_string($as) ? strtoupper(trim($as)) : '';
+                    if ($cleanAs !== '' && preg_match('/^[A-Z0-9_-]{2,64}$/', $cleanAs) === 1 && !in_array($cleanAs, $allowedScopes, true)) {
+                        $allowedScopes[] = $cleanAs;
+                    }
+                }
+            }
         } elseif (isset($map['attendance.mode']) && is_array($map['attendance.mode']) && !empty($map['attendance.mode']['defaultScope'])) {
             $candidateScope = (string)$map['attendance.mode']['defaultScope'];
+        }
+        if (isset($map['attendance.mode']) && is_array($map['attendance.mode']) && isset($map['attendance.mode']['allowedScopes']) && is_array($map['attendance.mode']['allowedScopes'])) {
+            foreach ($map['attendance.mode']['allowedScopes'] as $as) {
+                $cleanAs = is_string($as) ? strtoupper(trim($as)) : '';
+                if ($cleanAs !== '' && preg_match('/^[A-Z0-9_-]{2,64}$/', $cleanAs) === 1 && !in_array($cleanAs, $allowedScopes, true)) {
+                    $allowedScopes[] = $cleanAs;
+                }
+            }
         }
         if (is_string($candidateScope) && preg_match('/^[A-Z0-9_-]{2,64}$/', strtoupper(trim($candidateScope))) === 1) {
             $scope = strtoupper(trim($candidateScope));
         }
     } catch (Throwable $e) {
+        $allowedScopes = [];
+    }
+
+    if (!in_array($scope, $allowedScopes, true)) {
+        array_unshift($allowedScopes, $scope);
     }
 
     if (count($dates) === 0) {
@@ -120,11 +137,45 @@ function pfgAttMarkLoadConfig(PDO $pdo): array
     return [
         'festivalDates' => $dates,
         'defaultScope'  => $scope,
+        'allowedScopes' => $allowedScopes,
     ];
 }
 
-function pfgAttMarkFetchRecord(PDO $pdo, string $editionId, string $registrationId, string $dateIst, string $scope): ?array
+function pfgAttMarkFetchRecord(PDO $pdo, string $editionId, string $registrationId, string $dateIst, string $scope, bool $forUpdate = false): ?array
 {
+    if ($forUpdate) {
+        $lockClause = ($pdo instanceof PfgPdo && $pdo->isSqlite) ? '' : ' FOR UPDATE';
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM attendance_records
+            WHERE edition_id = :ed
+              AND registration_id = :reg_id
+              AND attendance_date_ist = :att_date
+              AND attendance_scope = :scope
+            LIMIT 1{$lockClause}
+        ");
+        $stmt->execute([
+            ':ed'       => $editionId,
+            ':reg_id'   => $registrationId,
+            ':att_date' => $dateIst,
+            ':scope'    => $scope,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        $row['marked_by_name'] = null;
+        if (!empty($row['marked_by_user_id'])) {
+            $uStmt = $pdo->prepare('SELECT full_name FROM users WHERE id = :uid LIMIT 1');
+            $uStmt->execute([':uid' => (string)$row['marked_by_user_id']]);
+            $name = $uStmt->fetchColumn();
+            if (is_string($name) && $name !== '') {
+                $row['marked_by_name'] = $name;
+            }
+        }
+        return $row;
+    }
+
     $stmt = $pdo->prepare("
         SELECT ar.*, u.full_name AS marked_by_name
         FROM attendance_records ar
@@ -321,10 +372,14 @@ try {
         ], 400);
     }
 
+    $allowedScopes = $cfg['allowedScopes'];
     $attendanceScope = $cfg['defaultScope'];
     if ($scopeInput !== '') {
-        if (preg_match('/^[A-Z0-9_-]{2,64}$/', $scopeInput) !== 1) {
-            jsonResponse(['error' => 'Invalid attendanceScope format.'], 400);
+        if (!in_array($scopeInput, $allowedScopes, true)) {
+            jsonResponse([
+                'error'         => 'Invalid attendanceScope. Allowed scopes: ' . implode(', ', $allowedScopes) . '.',
+                'allowedScopes' => $allowedScopes,
+            ], 400);
         }
         $attendanceScope = $scopeInput;
     }
@@ -398,7 +453,7 @@ try {
 
     $pdo->beginTransaction();
     try {
-        $existing = pfgAttMarkFetchRecord($pdo, $editionId, $regId, $attendanceDateIst, $attendanceScope);
+        $existing = pfgAttMarkFetchRecord($pdo, $editionId, $regId, $attendanceDateIst, $attendanceScope, true);
 
         // Case 1: Already marked PRESENT -> Idempotent HTTP 200, ZERO duplicates
         if ($existing && strtoupper((string)$existing['status']) === 'PRESENT') {
@@ -433,6 +488,7 @@ try {
                     correction_reason = :corr_reason,
                     updated_at = :updated_at
                 WHERE id = :id
+                  AND status = :prev_status
             ");
             $upd->execute([
                 ':actor_id'    => $actorId,
@@ -445,7 +501,25 @@ try {
                 ':corr_reason' => $reinstateReason,
                 ':updated_at'  => $now,
                 ':id'          => $recordId,
+                ':prev_status' => $prevStatus,
             ]);
+
+            if ($upd->rowCount() !== 1) {
+                $pdo->rollBack();
+                $winner = pfgAttMarkFetchRecord($pdo, $editionId, $regId, $attendanceDateIst, $attendanceScope);
+                if ($winner && strtoupper((string)$winner['status']) === 'PRESENT') {
+                    $metrics = pfgAttMarkComputeMetrics($pdo, $editionId, $attendanceScope, $festivalDates);
+                    jsonResponse([
+                        'success'       => true,
+                        'alreadyMarked' => true,
+                        'reinstated'    => false,
+                        'message'       => 'Attendance was already marked PRESENT for ' . $attendanceDateIst . '.',
+                        'record'        => pfgAttMarkFormatRecord($winner, $reg, $user, $isOverrideActor),
+                        'metrics'       => $metrics,
+                    ], 200);
+                }
+                jsonResponse(['error' => 'Attendance record changed concurrently. Please refresh and retry.'], 409);
+            }
 
             $corrLogId = uuid4();
             $insCorr = $pdo->prepare("

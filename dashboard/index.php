@@ -743,6 +743,19 @@ require_once dirname(__DIR__) . '/includes/header.php';
                 We will send a verification link to your new email address. Your login email only updates after you verify it.
               </p>
             </div>
+            <div>
+              <label for="prof-email-curr-pw" class="block text-xs font-semibold text-[#211B29] mb-1">
+                Current Password
+              </label>
+              <input
+                id="prof-email-curr-pw"
+                name="currentPassword"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Enter your current password to confirm"
+                class="w-full min-h-[44px] px-3.5 rounded-xl border border-[#59436D]/30 bg-white text-sm text-[#17151C]"
+              />
+            </div>
             <button
               type="submit"
               id="dash-email-submit-btn"
@@ -870,10 +883,61 @@ require_once dirname(__DIR__) . '/includes/header.php';
             </div>
           </div>
 
-          <div id="dash-mfa-disable-box" class="hidden rounded-xl bg-[#F6F1F8] border border-[#59436D]/20 p-4 space-y-2.5">
+          <div
+            id="dash-mfa-recovery-box"
+            role="region"
+            aria-labelledby="dash-mfa-recovery-title"
+            tabindex="-1"
+            class="hidden rounded-xl bg-[#FFF9EB] border-2 border-[#D5B77B] p-4 space-y-3"
+          >
+            <div>
+              <h3 id="dash-mfa-recovery-title" class="text-sm font-bold text-[#5E4514]">
+                Save Your Single-Use Recovery Codes
+              </h3>
+              <p class="text-xs text-[#4B4257] mt-1">
+                These backup codes are displayed only once. Store them in a safe place &mdash; each code can be used once if you lose access to your authenticator app.
+              </p>
+            </div>
+            <ul
+              id="dash-mfa-recovery-codes"
+              aria-label="Single-use MFA recovery codes"
+              class="grid grid-cols-2 gap-2 font-mono text-xs text-[#17151C]"
+            ></ul>
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                id="dash-mfa-copy-codes-btn"
+                class="min-h-[40px] px-3.5 py-1.5 rounded-xl border border-[#59436D] bg-white hover:bg-[#F6F1F8] text-[#432F56] font-bold text-xs transition-colors"
+              >
+                Copy All Codes
+              </button>
+              <button
+                type="button"
+                id="dash-mfa-dismiss-codes-btn"
+                class="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#59436D] hover:bg-[#432F56] text-white font-bold text-xs transition-colors"
+              >
+                I Have Saved These Codes
+              </button>
+            </div>
+          </div>
+
+          <div id="dash-mfa-disable-box" class="hidden rounded-xl bg-[#F6F1F8] border border-[#59436D]/20 p-4 space-y-3">
             <p class="text-xs text-[#4B4257]">
-              To disable two-factor authentication, enter a current 6-digit code from your authenticator app:
+              To disable two-factor authentication, enter your current password and a current 6-digit code from your authenticator app:
             </p>
+            <div>
+              <label for="mfa-disable-password" class="block text-xs font-semibold text-[#211B29] mb-1">
+                Current Password
+              </label>
+              <input
+                id="mfa-disable-password"
+                name="currentPassword"
+                type="password"
+                autocomplete="current-password"
+                placeholder="Enter your current password"
+                class="w-full min-h-[44px] px-3 rounded-xl border border-[#59436D]/30 bg-white text-sm text-[#17151C]"
+              />
+            </div>
             <div class="flex gap-2">
               <label for="mfa-disable-code" class="sr-only">6-digit authenticator code to disable MFA</label>
               <input

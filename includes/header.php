@@ -131,9 +131,15 @@ $defaultSchemaGraph = [
     ],
 ];
 
-$schemaJsonOutput = isset($structuredData) && is_array($structuredData)
-    ? json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-    : json_encode($defaultSchemaGraph, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+$schemaPayload = isset($structuredData) && is_array($structuredData)
+    ? $structuredData
+    : $defaultSchemaGraph;
+$schemaJsonOutput = function_exists('pfgSafeJsonForScript')
+    ? pfgSafeJsonForScript($schemaPayload)
+    : (json_encode(
+        $schemaPayload,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    ) ?: '{}');
 ?>
 <!DOCTYPE html>
 <html lang="en" data-text-scale="100" data-contrast="default" data-reduced-motion="false" data-spacing="normal" data-highlight-links="false">
