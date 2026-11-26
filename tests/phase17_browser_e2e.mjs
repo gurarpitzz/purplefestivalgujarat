@@ -718,6 +718,196 @@ try {
     return `8/8 routes passed WCAG & contrast checks: ${auditSummary.join(', ')}`;
   });
 
+  // =========================================================================
+  // E2E-06: Cross-Browser Chrome + Microsoft Edge Reflow (200%/400%), Modal Focus Trap & Keyboard Navigation
+  // =========================================================================
+  await runCheck('E2E-06', 'Cross-browser Chrome + Edge (msedge): 200% (640px) & 400% (320px) zoom reflow, keyboard Tab/Escape & modal focus trap/restoration across 7 core flows', async () => {
+    const partStorage = await partContext.storageState();
+    const rgstStorage = await rgstContext.storageState();
+    let edgeBrowser = null;
+
+    const verifyEngine = async (engineName, browserInst) => {
+      const pubCtx = await browserInst.newContext({ viewport: { width: 1280, height: 800 } });
+      const pCtx = await browserInst.newContext({ viewport: { width: 1280, height: 800 }, storageState: partStorage });
+      const rCtx = await browserInst.newContext({ viewport: { width: 1280, height: 800 }, storageState: rgstStorage });
+
+      const pPub = await pubCtx.newPage();
+      const pPart = await pCtx.newPage();
+      const pRgst = await rCtx.newPage();
+
+      const routes = [
+        { path: '/', page: pPub, keySel: 'h1' },
+        { path: '/login', page: pPub, keySel: '#login-submit' },
+        { path: '/register', page: pPub, keySel: '#register-submit' },
+        { path: '/forgot-password', page: pPub, keySel: 'button[type="submit"]' },
+        { path: '/apply', page: pPub, keySel: 'article[data-primary-category]' },
+        { path: '/dashboard', page: pPart, keySel: 'h1' },
+        { path: '/rgst', page: pRgst, keySel: '#rgst-search-input' },
+      ];
+
+      const viewports = [
+        { label: '200%', width: 640, height: 900 },
+        { label: '400%', width: 320, height: 640 },
+      ];
+
+      const engineFails = [];
+      let checkedPairs = 0;
+
+      try {
+        // 1. Verify 200% (640px) & 400% (320px) zoom reflow + readable controls + keyboard Tab across all 7 routes
+        for (const r of routes) {
+          for (const vp of viewports) {
+            await r.page.setViewportSize({ width: vp.width, height: vp.height });
+            await r.page.goto(`${BASE_URL}${r.path}`, { waitUntil: 'networkidle' });
+            await r.page.waitForTimeout(100);
+            checkedPairs++;
+
+            const metrics = await r.page.evaluate((sel) => {
+              const sw = document.documentElement.scrollWidth;
+              const iw = window.innerWidth;
+              const el = document.querySelector(sel);
+              const rect = el ? el.getBoundingClientRect() : null;
+              return {
+                scrollWidth: sw,
+                innerWidth: iw,
+                hasKeyEl: Boolean(el),
+                keyWidth: rect ? Math.round(rect.width) : 0,
+                keyHeight: rect ? Math.round(rect.height) : 0,
+                keyLeft: rect ? Math.round(rect.left) : -999,
+              };
+            }, r.keySel);
+
+            if (metrics.scrollWidth > metrics.innerWidth + 4) {
+              engineFails.push(`${engineName} ${r.path}@${vp.label}(${vp.width}px) overflow(${metrics.scrollWidth}>${metrics.innerWidth}+4)`);
+            }
+            if (!metrics.hasKeyEl || metrics.keyWidth <= 0 || metrics.keyHeight <= 0 || metrics.keyLeft < -4) {
+              engineFails.push(`${engineName} ${r.path}@${vp.label} key control(${r.keySel}) clipped/missing`);
+            }
+
+            // Keyboard-only Tab moves focus cleanly
+            if (vp.label === '400%') {
+              await r.page.keyboard.press('Tab');
+              const tabOk = await r.page.evaluate(() => Boolean(document.activeElement && document.activeElement !== document.body));
+              if (!tabOk) {
+                engineFails.push(`${engineName} ${r.path}@400% keyboard Tab failed to focus interactive element`);
+              }
+            }
+          }
+        }
+
+        // 2. Modal Focus Trap, Keyboard Escape Close & Focus Restoration on /rgst
+        await pRgst.setViewportSize({ width: 1280, height: 800 });
+        await pRgst.goto(`${BASE_URL}/rgst`, { waitUntil: 'networkidle' });
+        await pRgst.waitForSelector('#rgst-search-input', { timeout: 10000 });
+
+        // 2a. Accessibility Preferences modal (keyboard Enter open -> Tab/Shift+Tab trap -> Escape close -> focus restored)
+        const a11yTrigger = pRgst.locator('[data-a11y-trigger="true"]').first();
+        await a11yTrigger.focus();
+        await pRgst.keyboard.press('Enter');
+        await pRgst.waitForSelector('#a11y-preferences-modal:not(.hidden)', { timeout: 5000 });
+
+        const a11yFirstInModal = await pRgst.evaluate(() => {
+          const dlg = document.getElementById('a11y-preferences-dialog');
+          return Boolean(dlg && dlg.contains(document.activeElement) && document.activeElement.id === 'a11y-panel-close');
+        });
+        if (!a11yFirstInModal) {
+          engineFails.push(`${engineName} /rgst a11y modal did not move focus to #a11y-panel-close`);
+        }
+
+        // Shift+Tab from first element must wrap to last focusable inside dialog (focus trap)
+        await pRgst.keyboard.press('Shift+Tab');
+        const a11yTrapBack = await pRgst.evaluate(() => {
+          const dlg = document.getElementById('a11y-preferences-dialog');
+          return Boolean(dlg && dlg.contains(document.activeElement) && document.activeElement.id !== 'a11y-panel-close');
+        });
+        if (!a11yTrapBack) {
+          engineFails.push(`${engineName} /rgst a11y modal Shift+Tab escaped focus trap`);
+        }
+
+        // Tab from last element must wrap back to first focusable inside dialog
+        await pRgst.keyboard.press('Tab');
+        const a11yTrapFwd = await pRgst.evaluate(() => document.activeElement && document.activeElement.id === 'a11y-panel-close');
+        if (!a11yTrapFwd) {
+          engineFails.push(`${engineName} /rgst a11y modal Tab did not wrap back to #a11y-panel-close`);
+        }
+
+        // Escape closes modal & restores focus to trigger button
+        await pRgst.keyboard.press('Escape');
+        await pRgst.waitForSelector('#a11y-preferences-modal', { state: 'hidden', timeout: 5000 });
+        const a11yRestored = await pRgst.evaluate(() => Boolean(document.activeElement && document.activeElement.getAttribute('data-a11y-trigger') === 'true'));
+        if (!a11yRestored) {
+          engineFails.push(`${engineName} /rgst a11y modal Escape did not restore focus to trigger`);
+        }
+
+        // 2b. RGST Attendance Correction modal (keyboard Space on checked Day 1 -> focus trap -> Escape restores checkbox focus)
+        await pRgst.fill('#rgst-search-input', attendeeCode);
+        await pRgst.waitForTimeout(350);
+        await pRgst.waitForLoadState('networkidle');
+        const rowLoc = pRgst.locator('#rgst-table-body tr', { hasText: attendeeCode }).first();
+        await rowLoc.waitFor({ state: 'visible', timeout: 10000 });
+        const cbLoc = rowLoc.locator('input.rgst-day-checkbox[data-date="2027-01-21"]').first();
+        const cbId = await cbLoc.getAttribute('id');
+        await cbLoc.focus();
+        await pRgst.keyboard.press('Space');
+        await pRgst.waitForSelector('#rgst-correction-modal:not(.hidden)', { timeout: 5000 });
+
+        const corrInModal = await pRgst.evaluate(() => {
+          const m = document.getElementById('rgst-correction-modal');
+          return Boolean(m && m.contains(document.activeElement));
+        });
+        if (!corrInModal) {
+          engineFails.push(`${engineName} /rgst correction modal did not receive keyboard focus`);
+        }
+
+        // Cycle Tab 6 times inside correction modal and verify focus NEVER escapes the modal
+        let escapedCorr = false;
+        for (let t = 0; t < 6; t++) {
+          await pRgst.keyboard.press('Tab');
+          const stillInside = await pRgst.evaluate(() => {
+            const m = document.getElementById('rgst-correction-modal');
+            return Boolean(m && m.contains(document.activeElement));
+          });
+          if (!stillInside) {
+            escapedCorr = true;
+            break;
+          }
+        }
+        if (escapedCorr) {
+          engineFails.push(`${engineName} /rgst correction modal Tab escaped focus trap`);
+        }
+
+        // Escape closes correction modal and restores focus to the Day 1 checkbox
+        await pRgst.keyboard.press('Escape');
+        await pRgst.waitForSelector('#rgst-correction-modal', { state: 'hidden', timeout: 5000 });
+        const corrRestored = await pRgst.evaluate((id) => Boolean(document.activeElement && document.activeElement.id === id), cbId);
+        if (!corrRestored) {
+          engineFails.push(`${engineName} /rgst correction modal Escape did not restore focus to checkbox #${cbId}`);
+        }
+      } finally {
+        await pubCtx.close();
+        await pCtx.close();
+        await rCtx.close();
+      }
+
+      return { engineName, checkedPairs, engineFails };
+    };
+
+    try {
+      const chromeRes = await verifyEngine('chrome', browser);
+      edgeBrowser = await pw.chromium.launch({ channel: 'msedge', headless: true });
+      const edgeRes = await verifyEngine('msedge', edgeBrowser);
+
+      const allFails = [...chromeRes.engineFails, ...edgeRes.engineFails];
+      assert(allFails.length === 0, `${allFails.length} cross-browser reflow/keyboard/modal failure(s): ${allFails.join(' | ')}`);
+
+      return `Chrome(${chromeRes.checkedPairs}/14 reflow+Tab, 2 modals trapped/restored) + Edge/msedge(${edgeRes.checkedPairs}/14 reflow+Tab, 2 modals trapped/restored) — 0 overflow, 0 focus leaks`;
+    } finally {
+      if (edgeBrowser) {
+        try { await edgeBrowser.close(); } catch {}
+      }
+    }
+  });
+
   await partContext.close();
   await rgstContext.close();
   await pubContext.close();

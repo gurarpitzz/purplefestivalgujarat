@@ -108,8 +108,8 @@ pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean migration & seed initializat
     )->fetchColumn();
     $appliedMigrations = (int)$pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
 
-    pfgAssert(count($tables) === 70, 'Expected 70 tables across migrations 000–011, got ' . count($tables));
-    pfgAssert($appliedMigrations === 12, 'Expected 12 applied migrations (000–011), got ' . $appliedMigrations);
+    pfgAssert(count($tables) === 70, 'Expected 70 tables across migrations 000–012, got ' . count($tables));
+    pfgAssert($appliedMigrations === 13, 'Expected 13 applied migrations (000–012), got ' . $appliedMigrations);
     pfgAssert(in_array('security_rate_limits', $tables, true), 'Missing Phase 2 security_rate_limits table');
     pfgAssert(in_array('schema_migrations', $tables, true), 'Missing Phase 3 schema_migrations table');
     pfgAssert(in_array('registration_number_sequences', $tables, true), 'Missing Phase 3 registration_number_sequences table');

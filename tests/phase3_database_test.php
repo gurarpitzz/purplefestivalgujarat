@@ -206,7 +206,7 @@ pfgTest('T3-03', 'Legacy pre-Phase-3 DB upgrade: duplicate consolidation, sequen
         $migCount = (int)$lpdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
         pfgAssert($tableCount === 70, "Expected 70 tables after full legacy upgrade, got {$tableCount}");
         pfgAssert($fkCount >= 79, "Expected >= 79 FKs after full legacy upgrade, got {$fkCount}");
-        pfgAssert($migCount === 12, "Expected 12 applied migrations after full legacy upgrade, got {$migCount}");
+        pfgAssert($migCount === 13, "Expected 13 applied migrations after full legacy upgrade, got {$migCount}");
         return ['applied' => $migCount, 'tables' => $tableCount, 'nextCode' => $nextCode, 'fks' => $fkCount, 'reRunEncrypted' => $reRun004['encryptedFields']['accommodation_requests']];
     });
 
@@ -827,7 +827,7 @@ pfgTest('T3-13', 'Real mysqldump backup, full database restore, decryption & seq
             $postMigs = (int)$rpdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
             pfgAssert($postTables === $preTables && $postTables === 70, "Table count mismatch after restore: pre={$preTables}, post={$postTables}, expected=70");
             pfgAssert($postFks === $preFks && $postFks >= 79, "FK count mismatch after restore: pre={$preFks}, post={$postFks}, expected>=79");
-            pfgAssert($postMigs === 12, "Migration count mismatch after restore: {$postMigs}, expected=12");
+            pfgAssert($postMigs === 13, "Migration count mismatch after restore: {$postMigs}, expected=13");
 
             // Verify encrypted accommodation decrypts cleanly after restore (incl. Gujarati UTF-8)
             $restoredEnc = (string)$rpdo->query('SELECT free_text_details FROM accommodation_requests LIMIT 1')->fetchColumn();
