@@ -178,248 +178,529 @@ if (empty($venues)) {
     $venues = $FALLBACK_VENUES;
 }
 
-$rpwdGroups = ['All'];
-foreach ($disabilityList as $dItem) {
-    if (!in_array($dItem['rpwdGroup'], $rpwdGroups, true)) {
-        $rpwdGroups[] = $dItem['rpwdGroup'];
+// Group active DB/fallback accommodation services into 4 clear editorial rows
+// while guaranteeing every single active accommodation item is displayed.
+$accommodationGroups = [
+    'communication' => [
+        'title' => 'Communication',
+        'codes' => ['ISL_INTERPRETER', 'TACTILE_INTERPRETATION', 'CAPTIONING'],
+        'items' => [],
+    ],
+    'formats' => [
+        'title' => 'Accessible formats',
+        'codes' => ['BRAILLE_SCHEDULE', 'LARGE_PRINT', 'SCREEN_READER_DIGITAL'],
+        'items' => [],
+    ],
+    'mobility' => [
+        'title' => 'Getting around & seating',
+        'codes' => ['WHEELCHAIR_SEATING', 'WHEELCHAIR_CHARGING', 'SIGHTED_GUIDE', 'MOBILITY_ASSISTANCE'],
+        'items' => [],
+    ],
+    'other' => [
+        'title' => 'Sensory, dietary & custom support',
+        'codes' => ['SENSORY_SANCTUARY', 'DIETARY', 'OTHER'],
+        'items' => [],
+    ],
+];
+
+foreach ($accommodationList as $accItem) {
+    $code = strtoupper(trim((string)($accItem['code'] ?? '')));
+    $placed = false;
+    foreach ($accommodationGroups as $gKey => &$groupDef) {
+        if (in_array($code, $groupDef['codes'], true)) {
+            $groupDef['items'][] = $accItem;
+            $placed = true;
+            break;
+        }
+    }
+    unset($groupDef);
+    if (!$placed) {
+        $accommodationGroups['other']['items'][] = $accItem;
     }
 }
 
+$rpwdGroups = [];
+foreach ($disabilityList as $dItem) {
+    $grp = trim((string)($dItem['rpwdGroup'] ?? ''));
+    if ($grp !== '' && !in_array($grp, $rpwdGroups, true)) {
+        $rpwdGroups[] = $grp;
+    }
+}
+
+$totalDisabilities = count($disabilityList);
+$officialEmail = defined('OFFICIAL_FESTIVAL_EMAIL') && is_string(OFFICIAL_FESTIVAL_EMAIL) && trim(OFFICIAL_FESTIVAL_EMAIL) !== ''
+    ? trim(OFFICIAL_FESTIVAL_EMAIL)
+    : 'purplefestivalvadodara@gmail.com';
+
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
-    . '  <link rel="stylesheet" href="/assets/css/disabilities-section.css?v=2" />';
+    . '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..800;1,8..60,400..700&display=swap" />' . "\n"
+    . '  <link rel="stylesheet" href="/assets/css/accessibility-page.css?v=1" />';
 
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<main id="main-content" tabindex="-1" class="min-h-screen bg-[#F6F1F8] focus:outline-none">
-  <!-- Hero -->
+<main id="main-content" tabindex="-1" class="pfg-a11y-main min-h-screen focus:outline-none">
+  <!-- 1. DEEP PLUM EDITORIAL HERO -->
   <section
     aria-labelledby="accessibility-page-title"
-    class="editorial-hero-bg border-b border-[#383242] bg-[#17151C] py-16 text-[#F9F7FC] sm:py-20"
+    class="pfg-a11y-hero"
     data-surface="dark"
   >
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <p class="inline-flex items-center gap-2 text-xs font-bold tracking-[0.22em] uppercase text-[#D5B77B]">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-          <circle cx="16" cy="4" r="1" />
-          <path d="m18 19 1-7-6 1" />
-          <path d="m5 8 3-3 5.5 3-2.36 3.5" />
-          <path d="M4.24 14.5a5 5 0 0 0 6.88 6" />
-          <path d="M13.76 17.5a5 5 0 0 0-6.88-6" />
-        </svg>
-        Barrier-Free Festival Architecture
-      </p>
-      <h1
-        id="accessibility-page-title"
-        class="font-display mt-4 text-4xl font-bold text-[#F9F7FC] sm:text-5xl"
-      >
-        Accessibility &amp; Reasonable Accommodations
-      </h1>
-      <p class="mt-4 max-w-3xl text-base leading-relaxed text-[#E8DFF0] sm:text-lg">
-        Purple Festival Gujarat 2027 is engineered for dignified, independent participation
-        across physical, sensory, intellectual, neurodevelopmental, psychosocial, and
-        communication access needs.
-      </p>
+    <div class="pfg-a11y-container">
+      <div class="pfg-a11y-hero__grid">
+        <div>
+          <p class="pfg-a11y-hero__eyebrow">
+            Barrier-Free Festival Architecture
+          </p>
+          <h1 id="accessibility-page-title" class="pfg-a11y-hero__title">
+            Accessibility &amp; Reasonable Accommodations
+          </h1>
+          <p class="pfg-a11y-hero__lead">
+            Purple Festival Gujarat 2027 is engineered for dignified, independent participation
+            across physical, sensory, intellectual, neurodevelopmental, psychosocial, and
+            communication access needs. Request accommodations when you register, or email the
+            accessibility team if you have already applied.
+          </p>
 
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a
-          href="/apply"
-          class="btn-primary-pfg touch-target inline-flex items-center gap-2 rounded-full bg-[#D5B77B] px-6 py-3 text-sm font-bold text-[#17151C] hover:bg-[#E6CA93]"
-        >
-          <span>Register &amp; Request Accommodations</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-            <path d="M5 12h14" />
-            <path d="m12 5 7 7-7 7" />
-          </svg>
-        </a>
-        <a
-          href="/dashboard"
-          class="touch-target inline-flex items-center gap-2 rounded-full border border-[#B6A1C8]/50 bg-[#25212B] px-6 py-3 text-sm font-semibold text-[#F9F7FC] hover:border-[#D5B77B] hover:text-[#D5B77B]"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#D5B77B]" aria-hidden="true">
-            <rect width="7" height="9" x="3" y="3" rx="1" />
-            <rect width="7" height="5" x="14" y="3" rx="1" />
-            <rect width="7" height="9" x="14" y="12" rx="1" />
-            <rect width="7" height="5" x="3" y="16" rx="1" />
-          </svg>
-          <span>Update Request in Dashboard</span>
-        </a>
+          <div class="pfg-a11y-hero__actions">
+            <a href="/apply" class="pfg-a11y-btn-gold">
+              <span>Register &amp; Request Accommodations</span>
+            </a>
+            <div class="pfg-a11y-hero__secondary">
+              <a
+                href="mailto:<?= htmlspecialchars($officialEmail, ENT_QUOTES, 'UTF-8') ?>"
+                class="pfg-a11y-hero__link"
+              >
+                Email the accessibility team
+              </a>
+              <a
+                href="/legal/accessibility-statement"
+                class="pfg-a11y-hero__link"
+              >
+                WCAG 2.2 Accessibility Statement
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="pfg-a11y-hero__ornament-col" aria-hidden="true">
+          <img
+            src="/assets/editorial/accessibility-hero-motif.svg"
+            alt=""
+            width="260"
+            height="280"
+            decoding="async"
+            class="pfg-a11y-hero__motif"
+          />
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- Available Festival Accommodation Services -->
-  <section aria-labelledby="services-heading" class="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-    <div class="max-w-3xl space-y-2">
-      <p class="text-xs font-bold tracking-[0.22em] uppercase text-[#59436D]">
-        On-Site &amp; Digital Support
-      </p>
-      <h2 id="services-heading" class="font-display text-3xl font-bold text-[#211B29]">
+  <!-- 2. ON THIS PAGE JUMP BAR -->
+  <div class="pfg-a11y-toc">
+    <div class="pfg-a11y-container">
+      <nav aria-label="On this page" class="pfg-a11y-toc__nav">
+        <span class="pfg-a11y-toc__label">On this page:</span>
+        <ul class="pfg-a11y-toc__list">
+          <li>
+            <a href="#accommodation-services" class="pfg-a11y-toc__link">Accommodation services</a>
+          </li>
+          <?php if (!empty($venues)): ?>
+            <li>
+              <a href="#venue-access" class="pfg-a11y-toc__link">Venue access</a>
+            </li>
+          <?php endif; ?>
+          <li>
+            <a href="#rpwd-disabilities" class="pfg-a11y-toc__link">21 RPwD disabilities</a>
+          </li>
+          <li>
+            <a href="#accessibility-help" class="pfg-a11y-toc__link">Accessibility desk</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- 3. REQUESTABLE ACCOMMODATION SERVICES (WARM IVORY RULED LEDGER) -->
+  <section
+    id="accommodation-services"
+    aria-labelledby="services-heading"
+    class="pfg-a11y-support"
+  >
+    <div class="pfg-a11y-container">
+      <h2 id="services-heading" class="pfg-a11y-section-title">
         Requestable Accommodation Services
       </h2>
-      <p class="text-sm leading-relaxed text-[#4B4257]">
-        Select any of the following accommodations during registration or update your
-        preferences anytime in your Participant Dashboard. Disability disclosure is completely
-        optional — no medical diagnosis or certificate is required to request accommodations.
-        Sensitive disclosures and accommodation free-text details are encrypted at rest
-        (AES-256-GCM) and restricted to authorized Accessibility Coordinators and Administrators
-        with access audit logging.
+      <p class="pfg-a11y-section-lead">
+        Select any of the following on-site and digital accommodations during registration.
+        Disability disclosure is completely optional — no medical diagnosis or certificate is
+        required to request support.
       </p>
-    </div>
 
-    <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <?php foreach ($accommodationList as $item): ?>
-        <div class="surface-card flex items-start gap-3 rounded-2xl border border-[#59436D]/20 bg-white p-5 shadow-xs">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 h-5 w-5 shrink-0 text-[#19734B]" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <path d="m9 12 2 2 4-4" />
-          </svg>
-          <div>
-            <h3 class="text-sm font-bold text-[#211B29]">
-              <?= htmlspecialchars($item['label'], ENT_QUOTES, 'UTF-8') ?>
+      <div class="pfg-a11y-support__table" role="region" aria-label="Grouped accommodation services">
+        <?php foreach ($accommodationGroups as $grp):
+            if (empty($grp['items'])) {
+                continue;
+            }
+        ?>
+          <div class="pfg-a11y-support__row">
+            <h3 class="pfg-a11y-support__cat">
+              <?= htmlspecialchars($grp['title'], ENT_QUOTES, 'UTF-8') ?>
             </h3>
-            <?php if (!empty($item['description'])): ?>
-              <p class="mt-1 text-xs text-[#4B4257]">
-                <?= htmlspecialchars((string)$item['description'], ENT_QUOTES, 'UTF-8') ?>
-              </p>
-            <?php endif; ?>
+            <p class="pfg-a11y-support__items-inline">
+              <?php
+              $lastIdx = count($grp['items']) - 1;
+              foreach ($grp['items'] as $idx => $item):
+                  $label = trim((string)($item['label'] ?? ''));
+                  $desc = trim((string)($item['description'] ?? ''));
+              ?>
+                <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?><?php if ($desc !== ''): ?> (<?= htmlspecialchars($desc, ENT_QUOTES, 'UTF-8') ?>)<?php endif; ?></span><?php if ($idx < $lastIdx): ?><span class="pfg-a11y-support__sep" aria-hidden="true">&middot;</span><?php endif; ?>
+              <?php endforeach; ?>
+            </p>
           </div>
-        </div>
-      <?php endforeach; ?>
+        <?php endforeach; ?>
+      </div>
+
+      <p class="pfg-a11y-support__privacy">
+        Privacy assurance: Sensitive disclosures and accommodation free-text details are
+        encrypted at rest (AES-256-GCM) and restricted to authorized Accessibility Coordinators
+        and Administrators with access audit logging.
+      </p>
     </div>
   </section>
 
-  <!-- Venue Accessibility Status -->
+  <!-- 4. VENUE ACCESSIBILITY & CONFIRMATION STATUS (SOFT LAVENDER BAND) -->
   <?php if (!empty($venues)): ?>
     <section
+      id="venue-access"
       aria-labelledby="venues-heading"
-      class="border-y border-[#59436D]/15 bg-white py-16"
+      class="pfg-a11y-venues"
     >
-      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="max-w-3xl space-y-2">
-          <p class="text-xs font-bold tracking-[0.22em] uppercase text-[#59436D]">
-            Vadodara Venues
-          </p>
-          <h2 id="venues-heading" class="font-display text-3xl font-bold text-[#211B29]">
-            Venue Accessibility &amp; Confirmation Status
-          </h2>
-        </div>
+      <div class="pfg-a11y-container">
+        <h2 id="venues-heading" class="pfg-a11y-section-title">
+          Venue Accessibility &amp; Confirmation Status
+        </h2>
 
-        <div class="mt-8 grid gap-6 md:grid-cols-3">
+        <div class="pfg-a11y-venues__list">
           <?php foreach ($venues as $v):
-              $isConfirmedVenue = strtoupper(trim((string)($v['confirmationStatus'] ?? ''))) === 'CONFIRMED';
+              $statusRaw = strtoupper(trim((string)($v['confirmationStatus'] ?? '')));
+              $isConfirmed = $statusRaw === 'CONFIRMED';
+              $statusLabel = $isConfirmed ? 'Confirmed Venue' : 'Proposed / Subject to Confirmation';
+              $features = isset($v['accessibilityFeatures']) && is_array($v['accessibilityFeatures'])
+                  ? array_values(array_filter(array_map('trim', array_map('strval', $v['accessibilityFeatures']))))
+                  : [];
           ?>
-            <article class="surface-card flex flex-col justify-between rounded-2xl border border-[#59436D]/20 bg-[#F6F1F8]/60 p-6">
+            <article class="pfg-a11y-venues__row">
               <div>
-                <?php if ($isConfirmedVenue): ?>
-                  <span class="inline-block rounded-full border border-[#19734B]/30 bg-[#19734B]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#135A3A]">
-                    Confirmed Venue
-                  </span>
-                <?php else: ?>
-                  <span class="inline-block rounded-full border border-amber-700/30 bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-wider text-amber-900">
-                    Proposed / Subject to Confirmation
-                  </span>
-                <?php endif; ?>
-                <h3 class="font-display mt-3 text-lg font-bold text-[#211B29]">
-                  <?= htmlspecialchars($v['name'], ENT_QUOTES, 'UTF-8') ?>
+                <h3 class="pfg-a11y-venues__name">
+                  <?= htmlspecialchars((string)$v['name'], ENT_QUOTES, 'UTF-8') ?>
                 </h3>
                 <?php if (!empty($v['address'])): ?>
-                  <p class="mt-1 flex items-center gap-1.5 text-xs text-[#4B4257]">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5 shrink-0 text-[#59436D]" aria-hidden="true">
-                      <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
-                      <circle cx="12" cy="10" r="3" />
-                    </svg>
-                    <span><?= htmlspecialchars((string)$v['address'], ENT_QUOTES, 'UTF-8') ?></span>
+                  <p class="pfg-a11y-venues__address">
+                    <?= htmlspecialchars((string)$v['address'], ENT_QUOTES, 'UTF-8') ?>
                   </p>
                 <?php endif; ?>
-                <?php if (!empty($v['accessibilityFeatures'])): ?>
-                  <ul class="mt-4 space-y-1.5 text-xs text-[#211B29]">
-                    <?php foreach ($v['accessibilityFeatures'] as $feat): ?>
-                      <li class="flex items-start gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#19734B]" aria-hidden="true">
-                          <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                          <path d="m9 12 2 2 4-4" />
-                        </svg>
-                        <span><?= htmlspecialchars((string)$feat, ENT_QUOTES, 'UTF-8') ?></span>
-                      </li>
-                    <?php endforeach; ?>
-                  </ul>
-                <?php endif; ?>
+              </div>
+
+              <div>
+                <span class="pfg-a11y-venues__status <?= $isConfirmed ? 'pfg-a11y-venues__status--confirmed' : 'pfg-a11y-venues__status--proposed' ?>">
+                  <?= htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8') ?>
+                </span>
+              </div>
+
+              <div>
+                <p class="pfg-a11y-venues__features">
+                  <?= htmlspecialchars(!empty($features) ? implode(', ', $features) : 'Venue accessibility audit details forthcoming', ENT_QUOTES, 'UTF-8') ?>
+                </p>
               </div>
             </article>
           <?php endforeach; ?>
+        </div>
+
+        <div class="pfg-a11y-venues__footer">
+          <a href="/programme" class="pfg-a11y-inline-link">
+            <span>View 3-day festival programme &amp; venue schedule</span>
+            <span aria-hidden="true">&rarr;</span>
+          </a>
         </div>
       </div>
     </section>
   <?php endif; ?>
 
-  <!-- All 21 Specified Disabilities under RPwD Act 2016 -->
-  <?php
-  $disabilitiesSectionConfig = [
-      'sectionId' => 'rpwd-disabilities',
-      'headingId' => 'rpwd-heading',
-      'eyebrow' => 'Rights of Persons with Disabilities (RPwD) Act, 2016',
-      'title' => 'All 21 Benchmark Disabilities & Tailored Supports',
-      'subtitle' => 'Disability disclosure is always voluntary at Purple Festival Gujarat 2027. Persons with disabilities are welcome in every role — attendee, volunteer, Indian Sign Language interpreter, speaker, artist, or para-athlete.',
-      'showGuideCta' => false,
-      'showExplorer' => true,
-      'initialExpandedCount' => 3,
-  ];
-  require __DIR__ . '/includes/disabilities-section.php';
-  ?>
+  <!-- 5. ALL 21 SPECIFIED DISABILITIES (RPwD ACT, 2016) -->
+  <section
+    id="rpwd-disabilities"
+    aria-labelledby="rpwd-heading"
+    class="pfg-a11y-directory"
+    data-disabilities-explorer="true"
+  >
+    <div class="pfg-a11y-container">
+      <h2 id="rpwd-heading" class="pfg-a11y-section-title">
+        All 21 Specified Disabilities &amp; Tailored Supports
+      </h2>
+      <p class="pfg-a11y-directory__act">
+        Rights of Persons with Disabilities (RPwD) Act, 2016
+      </p>
+      <p class="pfg-a11y-section-lead">
+        Disability disclosure is always voluntary at Purple Festival Gujarat 2027. Persons with
+        disabilities are welcome in every role — attendee, volunteer, Indian Sign Language
+        interpreter, speaker, artist, or para-athlete.
+      </p>
 
-  <!-- Bottom CTA -->
-  <section class="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
-    <div
-      class="surface-card rounded-3xl border border-[#383242] bg-[#17151C] p-8 text-[#F9F7FC] sm:p-10"
-      data-surface="dark"
-    >
-      <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-        <div class="space-y-2">
-          <p class="inline-flex items-center gap-2 text-xs font-bold tracking-[0.2em] uppercase text-[#D5B77B]">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-              <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-            </svg>
-            Dedicated Accessibility Desk
-          </p>
-          <h2 class="font-display text-2xl font-bold text-[#F9F7FC] sm:text-3xl">
-            Need Custom Support Before You Arrive?
-          </h2>
-          <p class="max-w-2xl text-sm text-[#D7CCE2]">
-            Submit your accommodation needs during registration, manage them in your
-            Participant Dashboard, or write directly to
-            <a
-              href="mailto:purplefestivalvadodara@gmail.com"
-              class="font-semibold text-[#D5B77B] underline underline-offset-4"
+      <!-- Search & Category Filter Controls -->
+      <div class="pfg-a11y-directory__controls">
+        <label for="disability-search" class="pfg-a11y-directory__label">
+          Search disabilities or accommodations
+        </label>
+        <div class="pfg-a11y-directory__bar">
+          <div class="pfg-a11y-search">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="pfg-a11y-search__icon"
+              aria-hidden="true"
             >
-              purplefestivalvadodara@gmail.com
-            </a>.
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              id="disability-search"
+              type="search"
+              placeholder="Search by disability, RPwD category, or support (e.g., Braille, ISL, sensory)..."
+              class="pfg-a11y-search__input"
+              autocomplete="off"
+            />
+          </div>
+
+          <div>
+            <label for="disability-category-select" class="sr-only">
+              Filter by RPwD disability category
+            </label>
+            <select id="disability-category-select" class="pfg-a11y-select">
+              <option value="All">All categories</option>
+              <?php foreach ($rpwdGroups as $grp): ?>
+                <option value="<?= htmlspecialchars($grp, ENT_QUOTES, 'UTF-8') ?>">
+                  <?= htmlspecialchars($grp, ENT_QUOTES, 'UTF-8') ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
+
+        <p id="disability-count-status" class="pfg-a11y-directory__status" aria-live="polite">
+          Showing <?= $totalDisabilities ?> of <?= $totalDisabilities ?> specified disabilities under the Rights of Persons with Disabilities (RPwD) Act, 2016.
+        </p>
+      </div>
+
+      <!-- Empty Filter State -->
+      <div id="disability-empty-state" class="pfg-a11y-directory__empty" hidden>
+        <p style="margin:0; font-family: var(--pfg-a11y-serif);">
+          No disabilities match your current search or category filter.
+        </p>
+        <button type="button" id="disability-reset-btn" class="pfg-a11y-directory__reset">
+          Reset filters
+        </button>
+      </div>
+
+      <!-- Ruled Editorial Accordion List -->
+      <div id="disability-grid" class="pfg-a11y-accordion">
+        <?php foreach ($disabilityList as $dIdx => $dItem):
+            $isOpen = ($dIdx === 0);
+            $safeCode = preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$dItem['code']);
+            $panelId = 'disability-panel-' . $safeCode;
+            $btnId = 'disability-btn-' . $safeCode;
+            $displayOrder = (int)($dItem['displayOrder'] ?? ($dIdx + 1));
+            $accommList = isset($dItem['accommodationExamples']) && is_array($dItem['accommodationExamples'])
+                ? array_values(array_filter(array_map('trim', array_map('strval', $dItem['accommodationExamples']))))
+                : [];
+            $searchBlob = strtolower(
+                (string)$dItem['name'] . ' ' .
+                (string)$dItem['rpwdGroup'] . ' ' .
+                (string)$dItem['description'] . ' ' .
+                implode(' ', $accommList)
+            );
+        ?>
+          <article
+            data-disability-card="true"
+            data-rpwd-group="<?= htmlspecialchars((string)$dItem['rpwdGroup'], ENT_QUOTES, 'UTF-8') ?>"
+            data-search-text="<?= htmlspecialchars($searchBlob, ENT_QUOTES, 'UTF-8') ?>"
+            class="pfg-a11y-dis-row"
+          >
+            <h3 class="pfg-a11y-dis-heading">
+              <button
+                id="<?= htmlspecialchars($btnId, ENT_QUOTES, 'UTF-8') ?>"
+                type="button"
+                data-disability-toggle="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
+                aria-expanded="<?= $isOpen ? 'true' : 'false' ?>"
+                aria-controls="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
+                class="pfg-a11y-dis-trigger"
+              >
+                <span class="pfg-a11y-dis-title-wrap">
+                  <span class="pfg-a11y-dis-num">
+                    <?= str_pad((string)$displayOrder, 2, '0', STR_PAD_LEFT) ?>
+                  </span>
+                  <span class="pfg-a11y-dis-name">
+                    <?= htmlspecialchars((string)$dItem['name'], ENT_QUOTES, 'UTF-8') ?>
+                  </span>
+                  <span class="pfg-a11y-dis-group">
+                    <?= htmlspecialchars((string)$dItem['rpwdGroup'], ENT_QUOTES, 'UTF-8') ?>
+                  </span>
+                </span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="pfg-a11y-dis-chevron"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </h3>
+
+            <div
+              id="<?= htmlspecialchars($panelId, ENT_QUOTES, 'UTF-8') ?>"
+              role="region"
+              aria-labelledby="<?= htmlspecialchars($btnId, ENT_QUOTES, 'UTF-8') ?>"
+              class="pfg-a11y-dis-panel"
+              <?= $isOpen ? '' : 'hidden' ?>
+            >
+              <p class="pfg-a11y-dis-desc">
+                <?= htmlspecialchars((string)$dItem['description'], ENT_QUOTES, 'UTF-8') ?>
+              </p>
+              <?php if (!empty($accommList)): ?>
+                <p class="pfg-a11y-dis-support">
+                  <strong>Festival support:</strong>
+                  <?= htmlspecialchars(implode(' · ', $accommList), ENT_QUOTES, 'UTF-8') ?>.
+                </p>
+              <?php endif; ?>
+            </div>
+          </article>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. BOTTOM DEEP ROYAL PLUM HELP BAND -->
+  <section
+    id="accessibility-help"
+    aria-labelledby="accessibility-help-heading"
+    class="pfg-a11y-help"
+    data-surface="dark"
+  >
+    <div class="pfg-a11y-container">
+      <div class="pfg-a11y-help__grid">
+        <div>
+          <h2 id="accessibility-help-heading" class="pfg-a11y-help__title">
+            Need custom support before you arrive?
+          </h2>
+          <a
+            href="mailto:<?= htmlspecialchars($officialEmail, ENT_QUOTES, 'UTF-8') ?>"
+            class="pfg-a11y-help__email"
+          >
+            <?= htmlspecialchars($officialEmail, ENT_QUOTES, 'UTF-8') ?>
+          </a>
+          <p class="pfg-a11y-help__note">
+            Dedicated Accessibility Desk — submit your accommodation needs during registration or
+            write directly to our coordinators for personalised pre-arrival assistance.
           </p>
         </div>
-        <div class="flex flex-wrap gap-3">
-          <a
-            href="/apply"
-            class="btn-primary-pfg touch-target inline-flex items-center gap-2 rounded-full bg-[#D5B77B] px-6 py-3 text-sm font-bold text-[#17151C] hover:bg-[#E6CA93]"
-          >
+
+        <div class="pfg-a11y-help__actions">
+          <a href="/apply" class="pfg-a11y-btn-gold">
             <span>Apply Now</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </svg>
           </a>
-          <a
-            href="/legal/accessibility-statement"
-            class="touch-target inline-flex items-center gap-2 rounded-full border border-[#4D445C] bg-[#25212B] px-5 py-3 text-sm font-semibold text-[#F9F7FC] hover:border-[#D5B77B]"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#D5B77B]" aria-hidden="true">
-              <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" />
-            </svg>
-            <span>WCAG 2.2 Statement</span>
+          <a href="/legal/accessibility-statement" class="pfg-a11y-hero__link">
+            WCAG 2.2 Statement
+          </a>
+          <a href="/#contact" class="pfg-a11y-hero__link">
+            FAQs &amp; Contact
           </a>
         </div>
       </div>
     </div>
   </section>
 </main>
+
+<script>
+(function () {
+  var section = document.getElementById('rpwd-disabilities');
+  if (!section) return;
+
+  var searchInput = document.getElementById('disability-search');
+  var categorySelect = document.getElementById('disability-category-select');
+  var countStatus = document.getElementById('disability-count-status');
+  var emptyState = document.getElementById('disability-empty-state');
+  var resetBtn = document.getElementById('disability-reset-btn');
+  var rows = Array.prototype.slice.call(section.querySelectorAll('[data-disability-card="true"]'));
+  var total = rows.length;
+
+  function applyFilters() {
+    var query = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+    var selectedGroup = categorySelect ? String(categorySelect.value || 'All') : 'All';
+    var visibleCount = 0;
+
+    rows.forEach(function (row) {
+      var group = row.getAttribute('data-rpwd-group') || '';
+      var blob = row.getAttribute('data-search-text') || '';
+      var matchesGroup = selectedGroup === 'All' || group === selectedGroup;
+      var matchesQuery = query === '' || blob.indexOf(query) !== -1;
+      var show = matchesGroup && matchesQuery;
+      row.hidden = !show;
+      if (show) visibleCount += 1;
+    });
+
+    if (countStatus) {
+      countStatus.textContent =
+        'Showing ' + visibleCount + ' of ' + total +
+        ' specified disabilities under the Rights of Persons with Disabilities (RPwD) Act, 2016.';
+    }
+    if (emptyState) {
+      emptyState.hidden = visibleCount > 0;
+    }
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applyFilters);
+  }
+  if (categorySelect) {
+    categorySelect.addEventListener('change', applyFilters);
+  }
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      if (categorySelect) categorySelect.value = 'All';
+      applyFilters();
+      if (searchInput) searchInput.focus();
+    });
+  }
+
+  section.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('[data-disability-toggle]') : null;
+    if (!btn) return;
+    var panelId = btn.getAttribute('data-disability-toggle');
+    if (!panelId) return;
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    var isExpanded = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+    panel.hidden = isExpanded;
+  });
+})();
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -1,0 +1,1019 @@
+/* ==========================================================================
+   Purple Festival Gujarat 2027 — Accessibility Guide Editorial Revamp
+   Scoped exclusively to /accessibility (loaded via $extraHeadHtml).
+   WCAG 2.2 AA+ compliant across Default, High Contrast, Yellow-on-Black,
+   200%/400% zoom (320px), Wide Spacing, Highlight Links, and Reduced Motion.
+   ========================================================================== */
+
+:root {
+  --pfg-a11y-ivory: #fbf7ee;
+  --pfg-a11y-ivory-deep: #f3ecde;
+  --pfg-a11y-plum: #330c47;
+  --pfg-a11y-plum-deep: #260836;
+  --pfg-a11y-plum-ink: #2b0a3d;
+  --pfg-a11y-plum-body: #3c284d;
+  --pfg-a11y-plum-muted: #564168;
+  --pfg-a11y-plum-btn: #5d2186;
+  --pfg-a11y-plum-btn-hover: #49176b;
+  --pfg-a11y-lavender: #e5d4f2;
+  --pfg-a11y-gold: #f5bf4f;
+  --pfg-a11y-gold-hover: #e7ae35;
+  --pfg-a11y-rule: rgba(43, 10, 61, 0.28);
+  --pfg-a11y-rule-strong: rgba(43, 10, 61, 0.42);
+  --pfg-a11y-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --pfg-a11y-sans: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ==========================================================================
+   1. EDITORIAL IVORY HEADER HARMONIZATION (Scoped to /accessibility only)
+   Preserves all semantic navigation, Staff Login, Apply Now & A11y button.
+   ========================================================================== */
+body > header {
+  background-color: rgba(251, 247, 238, 0.97) !important;
+  border-bottom: 1px solid rgba(43, 10, 61, 0.14);
+  color: var(--pfg-a11y-plum-ink) !important;
+}
+
+body > header #header-logo,
+body > header #header-logo span {
+  color: var(--pfg-a11y-plum-ink) !important;
+  font-family: var(--pfg-a11y-serif);
+  letter-spacing: -0.02em;
+}
+
+body > header nav[aria-label="Primary Navigation"] a {
+  color: var(--pfg-a11y-plum-ink);
+  font-family: var(--pfg-a11y-serif);
+  font-size: 1rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 2.5px solid transparent;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+body > header nav[aria-label="Primary Navigation"] a:hover {
+  color: var(--pfg-a11y-plum-btn);
+}
+
+body > header nav[aria-label="Primary Navigation"] a[aria-current="page"] {
+  color: var(--pfg-a11y-plum-ink) !important;
+  font-weight: 700 !important;
+  border-bottom-color: var(--pfg-a11y-plum-btn);
+}
+
+body > header a[href="/staff/login"] {
+  border-color: rgba(43, 10, 61, 0.34) !important;
+  border-width: 1.5px !important;
+  border-radius: 0.25rem;
+  color: var(--pfg-a11y-plum-ink) !important;
+  font-family: var(--pfg-a11y-sans);
+}
+
+body > header a[href="/staff/login"]:hover {
+  background-color: var(--pfg-a11y-plum-ink) !important;
+  color: #ffffff !important;
+  border-color: var(--pfg-a11y-plum-ink) !important;
+}
+
+body > header a[href="/apply"].btn-primary-pfg {
+  background-color: var(--pfg-a11y-plum-btn) !important;
+  color: #ffffff !important;
+  border-radius: 0.25rem;
+  font-family: var(--pfg-a11y-sans);
+  white-space: nowrap;
+}
+
+body > header a[href="/apply"].btn-primary-pfg:hover {
+  background-color: var(--pfg-a11y-plum-btn-hover) !important;
+}
+
+@media (max-width: 560px) {
+  body > header > div {
+    padding-left: 0.85rem !important;
+    padding-right: 0.85rem !important;
+    gap: 0.5rem !important;
+  }
+
+  body > header #header-logo {
+    gap: 0.45rem !important;
+  }
+
+  body > header #header-logo svg {
+    height: 1.75rem !important;
+  }
+
+  body > header #header-logo span {
+    font-size: 1.15rem !important;
+  }
+
+  body > header > div > div:last-child {
+    gap: 0.45rem !important;
+  }
+
+  body > header a[href="/apply"].btn-primary-pfg {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    font-size: 0.85rem !important;
+  }
+}
+
+@media (max-width: 375px) {
+  body > header > div a[href="/apply"].btn-primary-pfg {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   2. MAIN EDITORIAL SHELL & SHARED LAYOUT RAIL
+   ========================================================================== */
+.pfg-a11y-main {
+  background-color: var(--pfg-a11y-ivory);
+  color: var(--pfg-a11y-plum-ink);
+  font-family: var(--pfg-a11y-sans);
+  overflow-x: clip;
+}
+
+.pfg-a11y-main *,
+.pfg-a11y-main *::before,
+.pfg-a11y-main *::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.pfg-a11y-container {
+  width: 100%;
+  max-width: 1060px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(1.25rem, 4.5vw, 2.5rem);
+  padding-right: clamp(1.25rem, 4.5vw, 2.5rem);
+}
+
+/* ==========================================================================
+   3. DEEP ROYAL PLUM HERO WITH GUJARATI LOTUS-DIAMOND ORNAMENT
+   ========================================================================== */
+.pfg-a11y-hero {
+  position: relative;
+  background-color: var(--pfg-a11y-plum);
+  color: #fbf7ee;
+  padding: clamp(2.25rem, 4.4vw, 3.6rem) 0;
+  overflow: hidden;
+}
+
+.pfg-a11y-hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.48fr) minmax(0, 0.72fr);
+  gap: clamp(1.5rem, 4vw, 2.75rem);
+  align-items: center;
+}
+
+.pfg-a11y-hero__eyebrow {
+  margin: 0 0 0.75rem;
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pfg-a11y-gold);
+}
+
+.pfg-a11y-hero__title {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(2.1rem, 4.1vw, 3.1rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  max-width: 22ch;
+}
+
+.pfg-a11y-hero__lead {
+  margin: 1.15rem 0 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.02rem, 1.5vw, 1.2rem);
+  line-height: 1.58;
+  color: rgba(251, 247, 238, 0.92);
+  max-width: 54ch;
+}
+
+.pfg-a11y-hero__actions {
+  margin-top: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+.pfg-a11y-btn-gold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 46px;
+  padding: 0.75rem 1.45rem;
+  border-radius: 0.28rem;
+  background-color: var(--pfg-a11y-gold);
+  color: var(--pfg-a11y-plum-ink);
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.98rem;
+  font-weight: 800;
+  text-decoration: none;
+  letter-spacing: -0.005em;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.pfg-a11y-btn-gold:hover {
+  background-color: var(--pfg-a11y-gold-hover);
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-btn-gold:focus-visible {
+  outline: 3px solid #ffffff;
+  outline-offset: 3px;
+}
+
+.pfg-a11y-hero__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1.4rem;
+}
+
+.pfg-a11y-hero__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: #fbf7ee;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.98rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(251, 247, 238, 0.7);
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.pfg-a11y-hero__link:hover {
+  color: var(--pfg-a11y-gold);
+  text-decoration-color: var(--pfg-a11y-gold);
+}
+
+.pfg-a11y-hero__link:focus-visible {
+  outline: 3px solid var(--pfg-a11y-gold);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.pfg-a11y-hero__ornament-col {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.pfg-a11y-hero__motif {
+  display: block;
+  width: clamp(210px, 24vw, 275px);
+  height: auto;
+  max-width: 100%;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   4. "ON THIS PAGE" EDITORIAL JUMP BAR
+   ========================================================================== */
+.pfg-a11y-toc {
+  background-color: var(--pfg-a11y-ivory);
+  border-bottom: 1px solid var(--pfg-a11y-rule);
+}
+
+.pfg-a11y-toc__nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.75rem;
+  padding: 0.95rem 0;
+}
+
+.pfg-a11y-toc__label {
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-toc__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 1.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pfg-a11y-toc__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.95rem;
+  color: var(--pfg-a11y-plum-ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.25px;
+  text-decoration-color: rgba(43, 10, 61, 0.55);
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.pfg-a11y-toc__link:hover {
+  color: var(--pfg-a11y-plum-btn);
+  text-decoration-color: var(--pfg-a11y-plum-btn);
+}
+
+.pfg-a11y-toc__link:focus-visible {
+  outline: 3px solid var(--pfg-a11y-plum-btn);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   5. SECTION HEADINGS & EDITORIAL TYPOGRAPHY
+   ========================================================================== */
+.pfg-a11y-section-title {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.85rem, 3.2vw, 2.45rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-section-lead {
+  margin: 0.65rem 0 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(0.98rem, 1.25vw, 1.08rem);
+  line-height: 1.62;
+  color: var(--pfg-a11y-plum-body);
+  max-width: 72ch;
+}
+
+/* ==========================================================================
+   6. ACCOMMODATION SERVICES (WARM IVORY RULED LEDGER)
+   ========================================================================== */
+.pfg-a11y-support {
+  background-color: var(--pfg-a11y-ivory);
+  padding: clamp(2.5rem, 4.8vw, 3.75rem) 0;
+  scroll-margin-top: 5.5rem;
+}
+
+.pfg-a11y-support__table {
+  margin-top: 1.75rem;
+  border-top: 1px solid var(--pfg-a11y-rule-strong);
+}
+
+.pfg-a11y-support__row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.34fr) minmax(0, 0.66fr);
+  gap: 0.5rem 2rem;
+  padding: 1.15rem 0;
+  border-bottom: 1px solid var(--pfg-a11y-rule);
+  align-items: baseline;
+}
+
+.pfg-a11y-support__cat {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.06rem, 1.4vw, 1.18rem);
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-support__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(0.98rem, 1.25vw, 1.07rem);
+  line-height: 1.58;
+  color: var(--pfg-a11y-plum-body);
+}
+
+.pfg-a11y-support__items-inline {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(0.98rem, 1.25vw, 1.07rem);
+  line-height: 1.6;
+  color: var(--pfg-a11y-plum-body);
+}
+
+.pfg-a11y-support__sep {
+  color: var(--pfg-a11y-plum-btn);
+  margin: 0 0.38rem;
+  font-weight: 700;
+}
+
+.pfg-a11y-support__privacy {
+  margin: 1.25rem 0 0;
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.88rem;
+  line-height: 1.58;
+  color: var(--pfg-a11y-plum-muted);
+  max-width: 78ch;
+}
+
+/* ==========================================================================
+   7. VENUE ACCESSIBILITY (SOFT LAVENDER FULL-WIDTH BAND)
+   ========================================================================== */
+.pfg-a11y-venues {
+  background-color: var(--pfg-a11y-lavender);
+  padding: clamp(2.5rem, 4.8vw, 3.6rem) 0;
+  border-top: 1px solid rgba(43, 10, 61, 0.14);
+  border-bottom: 1px solid rgba(43, 10, 61, 0.14);
+  scroll-margin-top: 5.5rem;
+}
+
+.pfg-a11y-venues__list {
+  margin-top: 1.65rem;
+  border-top: 1px solid var(--pfg-a11y-rule-strong);
+}
+
+.pfg-a11y-venues__row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.38fr) minmax(0, 0.22fr) minmax(0, 0.4fr);
+  gap: 0.45rem 1.75rem;
+  padding: 1.15rem 0;
+  border-bottom: 1px solid var(--pfg-a11y-rule);
+  align-items: baseline;
+}
+
+.pfg-a11y-venues__name {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.04rem, 1.35vw, 1.15rem);
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-venues__address {
+  margin: 0.25rem 0 0;
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--pfg-a11y-plum-muted);
+}
+
+.pfg-a11y-venues__status {
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.96rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.pfg-a11y-venues__status--confirmed {
+  color: #135a3a;
+}
+
+.pfg-a11y-venues__status--proposed {
+  color: #5b2e0c;
+}
+
+.pfg-a11y-venues__features {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.97rem;
+  line-height: 1.55;
+  color: var(--pfg-a11y-plum-body);
+}
+
+.pfg-a11y-venues__footer {
+  margin-top: 1.35rem;
+}
+
+.pfg-a11y-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 40px;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--pfg-a11y-plum-ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--pfg-a11y-plum-btn);
+}
+
+.pfg-a11y-inline-link:hover {
+  color: var(--pfg-a11y-plum-btn);
+}
+
+.pfg-a11y-inline-link:focus-visible {
+  outline: 3px solid var(--pfg-a11y-plum-btn);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   8. 21 SPECIFIED DISABILITIES DIRECTORY (#rpwd-disabilities)
+   ========================================================================== */
+.pfg-a11y-directory {
+  background-color: var(--pfg-a11y-ivory);
+  padding: clamp(2.75rem, 5vw, 4rem) 0 clamp(3rem, 5.5vw, 4.5rem);
+  scroll-margin-top: 5.5rem;
+}
+
+.pfg-a11y-directory__act {
+  margin: 0.35rem 0 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--pfg-a11y-plum-muted);
+}
+
+.pfg-a11y-directory__controls {
+  margin-top: 1.75rem;
+}
+
+.pfg-a11y-directory__label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-directory__bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 275px);
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.pfg-a11y-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pfg-a11y-search__icon {
+  position: absolute;
+  left: 0.9rem;
+  width: 18px;
+  height: 18px;
+  color: var(--pfg-a11y-plum-muted);
+  pointer-events: none;
+}
+
+.pfg-a11y-search__input,
+.pfg-a11y-select {
+  width: 100%;
+  min-height: 46px;
+  border: 1.5px solid rgba(43, 10, 61, 0.48);
+  border-radius: 0.25rem;
+  background-color: #ffffff;
+  color: var(--pfg-a11y-plum-ink);
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.96rem;
+  line-height: 1.3;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.pfg-a11y-search__input {
+  padding: 0.65rem 0.95rem 0.65rem 2.6rem;
+}
+
+.pfg-a11y-search__input::placeholder {
+  color: var(--pfg-a11y-plum-muted);
+}
+
+.pfg-a11y-select {
+  padding: 0.65rem 2.4rem 0.65rem 0.95rem;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%232b0a3d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.8rem center;
+  background-size: 16px 16px;
+  cursor: pointer;
+}
+
+.pfg-a11y-search__input:focus-visible,
+.pfg-a11y-select:focus-visible {
+  outline: 3px solid var(--pfg-a11y-plum-btn);
+  outline-offset: 2px;
+  border-color: var(--pfg-a11y-plum-btn);
+}
+
+.pfg-a11y-directory__status {
+  margin: 0.85rem 0 0;
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.88rem;
+  color: var(--pfg-a11y-plum-muted);
+}
+
+.pfg-a11y-directory__empty {
+  margin-top: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid var(--pfg-a11y-rule-strong);
+  border-radius: 0.28rem;
+  background-color: var(--pfg-a11y-ivory-deep);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pfg-a11y-directory__empty[hidden] {
+  display: none;
+}
+
+.pfg-a11y-directory__reset {
+  min-height: 44px;
+  padding: 0.55rem 1.15rem;
+  border: 1.5px solid var(--pfg-a11y-plum-ink);
+  border-radius: 0.25rem;
+  background-color: #ffffff;
+  color: var(--pfg-a11y-plum-ink);
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pfg-a11y-directory__reset:hover {
+  background-color: var(--pfg-a11y-plum-ink);
+  color: #ffffff;
+}
+
+.pfg-a11y-directory__reset:focus-visible {
+  outline: 3px solid var(--pfg-a11y-plum-btn);
+  outline-offset: 3px;
+}
+
+/* Accordion List */
+.pfg-a11y-accordion {
+  margin-top: 1.35rem;
+  border-top: 1px solid var(--pfg-a11y-rule-strong);
+}
+
+.pfg-a11y-dis-row {
+  border-bottom: 1px solid var(--pfg-a11y-rule);
+}
+
+.pfg-a11y-dis-row[hidden] {
+  display: none;
+}
+
+.pfg-a11y-dis-heading {
+  margin: 0;
+}
+
+.pfg-a11y-dis-trigger {
+  width: 100%;
+  min-height: 56px;
+  padding: 1rem 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--pfg-a11y-plum-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.pfg-a11y-dis-trigger:hover {
+  color: var(--pfg-a11y-plum-btn);
+}
+
+.pfg-a11y-dis-trigger:focus-visible {
+  outline: 3px solid var(--pfg-a11y-plum-btn);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.pfg-a11y-dis-title-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.8rem;
+}
+
+.pfg-a11y-dis-num {
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--pfg-a11y-plum-muted);
+  min-width: 1.65rem;
+}
+
+.pfg-a11y-dis-name {
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.08rem, 1.45vw, 1.22rem);
+  font-weight: 800;
+  line-height: 1.3;
+  color: inherit;
+}
+
+.pfg-a11y-dis-group {
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pfg-a11y-plum-muted);
+}
+
+.pfg-a11y-dis-chevron {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--pfg-a11y-plum-ink);
+  transition: transform 180ms ease;
+}
+
+.pfg-a11y-dis-trigger[aria-expanded="true"] .pfg-a11y-dis-chevron {
+  transform: rotate(180deg);
+}
+
+.pfg-a11y-dis-panel {
+  padding: 0 1.5rem 1.25rem 2.45rem;
+}
+
+.pfg-a11y-dis-panel[hidden] {
+  display: none;
+}
+
+.pfg-a11y-dis-desc {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.97rem;
+  line-height: 1.62;
+  color: var(--pfg-a11y-plum-body);
+  max-width: 76ch;
+}
+
+.pfg-a11y-dis-support {
+  margin: 0.7rem 0 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: 0.96rem;
+  line-height: 1.58;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+.pfg-a11y-dis-support strong {
+  font-weight: 800;
+  color: var(--pfg-a11y-plum-ink);
+}
+
+/* ==========================================================================
+   9. BOTTOM DEEP ROYAL PLUM HELP BAND
+   ========================================================================== */
+.pfg-a11y-help {
+  background-color: var(--pfg-a11y-plum);
+  color: #fbf7ee;
+  padding: clamp(2.5rem, 4.8vw, 3.5rem) 0;
+  scroll-margin-top: 5.5rem;
+}
+
+.pfg-a11y-help__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1.5rem 2.75rem;
+}
+
+.pfg-a11y-help__title {
+  margin: 0;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.65rem, 2.8vw, 2.15rem);
+  font-weight: 800;
+  line-height: 1.18;
+  color: #ffffff;
+}
+
+.pfg-a11y-help__email {
+  display: inline-block;
+  margin-top: 0.55rem;
+  font-family: var(--pfg-a11y-serif);
+  font-size: clamp(1.05rem, 1.5vw, 1.22rem);
+  font-weight: 600;
+  color: #fbf7ee;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  overflow-wrap: anywhere;
+}
+
+.pfg-a11y-help__email:hover {
+  color: var(--pfg-a11y-gold);
+}
+
+.pfg-a11y-help__email:focus-visible {
+  outline: 3px solid var(--pfg-a11y-gold);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.pfg-a11y-help__note {
+  margin: 0.65rem 0 0;
+  font-family: var(--pfg-a11y-sans);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: rgba(251, 247, 238, 0.86);
+  max-width: 56ch;
+}
+
+.pfg-a11y-help__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+/* ==========================================================================
+   10. RESPONSIVE & 400% ZOOM REFLOW (<= 780px, 390px, 320px)
+   ========================================================================== */
+@media (max-width: 920px) {
+  .pfg-a11y-help__grid {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+@media (max-width: 780px) {
+  .pfg-a11y-hero__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+
+  .pfg-a11y-hero__ornament-col {
+    justify-content: flex-start;
+  }
+
+  .pfg-a11y-hero__motif {
+    width: 150px;
+  }
+
+  .pfg-a11y-support__row,
+  .pfg-a11y-venues__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .pfg-a11y-directory__bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pfg-a11y-dis-panel {
+    padding: 0 0.25rem 1.15rem 0.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .pfg-a11y-hero__ornament-col {
+    display: none;
+  }
+
+  .pfg-a11y-btn-gold {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ==========================================================================
+   11. REDUCED MOTION & USER ACCESSIBILITY PREFERENCES
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .pfg-a11y-main *,
+  .pfg-a11y-main *::before,
+  .pfg-a11y-main *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+html[data-reduced-motion="true"] .pfg-a11y-main *,
+html[data-reduced-motion="true"] .pfg-a11y-main *::before,
+html[data-reduced-motion="true"] .pfg-a11y-main *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+}
+
+html[data-spacing="wide"] .pfg-a11y-main p,
+html[data-spacing="wide"] .pfg-a11y-main li {
+  line-height: 1.85;
+  letter-spacing: 0.03em;
+  word-spacing: 0.1em;
+}
+
+html[data-highlight-links="true"] .pfg-a11y-main a {
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+}
+
+/* ==========================================================================
+   12. WCAG AAA HIGH CONTRAST & YELLOW-ON-BLACK OVERRIDES
+   ========================================================================== */
+html[data-contrast="high"] body > header,
+html[data-contrast="high"] .pfg-a11y-main,
+html[data-contrast="high"] .pfg-a11y-hero,
+html[data-contrast="high"] .pfg-a11y-toc,
+html[data-contrast="high"] .pfg-a11y-support,
+html[data-contrast="high"] .pfg-a11y-venues,
+html[data-contrast="high"] .pfg-a11y-directory,
+html[data-contrast="high"] .pfg-a11y-help,
+html[data-contrast="high"] .pfg-a11y-directory__empty {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+html[data-contrast="high"] .pfg-a11y-main h1,
+html[data-contrast="high"] .pfg-a11y-main h2,
+html[data-contrast="high"] .pfg-a11y-main h3,
+html[data-contrast="high"] .pfg-a11y-main p,
+html[data-contrast="high"] .pfg-a11y-main span,
+html[data-contrast="high"] .pfg-a11y-main label,
+html[data-contrast="high"] .pfg-a11y-main a,
+html[data-contrast="high"] .pfg-a11y-main button,
+html[data-contrast="high"] .pfg-a11y-main strong,
+html[data-contrast="high"] .pfg-a11y-main svg {
+  color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+html[data-contrast="high"] .pfg-a11y-btn-gold {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #ffffff !important;
+}
+
+html[data-contrast="high"] .pfg-a11y-search__input,
+html[data-contrast="high"] .pfg-a11y-select,
+html[data-contrast="high"] .pfg-a11y-directory__reset {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+
+html[data-contrast="high"] .pfg-a11y-hero__motif {
+  display: none !important;
+}
+
+html[data-contrast="yellow-black"] body > header,
+html[data-contrast="yellow-black"] .pfg-a11y-main,
+html[data-contrast="yellow-black"] .pfg-a11y-hero,
+html[data-contrast="yellow-black"] .pfg-a11y-toc,
+html[data-contrast="yellow-black"] .pfg-a11y-support,
+html[data-contrast="yellow-black"] .pfg-a11y-venues,
+html[data-contrast="yellow-black"] .pfg-a11y-directory,
+html[data-contrast="yellow-black"] .pfg-a11y-help,
+html[data-contrast="yellow-black"] .pfg-a11y-directory__empty {
+  background-color: #000000 !important;
+  color: #ffea00 !important;
+  border-color: #ffea00 !important;
+}
+
+html[data-contrast="yellow-black"] .pfg-a11y-main h1,
+html[data-contrast="yellow-black"] .pfg-a11y-main h2,
+html[data-contrast="yellow-black"] .pfg-a11y-main h3,
+html[data-contrast="yellow-black"] .pfg-a11y-main p,
+html[data-contrast="yellow-black"] .pfg-a11y-main span,
+html[data-contrast="yellow-black"] .pfg-a11y-main label,
+html[data-contrast="yellow-black"] .pfg-a11y-main a,
+html[data-contrast="yellow-black"] .pfg-a11y-main button,
+html[data-contrast="yellow-black"] .pfg-a11y-main strong,
+html[data-contrast="yellow-black"] .pfg-a11y-main svg {
+  color: #ffea00 !important;
+  border-color: #ffea00 !important;
+}
+
+html[data-contrast="yellow-black"] .pfg-a11y-btn-gold {
+  background-color: #ffea00 !important;
+  color: #000000 !important;
+  border: 2px solid #ffea00 !important;
+}
+
+html[data-contrast="yellow-black"] .pfg-a11y-search__input,
+html[data-contrast="yellow-black"] .pfg-a11y-select,
+html[data-contrast="yellow-black"] .pfg-a11y-directory__reset {
+  background-color: #000000 !important;
+  color: #ffea00 !important;
+  border: 2px solid #ffea00 !important;
+}
+
+html[data-contrast="yellow-black"] .pfg-a11y-hero__motif {
+  display: none !important;
+}
+
