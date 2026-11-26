@@ -5,15 +5,15 @@ if (is_file(dirname(__DIR__) . '/includes/config.php')) {
     require_once dirname(__DIR__) . '/includes/config.php';
 }
 
-$pageTitle = 'Accessibility Statement (WCAG 2.2 AA)';
-$pageDescription = 'WCAG 2.2 Level AA digital accessibility commitment and compliance statement for Purple Festival Gujarat 2027.';
+$pageTitle = 'Digital Accessibility Statement';
+$pageDescription = 'Digital accessibility commitment, built-in WCAG 2.2 AA design features, and barrier-reporting channels for Purple Festival Gujarat 2027.';
 
 $a11yFeatures = [
-    'Persistent Accessibility Preferences Panel: Text scaling from 90% to 200%, Default / High Contrast / Yellow-on-Black modes, increased line & letter spacing, link highlighting, reading guide band, and reduced-motion toggle.',
+    'Persistent Accessibility Preferences Panel: Early preference initialization before paint (preventing contrast or text-size flash), text scaling from 90% to 200%, Default / High Contrast / Yellow-on-Black modes, increased line & letter spacing, link highlighting, reading guide band, and reduced-motion toggle.',
     'Keyboard-First Navigation: Full Tab/Shift+Tab/Escape support, visible high-contrast focus rings, skip-to-main-content link, and minimum 44×44px interactive touch targets.',
-    'Motion Safety: Automatic respect for OS prefers-reduced-motion settings plus an immediate keyboard-focusable Skip Intro button on the introductory preloader.',
+    'Motion Safety: Automatic respect for OS prefers-reduced-motion settings, an immediate keyboard-focusable Skip Intro button on the introductory preloader, and pause controls for animated visual strips.',
     'Screen Reader Semantics: Logical heading hierarchy, ARIA landmarks, live status announcements, descriptive alternative text for photography and logos, and properly associated form labels and error summaries.',
-    'Accessible Documents: Downloadable calendar (.ics) files and clean, structured digital QR pass PDFs.',
+    'Accessible Schedules & Confirmations: Downloadable calendar (.ics) schedule files and screen-reader-friendly Registration ID confirmation views in the Participant Dashboard.',
 ];
 
 require_once dirname(__DIR__) . '/includes/header.php';
@@ -55,15 +55,21 @@ require_once dirname(__DIR__) . '/includes/header.php';
       <div class="space-y-8 text-sm leading-relaxed text-[#211B29]">
         <section class="space-y-2">
           <h2 class="font-display text-xl font-bold text-[#211B29]">
-            1. Conformance Target
+            1. Conformance Target &amp; Honest Assessment Status
           </h2>
           <p class="text-[#4B4257]">
             Purple Festival Gujarat 2027 is committed to ensuring digital accessibility for
-            people of all abilities. This website and registration ecosystem are designed and
-            tested to conform to the
-            <strong>Web Content Accessibility Guidelines (WCAG) 2.2 Level AA</strong> and align
-            with the Rights of Persons with Disabilities (RPwD) Act, 2016 and Guidelines for
-            Indian Government Websites (GIGW).
+            people of all abilities. This website and registration portal are designed and
+            internally tested against the
+            <strong>Web Content Accessibility Guidelines (WCAG) 2.2 Level AA</strong> principles
+            and aligned with the Rights of Persons with Disabilities (RPwD) Act, 2016 and the
+            Guidelines for Indian Government Websites (GIGW).
+          </p>
+          <p class="text-[#4B4257]">
+            <strong>Transparency note:</strong> Formal independent third-party accessibility
+            certification has not yet been completed for this platform. We treat accessibility as
+            an ongoing process and continue manual keyboard, contrast, and assistive-technology
+            testing ahead of the January 2027 festival.
           </p>
         </section>
 
@@ -86,12 +92,14 @@ require_once dirname(__DIR__) . '/includes/header.php';
 
         <section class="space-y-2">
           <h2 class="font-display text-xl font-bold text-[#211B29]">
-            3. Feedback &amp; Reporting Barriers
+            3. Known Limitations, Feedback &amp; Reporting Barriers
           </h2>
           <p class="text-[#4B4257]">
-            We continuously audit and improve our platform. If you encounter any accessibility
-            barrier on this site or require information in an alternative format (such as
-            Braille, large print, or accessible PDF), please contact us immediately:
+            While we strive for seamless access across every page, newly uploaded organizer
+            documents or partner media may occasionally require additional remediation. If you
+            encounter any accessibility barrier on this site or need festival information in an
+            alternative format (such as Braille, large print, or plain text), please contact the
+            Secretariat so we can assist you promptly:
           </p>
           <div class="mt-3 rounded-2xl bg-[#F6F1F8] p-4 text-[#211B29]">
             <p>

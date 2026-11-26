@@ -20,7 +20,8 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Participant Check-in, Accessible Welcome & Registration Desk',
         'category' => 'Registration',
         'venueName' => 'Sama Indoor Stadium & MSU Baroda',
-        'description' => 'QR pass verification, Braille & large-print programme distribution, ISL helpdesk, and wheelchair shuttle orientation.',
+        'venueConfirmationStatus' => 'PROPOSED',
+        'description' => 'Registration ID (PFG-2027-NNNNNN) verification at the Vadodara Registration Desk, Braille & large-print programme distribution, ISL helpdesk, and wheelchair shuttle orientation.',
         'accessibilityServices' => ['ISL Interpretation', 'Braille Programme', 'Step-Free Access', 'Sighted Guides'],
         'displayOrder' => 1,
     ],
@@ -31,6 +32,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Inaugural Ceremony: Celebrating Accessibility, Dignity & Diversity',
         'category' => 'Plenary',
         'venueName' => 'Main Auditorium',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => "Opening keynote addresses celebrating Gujarat's inaugural Purple Festival edition and India's inclusive future under Viksit Bharat@2047.",
         'accessibilityServices' => ['ISL Interpretation', 'Live Captioning (CART)', 'Audio Description', 'Wheelchair Seating'],
         'displayOrder' => 2,
@@ -42,6 +44,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Panel 1: Universal Design & Accessible Infrastructure for 2047',
         'category' => 'Panel Discussion',
         'venueName' => 'Hall A',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => 'Architects, urban planners, and disability rights leaders examine barrier-free cities, public transit, and digital public infrastructure.',
         'accessibilityServices' => ['ISL Interpretation', 'Live Captioning (CART)', 'Wheelchair Seating'],
         'displayOrder' => 3,
@@ -53,6 +56,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Para Sports Championships — Opening Heats (25 Adaptive Disciplines)',
         'category' => 'Inclusive Sports',
         'venueName' => 'Sama Indoor Stadium',
+        'venueConfirmationStatus' => 'CONFIRMED',
         'description' => 'Adaptive athletics, wheelchair basketball, boccia, blind cricket demonstrations, and inclusive youth sports.',
         'accessibilityServices' => ['Step-Free Courts', 'Wheelchair Charging Bay', 'Medical Support', 'ISL Volunteers'],
         'displayOrder' => 4,
@@ -64,6 +68,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Assistive Technology & Inclusive Innovation Expo',
         'category' => 'Exhibition',
         'venueName' => 'Innovation Pavilion',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => 'Hands-on demonstrations of screen readers, tactile graphics, mobility aids, AAC devices, and Indian assistive startups.',
         'accessibilityServices' => ['Tactile Demos', 'ISL Interpretation', 'Accessible Counters'],
         'displayOrder' => 5,
@@ -75,6 +80,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Evening Cultural Showcase: Disability Arts & Inclusive Theatre',
         'category' => 'Cultural Performance',
         'venueName' => 'Open-Air Stage',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => "Performances by artists with and without disabilities celebrating Gujarat's folk heritage, contemporary dance, and sign-language music.",
         'accessibilityServices' => ['ISL Interpretation', 'Audio Description', 'Seizure-Safe Lighting', 'Sensory Sanctuary Nearby'],
         'displayOrder' => 6,
@@ -87,6 +93,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Panel 2: Inclusive Education & NEP 2020 Implementation',
         'category' => 'Inclusive Education',
         'venueName' => 'MSU Baroda — Hall A',
+        'venueConfirmationStatus' => 'COMMITTED',
         'description' => 'Educators, researchers, and students discuss Universal Design for Learning (UDL), teacher preparedness, and accessible classrooms.',
         'accessibilityServices' => ['ISL Interpretation', 'Live Captioning (CART)', 'Large-Print Handouts'],
         'displayOrder' => 7,
@@ -98,6 +105,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Panel 3: Rights, Legal Empowerment & the RPwD Act 2016',
         'category' => 'Panel Discussion',
         'venueName' => 'Hall B',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => 'Legal scholars and DPO representatives examine reasonable accommodation, employment equity, and digital accessibility compliance.',
         'accessibilityServices' => ['ISL Interpretation', 'Live Captioning (CART)', 'Braille Summary'],
         'displayOrder' => 8,
@@ -109,6 +117,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Inclusive Film Festival & Filmmaker Dialogues',
         'category' => 'Disability Arts',
         'venueName' => 'Screening Hall',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => 'Curated short films and documentaries on disability leadership with closed captions and audio description.',
         'accessibilityServices' => ['Closed Captions', 'Audio Description', 'ISL Q&A'],
         'displayOrder' => 9,
@@ -120,6 +129,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Sitaare Zameen Par — Inclusive Celebrity Exhibition Match',
         'category' => 'Inclusive Sports',
         'venueName' => 'Sama Indoor Stadium',
+        'venueConfirmationStatus' => 'CONFIRMED',
         'description' => 'Flagship unified exhibition match bringing together para-athletes, youth players, and guest personalities at Sama Indoor Stadium.',
         'accessibilityServices' => ['Wheelchair Seating', 'ISL Interpretation', 'Audio Commentary', 'Accessible Restrooms'],
         'displayOrder' => 10,
@@ -132,6 +142,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Inclusive Livelihoods, Entrepreneurship & Employer Conclave',
         'category' => 'Networking',
         'venueName' => 'Hall A',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => 'Connecting talented persons with disabilities with inclusive employers, startups, and skill-development ecosystems.',
         'accessibilityServices' => ['ISL Interpretation', 'Live Captioning (CART)', 'Quiet Interview Pods'],
         'displayOrder' => 11,
@@ -143,6 +154,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Para Sports Finals & Medal Ceremonies',
         'category' => 'Inclusive Sports',
         'venueName' => 'Sama Indoor Stadium',
+        'venueConfirmationStatus' => 'CONFIRMED',
         'description' => 'Championship finals across adaptive disciplines celebrating athletic excellence and inclusive sportsmanship.',
         'accessibilityServices' => ['Step-Free Podium', 'ISL Interpretation', 'Medical Support'],
         'displayOrder' => 12,
@@ -154,6 +166,7 @@ $FALLBACK_PROGRAMME_FULL = [
         'title' => 'Valedictory Ceremony & Vadodara Declaration on Inclusion',
         'category' => 'Plenary',
         'venueName' => 'Main Auditorium',
+        'venueConfirmationStatus' => 'PROPOSED',
         'description' => 'Closing keynote, volunteer and SLI recognition, and adoption of the Purple Festival Gujarat 2027 Inclusion Charter.',
         'accessibilityServices' => ['ISL Interpretation', 'Live Captioning (CART)', 'Braille Charter', 'Wheelchair Seating'],
         'displayOrder' => 13,
@@ -161,22 +174,119 @@ $FALLBACK_PROGRAMME_FULL = [
 ];
 
 $items = [];
+$dbVenueRows = [];
+$dbHasAnyScheduleRows = false;
+
+$resolveVenueConfirmation = static function (?string $venueName, ?string $explicitStatus, array $venues): string {
+    if ($explicitStatus !== null && trim($explicitStatus) !== '') {
+        return strtoupper(trim($explicitStatus));
+    }
+    $needle = strtolower(trim((string)$venueName));
+    if ($needle === '') {
+        return 'PROPOSED';
+    }
+    // Compound venue names containing a secondary unconfirmed venue must not be marked fully CONFIRMED
+    $matchedStatuses = [];
+    foreach ($venues as $v) {
+        $vName = strtolower(trim((string)($v['name'] ?? '')));
+        if ($vName === '') {
+            continue;
+        }
+        $vStatus = strtoupper(trim((string)($v['confirmation_status'] ?? 'PENDING')));
+        if ($needle === $vName) {
+            return $vStatus;
+        }
+        if (str_contains($needle, $vName) || (str_contains($vName, 'maharaja sayajirao') && str_contains($needle, 'msu baroda')) || (str_contains($vName, 'gmers') && str_contains($needle, 'gmers'))) {
+            $matchedStatuses[] = $vStatus;
+        }
+    }
+    if (!empty($matchedStatuses)) {
+        foreach ($matchedStatuses as $ms) {
+            if ($ms !== 'CONFIRMED') {
+                return $ms;
+            }
+        }
+        return 'CONFIRMED';
+    }
+    return 'PROPOSED';
+};
+
 if (function_exists('getDb')) {
     try {
         $pdo = getDb();
+
+        // Load venues for confirmation status lookup (§36.1)
+        try {
+            $vStmt = $pdo->query('SELECT id, name, confirmation_status FROM venues');
+            if ($vStmt) {
+                $dbVenueRows = $vStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            }
+        } catch (\Throwable $e) {
+            $dbVenueRows = [];
+        }
+
+        // Check whether DB actually holds any programme_items or festival_sessions rows
+        $progTotal = 0;
+        $sessTotal = 0;
+        try {
+            $progTotal = (int)$pdo->query('SELECT COUNT(*) FROM programme_items')->fetchColumn();
+        } catch (\Throwable $e) {}
+        try {
+            $sessTotal = (int)$pdo->query('SELECT COUNT(*) FROM festival_sessions')->fetchColumn();
+        } catch (\Throwable $e) {}
+        $dbHasAnyScheduleRows = ($progTotal > 0 || $sessTotal > 0);
+
+        $linkedSessionIds = [];
+
+        // 1. Published / Confirmed programme_items (NEVER expose DRAFT or CANCELLED)
         $stmt = $pdo->query("
-            SELECT id, day_number, time_slot, title, description, category, venue_name, speakers, accessibility_services, display_order
-            FROM programme_items
-            WHERE status = 'PUBLISHED'
-            ORDER BY day_number ASC, display_order ASC
+            SELECT pi.id, pi.session_id, pi.day_number, pi.time_slot, pi.title, pi.description,
+                   pi.category, pi.venue_name, pi.speakers, pi.accessibility_services,
+                   pi.display_order, pi.status,
+                   fs.isl_required, fs.captioning_available, fs.wheelchair_accessible,
+                   v.name AS joined_venue_name,
+                   v.confirmation_status AS joined_venue_confirmation_status
+            FROM programme_items pi
+            LEFT JOIN festival_sessions fs ON pi.session_id = fs.id
+            LEFT JOIN venues v ON fs.venue_id = v.id
+            WHERE pi.status IN ('PUBLISHED', 'CONFIRMED')
+              AND (pi.session_id IS NULL OR fs.status IN ('PUBLISHED', 'CONFIRMED'))
+            ORDER BY pi.day_number ASC, pi.display_order ASC
         ");
         if ($stmt) {
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if (!empty($row['session_id'])) {
+                    $linkedSessionIds[(string)$row['session_id']] = true;
+                }
                 $services = $row['accessibility_services'] ?? [];
                 if (is_string($services) && $services !== '') {
                     $decoded = json_decode($services, true);
                     $services = is_array($decoded) ? $decoded : [];
                 }
+                if (!is_array($services)) {
+                    $services = [];
+                }
+                // Merge structured session accessibility flags if linked
+                if (!empty($row['session_id'])) {
+                    $lowerSvcs = array_map('strtolower', $services);
+                    if (!empty($row['isl_required']) && !array_filter($lowerSvcs, static fn(string $s): bool => str_contains($s, 'isl') || str_contains($s, 'sign'))) {
+                        $services[] = 'ISL Interpretation';
+                    }
+                    if (!empty($row['captioning_available']) && !array_filter($lowerSvcs, static fn(string $s): bool => str_contains($s, 'caption'))) {
+                        $services[] = 'Live Captions (CART)';
+                    }
+                    if (!empty($row['wheelchair_accessible']) && !array_filter($lowerSvcs, static fn(string $s): bool => str_contains($s, 'wheelchair') || str_contains($s, 'step-free'))) {
+                        $services[] = 'Wheelchair Accessible';
+                    }
+                }
+                $resolvedVenueName = !empty($row['venue_name'])
+                    ? (string)$row['venue_name']
+                    : (!empty($row['joined_venue_name']) ? (string)$row['joined_venue_name'] : null);
+                $venueStatus = $resolveVenueConfirmation(
+                    $resolvedVenueName,
+                    isset($row['joined_venue_confirmation_status']) ? (string)$row['joined_venue_confirmation_status'] : null,
+                    $dbVenueRows
+                );
                 $items[] = [
                     'id' => (string)($row['id'] ?? ''),
                     'dayNumber' => (int)($row['day_number'] ?? 1),
@@ -184,18 +294,83 @@ if (function_exists('getDb')) {
                     'title' => (string)($row['title'] ?? ''),
                     'description' => $row['description'] ?? null,
                     'category' => (string)($row['category'] ?? ''),
-                    'venueName' => $row['venue_name'] ?? null,
-                    'accessibilityServices' => is_array($services) ? $services : [],
+                    'venueName' => $resolvedVenueName,
+                    'venueConfirmationStatus' => $venueStatus,
+                    'accessibilityServices' => $services,
                     'displayOrder' => (int)($row['display_order'] ?? 0),
                 ];
             }
         }
+
+        // 2. Published / Confirmed standalone festival_sessions not already linked via programme_items
+        try {
+            $hasSessionDesc = false;
+            if (function_exists('pfgDbColumnExists')) {
+                $hasSessionDesc = pfgDbColumnExists($pdo, 'festival_sessions', 'description');
+            }
+            $descSelect = $hasSessionDesc ? 'fs.description,' : 'NULL AS description,';
+            $fsStmt = $pdo->query("
+                SELECT fs.id, fs.title, fs.track, fs.day_number, fs.starts_at, fs.ends_at,
+                       {$descSelect}
+                       fs.isl_required, fs.captioning_available, fs.wheelchair_accessible, fs.status,
+                       v.name AS venue_name,
+                       v.confirmation_status AS venue_confirmation_status
+                FROM festival_sessions fs
+                LEFT JOIN venues v ON fs.venue_id = v.id
+                WHERE fs.status IN ('PUBLISHED', 'CONFIRMED')
+                ORDER BY fs.day_number ASC, fs.starts_at ASC
+            ");
+            if ($fsStmt) {
+                $extraOrder = 1000;
+                foreach ($fsStmt->fetchAll(PDO::FETCH_ASSOC) as $sRow) {
+                    $sid = (string)($sRow['id'] ?? '');
+                    if ($sid === '' || isset($linkedSessionIds[$sid])) {
+                        continue;
+                    }
+                    $startTs = !empty($sRow['starts_at']) ? strtotime((string)$sRow['starts_at']) : false;
+                    $endTs = !empty($sRow['ends_at']) ? strtotime((string)$sRow['ends_at']) : false;
+                    $slotStr = ($startTs !== false && $endTs !== false)
+                        ? date('H:i', $startTs) . ' – ' . date('H:i', $endTs) . ' IST'
+                        : 'Schedule TBA';
+                    $sBadges = [];
+                    if (!empty($sRow['isl_required'])) {
+                        $sBadges[] = 'ISL Interpretation';
+                    }
+                    if (!empty($sRow['captioning_available'])) {
+                        $sBadges[] = 'Live Captions (CART)';
+                    }
+                    if (!empty($sRow['wheelchair_accessible'])) {
+                        $sBadges[] = 'Wheelchair Accessible';
+                    }
+                    $sVenueName = !empty($sRow['venue_name']) ? (string)$sRow['venue_name'] : null;
+                    $sVenueStatus = $resolveVenueConfirmation(
+                        $sVenueName,
+                        isset($sRow['venue_confirmation_status']) ? (string)$sRow['venue_confirmation_status'] : null,
+                        $dbVenueRows
+                    );
+                    $items[] = [
+                        'id' => 'session-' . $sid,
+                        'dayNumber' => max(1, min(3, (int)($sRow['day_number'] ?? 1))),
+                        'timeSlot' => $slotStr,
+                        'title' => (string)($sRow['title'] ?? ''),
+                        'description' => $sRow['description'] ?? null,
+                        'category' => (string)($sRow['track'] ?? 'Session'),
+                        'venueName' => $sVenueName,
+                        'venueConfirmationStatus' => $sVenueStatus,
+                        'accessibilityServices' => $sBadges,
+                        'displayOrder' => $extraOrder++,
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            // Standalone festival_sessions optional
+        }
     } catch (\Throwable $e) {
-        // Fallback used
+        // Fallback used only when DB is unavailable
     }
 }
 
-if (empty($items)) {
+if (empty($items) && !$dbHasAnyScheduleRows) {
     $items = $FALLBACK_PROGRAMME_FULL;
 }
 
@@ -377,21 +552,27 @@ require_once __DIR__ . '/includes/header.php';
       </p>
 
       <!-- Empty State -->
-      <div id="programme-empty-state" class="surface-card hidden rounded-2xl border border-[#59436D]/20 bg-white p-10 text-center">
-        <p class="text-base font-semibold text-[#211B29]">No matching sessions found.</p>
+      <div id="programme-empty-state" class="surface-card <?= empty($items) ? '' : 'hidden ' ?>rounded-2xl border border-[#59436D]/20 bg-white p-10 text-center">
+        <p class="text-base font-semibold text-[#211B29]">
+          <?= empty($items) ? 'Published programme sessions will be announced soon.' : 'No matching sessions found.' ?>
+        </p>
         <p class="mt-1 text-sm text-[#4B4257]">
-          Try selecting a different day or clearing your search keywords.
+          <?= empty($items) ? 'Draft schedules are hidden until confirmed by the Festival Secretariat.' : 'Try selecting a different day or clearing your search keywords.' ?>
         </p>
       </div>
 
       <!-- Session Cards -->
-      <div id="programme-cards-list" class="space-y-4">
+      <div id="programme-cards-list" class="<?= empty($items) ? 'hidden ' : '' ?>space-y-4">
         <?php foreach ($items as $item):
             $m = $dayMeta[$item['dayNumber']] ?? $dayMeta[1];
+            $venueConfStatus = strtoupper(trim((string)($item['venueConfirmationStatus'] ?? 'PROPOSED')));
+            $isVenueConfirmed = ($venueConfStatus === 'CONFIRMED');
+            $venueStatusLabel = $isVenueConfirmed ? 'Confirmed Venue' : 'Proposed / Subject to Confirmation';
             $searchBlob = strtolower(
                 $item['title'] . ' ' .
                 ($item['description'] ?? '') . ' ' .
                 ($item['venueName'] ?? '') . ' ' .
+                $venueStatusLabel . ' ' .
                 $item['category'] . ' ' .
                 implode(' ', $item['accessibilityServices'])
             );
@@ -440,13 +621,24 @@ require_once __DIR__ . '/includes/header.php';
                 <?php endif; ?>
 
                 <?php if (!empty($item['venueName'])): ?>
-                  <p class="flex items-center gap-1.5 text-sm font-medium text-[#211B29]">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-[#59436D]" aria-hidden="true">
-                      <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
-                      <circle cx="12" cy="10" r="3" />
-                    </svg>
-                    <span><?= htmlspecialchars((string)$item['venueName'], ENT_QUOTES, 'UTF-8') ?></span>
-                  </p>
+                  <div class="flex flex-wrap items-center gap-2 text-sm font-medium text-[#211B29]">
+                    <span class="inline-flex items-center gap-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-[#59436D]" aria-hidden="true">
+                        <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                      <span><?= htmlspecialchars((string)$item['venueName'], ENT_QUOTES, 'UTF-8') ?></span>
+                    </span>
+                    <?php if ($isVenueConfirmed): ?>
+                      <span class="inline-flex items-center rounded-full border border-[#19734B]/30 bg-[#19734B]/10 px-2.5 py-0.5 text-xs font-semibold text-[#135A3A]">
+                        Confirmed Venue
+                      </span>
+                    <?php else: ?>
+                      <span class="inline-flex items-center rounded-full border border-amber-700/30 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                        Proposed / Subject to Confirmation
+                      </span>
+                    <?php endif; ?>
+                  </div>
                 <?php endif; ?>
 
                 <?php if (!empty($item['accessibilityServices'])): ?>
@@ -461,11 +653,13 @@ require_once __DIR__ . '/includes/header.php';
                       </svg>
                       Access:
                     </span>
-                    <?php foreach ($item['accessibilityServices'] as $svc): ?>
-                      <span class="rounded-md border border-[#19734B]/25 bg-[#19734B]/10 px-2.5 py-0.5 text-xs font-semibold text-[#135A3A]">
-                        <?= htmlspecialchars((string)$svc, ENT_QUOTES, 'UTF-8') ?>
-                      </span>
-                    <?php endforeach; ?>
+                    <ul role="list" aria-label="Accessibility services for <?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?>" class="flex flex-wrap items-center gap-2">
+                      <?php foreach ($item['accessibilityServices'] as $svc): ?>
+                        <li class="rounded-md border border-[#19734B]/25 bg-[#19734B]/10 px-2.5 py-0.5 text-xs font-semibold text-[#135A3A]">
+                          <?= htmlspecialchars((string)$svc, ENT_QUOTES, 'UTF-8') ?>
+                        </li>
+                      <?php endforeach; ?>
+                    </ul>
                   </div>
                 <?php endif; ?>
               </div>
@@ -565,6 +759,11 @@ require_once __DIR__ . '/includes/header.php';
         descParts.push("Accessibility Services: " + item.accessibilityServices.join(", "));
       }
 
+      var venueText = item.venueName || "Vadodara, Gujarat";
+      if (item.venueConfirmationStatus && item.venueConfirmationStatus !== "CONFIRMED") {
+        venueText += " (Proposed / Subject to Confirmation)";
+      }
+
       lines.push(
         "BEGIN:VEVENT",
         "UID:pfg2027-" + item.id + "@purplefestivalgujarat.org",
@@ -573,7 +772,7 @@ require_once __DIR__ . '/includes/header.php';
         "DTEND:" + times.dtEnd,
         "SUMMARY:" + escapeIcsText(item.title + " — Purple Festival Gujarat 2027"),
         "DESCRIPTION:" + escapeIcsText(descParts.join(" | ")),
-        "LOCATION:" + escapeIcsText(item.venueName || "Vadodara, Gujarat"),
+        "LOCATION:" + escapeIcsText(venueText),
         "CATEGORIES:" + escapeIcsText(item.category),
         "END:VEVENT"
       );
