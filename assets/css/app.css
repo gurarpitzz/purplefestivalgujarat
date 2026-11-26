@@ -829,3 +829,87 @@ html.dyslexia-font textarea {
   transform: none !important;
   scale: 1 !important;
 }@property --tw-translate-x{syntax:"*";inherits:false;initial-value:0}@property --tw-translate-y{syntax:"*";inherits:false;initial-value:0}@property --tw-translate-z{syntax:"*";inherits:false;initial-value:0}@property --tw-space-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-space-x-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-divide-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-leading{syntax:"*";inherits:false}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-tracking{syntax:"*";inherits:false}@property --tw-ordinal{syntax:"*";inherits:false}@property --tw-slashed-zero{syntax:"*";inherits:false}@property --tw-numeric-figure{syntax:"*";inherits:false}@property --tw-numeric-spacing{syntax:"*";inherits:false}@property --tw-numeric-fraction{syntax:"*";inherits:false}@property --tw-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-shadow-color{syntax:"*";inherits:false}@property --tw-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-inset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-shadow-color{syntax:"*";inherits:false}@property --tw-inset-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-ring-color{syntax:"*";inherits:false}@property --tw-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-ring-color{syntax:"*";inherits:false}@property --tw-inset-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-ring-inset{syntax:"*";inherits:false}@property --tw-ring-offset-width{syntax:"<length>";inherits:false;initial-value:0}@property --tw-ring-offset-color{syntax:"*";inherits:false;initial-value:#fff}@property --tw-ring-offset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-outline-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-blur{syntax:"*";inherits:false}@property --tw-brightness{syntax:"*";inherits:false}@property --tw-contrast{syntax:"*";inherits:false}@property --tw-grayscale{syntax:"*";inherits:false}@property --tw-hue-rotate{syntax:"*";inherits:false}@property --tw-invert{syntax:"*";inherits:false}@property --tw-opacity{syntax:"*";inherits:false}@property --tw-saturate{syntax:"*";inherits:false}@property --tw-sepia{syntax:"*";inherits:false}@property --tw-drop-shadow{syntax:"*";inherits:false}@property --tw-drop-shadow-color{syntax:"*";inherits:false}@property --tw-drop-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-drop-shadow-size{syntax:"*";inherits:false}@property --tw-backdrop-blur{syntax:"*";inherits:false}@property --tw-backdrop-brightness{syntax:"*";inherits:false}@property --tw-backdrop-contrast{syntax:"*";inherits:false}@property --tw-backdrop-grayscale{syntax:"*";inherits:false}@property --tw-backdrop-hue-rotate{syntax:"*";inherits:false}@property --tw-backdrop-invert{syntax:"*";inherits:false}@property --tw-backdrop-opacity{syntax:"*";inherits:false}@property --tw-backdrop-saturate{syntax:"*";inherits:false}@property --tw-backdrop-sepia{syntax:"*";inherits:false}@property --tw-duration{syntax:"*";inherits:false}@property --tw-scale-x{syntax:"*";inherits:false;initial-value:1}@property --tw-scale-y{syntax:"*";inherits:false;initial-value:1}@property --tw-scale-z{syntax:"*";inherits:false;initial-value:1}@property --tw-divide-x-reverse{syntax:"*";inherits:false;initial-value:0}@keyframes spin{to{transform:rotate(1turn)}}
+
+
+/* ==========================================================================
+   Homepage Hero Viewport Proportions (Scoped .pfg-hero-* Layout & Type Scale)
+   Fits headline, subtitle, CTA, full uncut PurpleFest emblem, caption, and
+   corner date badge 100% above the fold on 1280x720 / 1366x768 laptops while
+   scaling grandly on 1440x900+ / 1920x1080 desktops and cleanly on mobile.
+   ========================================================================== */
+.pfg-hero-section {
+  min-height: calc(100vh - 72px);
+  min-height: calc(100svh - 72px);
+  padding-top: clamp(0.85rem, 2.2vh, 2.25rem);
+  padding-bottom: clamp(0.75rem, 1.8vh, 1.5rem);
+}
+
+.pfg-hero-inner {
+  width: 100%;
+  max-width: 980px;
+}
+
+.pfg-hero-title {
+  font-size: clamp(1.9rem, min(4.6vw, 6.2vh), 4.15rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  max-width: 920px;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+.pfg-hero-subtitle {
+  margin-top: clamp(0.55rem, 1.3vh, 1rem);
+  max-width: 720px;
+  font-size: clamp(0.98rem, min(1.4vw, 2.15vh), 1.3rem);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
+}
+
+.pfg-hero-cta-wrap {
+  margin-top: clamp(0.85rem, 2vh, 1.6rem);
+}
+
+.pfg-hero-cta-btn {
+  padding: clamp(0.6rem, 1.1vh, 0.8rem) 2rem;
+  font-size: clamp(0.95rem, 1.2vw, 1.125rem);
+  min-height: 44px;
+}
+
+.pfg-hero-cta-secondary {
+  padding: clamp(0.55rem, 1.05vh, 0.75rem) 1.5rem;
+  font-size: clamp(0.9rem, 1.1vw, 1.05rem);
+  min-height: 44px;
+}
+
+.pfg-hero-emblem-wrap {
+  margin-top: clamp(0.8rem, 1.9vh, 1.5rem);
+}
+
+.pfg-hero-emblem-svg {
+  height: clamp(3.75rem, 9.2vh, 6rem);
+  width: auto;
+  max-width: 100%;
+}
+
+.pfg-hero-emblem-caption {
+  margin-top: 0.4rem;
+  font-size: clamp(0.68rem, 0.9vw, 0.8rem);
+  letter-spacing: 0.08em;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+
+.pfg-hero-badge-wrap {
+  margin-top: clamp(0.5rem, 1.4vh, 1.25rem);
+}
+
+.pfg-hero-badge {
+  padding: 0.5rem 1.05rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  flex-wrap: wrap;
+  max-width: 100%;
+}

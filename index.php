@@ -996,29 +996,29 @@ function renderHighlightIconSvg(string $iconName): string
        ============================================================ -->
   <section
     aria-labelledby="hero-heading"
-    class="relative flex min-h-[calc(100svh-76px)] flex-col items-center justify-between overflow-hidden bg-[#F2E9FE] px-6 pb-8 pt-10 text-center text-[#202D59] sm:px-10 md:pt-14"
+    class="pfg-hero-section relative flex flex-col items-center justify-between overflow-hidden bg-[#F2E9FE] px-6 text-center text-[#202D59] sm:px-10"
   >
     <?php include __DIR__ . '/includes/hero-background.php'; ?>
 
-    <div class="relative z-10 mx-auto flex w-full max-w-[1040px] flex-1 flex-col items-center justify-center">
-      <!-- Monumental Reference-Matched Headline (~104px desktop, DM Sans Bold) -->
+    <div class="pfg-hero-inner relative z-10 mx-auto flex flex-1 flex-col items-center justify-center">
+      <!-- Viewport-Proportioned Headline (DM Sans Bold, balanced across laptop & desktop screens) -->
       <h1
         id="hero-heading"
-        class="text-[clamp(3.1rem,8vw,6.5rem)] font-bold leading-[1.03] tracking-[-0.03em] text-[#202D59]"
+        class="pfg-hero-title font-bold text-[#202D59]"
       >
         <?= htmlspecialchars($heroTitle, ENT_QUOTES, 'UTF-8') ?>
       </h1>
 
-      <!-- Reference-Matched Large Subtitle (~30px desktop, regular weight) -->
-      <p class="mt-5 max-w-[920px] text-[clamp(1.2rem,2.2vw,1.95rem)] font-normal leading-[1.35] tracking-[-0.01em] text-[#202D59]">
+      <!-- Balanced Hero Subtitle -->
+      <p class="pfg-hero-subtitle font-normal text-[#202D59]">
         <?= htmlspecialchars($heroBody, ENT_QUOTES, 'UTF-8') ?>
       </p>
 
-      <!-- Single Prominent Centered #A459FF Apply Now CTA (exact reference scale) -->
-      <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
+      <!-- Single Prominent Centered #A459FF Apply Now CTA -->
+      <div class="pfg-hero-cta-wrap flex flex-wrap items-center justify-center gap-4">
         <a
           href="<?= htmlspecialchars($heroCtaHref, ENT_QUOTES, 'UTF-8') ?>"
-          class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-9 py-3.5 text-[20px] font-semibold tracking-[-0.01em] text-white transition-colors hover:bg-[#8D3BF2]"
+          class="btn-primary-pfg pfg-hero-cta-btn touch-target inline-flex items-center justify-center bg-[#A459FF] font-semibold tracking-[-0.01em] text-white transition-colors hover:bg-[#8D3BF2]"
         >
           <?= htmlspecialchars($heroCtaLabel, ENT_QUOTES, 'UTF-8') ?>
         </a>
@@ -1027,7 +1027,7 @@ function renderHighlightIconSvg(string $iconName): string
             href="<?= htmlspecialchars($heroWebsiteUrl, ENT_QUOTES, 'UTF-8') ?>"
             target="_blank"
             rel="noopener noreferrer"
-            class="touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-white/75 px-6 py-3.5 text-[17px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
+            class="pfg-hero-cta-secondary touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-white/75 font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
           >
             Official Info
             <span class="sr-only"> (opens in a new tab)</span>
@@ -1035,18 +1035,18 @@ function renderHighlightIconSvg(string $iconName): string
         <?php endif; ?>
       </div>
 
-      <!-- Clean Static Flat Authorized Purple Festival Emblem (NO unwanted 3D animation) -->
-      <div class="mt-10 flex flex-col items-center">
-        <?= renderPurpleFestEmblemSvg('h-28 w-auto text-[#202D59]/85 sm:h-32') ?>
-        <p class="mt-2.5 text-sm font-medium tracking-[0.08em] uppercase text-[#202D59]/75">
+      <!-- Clean Static Flat Authorized Purple Festival Emblem (full uncut above-the-fold fit) -->
+      <div class="pfg-hero-emblem-wrap flex flex-col items-center">
+        <?= renderPurpleFestEmblemSvg('pfg-hero-emblem-svg text-[#202D59]/85') ?>
+        <p class="pfg-hero-emblem-caption font-medium uppercase text-[#202D59]/75">
           Purple Festival Gujarat 2027 &middot; <?= htmlspecialchars($heroLocationLabel, ENT_QUOTES, 'UTF-8') ?>
         </p>
       </div>
     </div>
 
     <!-- Bottom-Left Info Pill (matching reference corner badge) -->
-    <div class="relative z-10 mt-6 flex w-full max-w-[1440px] justify-start">
-      <div class="inline-flex items-center gap-2.5 bg-white px-5 py-3 text-[15px] font-medium text-[#202D59] shadow-xs">
+    <div class="pfg-hero-badge-wrap relative z-10 flex w-full max-w-[1440px] justify-start">
+      <div class="pfg-hero-badge inline-flex items-center gap-2.5 bg-white font-medium text-[#202D59] shadow-xs">
         <span>Purple Festival Gujarat</span>
         <span aria-hidden="true" class="text-[#099F9F]">▼</span>
         <span class="font-bold text-[#202D59]"><?= htmlspecialchars($heroDatesLabel, ENT_QUOTES, 'UTF-8') ?></span>

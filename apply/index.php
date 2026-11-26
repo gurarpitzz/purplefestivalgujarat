@@ -3,16 +3,17 @@ declare(strict_types=1);
 
 /**
  * /apply -> apply/index.php
- * Purple Festival Gujarat 2027 — Clean 3-Card Primary Category Hub (Phase 6, CAD-02, CAD-07)
+ * Purple Festival Gujarat 2027 — Minimal Stacked 3-Box Category Selector Hub
  *
- * Strictly renders ONLY the 3 Primary Categories:
- *   1. ATTENDEE   -> /apply/attendee
- *   2. VOLUNTEER  -> /apply/volunteer
- *   3. SLI        -> /apply/sli
+ * Strictly renders ONLY the 3 Primary Categories in user-specified order:
+ *   1. ATTENDEE  -> /apply/attendee
+ *   2. SLI       -> /apply/sli
+ *   3. VOLUNTEER -> /apply/volunteer
  *
- * Zero legacy cards (DELEGATE, STUDENT, PROFESSIONAL, INSTITUTIONAL, ALLY) and ZERO standalone ACCESSIBLE card.
- * Legacy query parameters (?category=DELEGATE, ?category=ACCESSIBLE, ?pathway=PWD, etc.) show an accessible
- * guidance banner explaining how to select one of the 3 primary categories and use the integrated Accessibility section.
+ * Zero legacy cards (DELEGATE, STUDENT, PROFESSIONAL, INSTITUTIONAL, ALLY),
+ * ZERO standalone ACCESSIBLE card, and ZERO "Instant QR Pass" text (Decision D-01).
+ * Legacy query parameters (?category=DELEGATE, ?category=ACCESSIBLE, ?pathway=PWD, etc.)
+ * show an accessible, XSS-safe guidance banner.
  */
 
 require_once __DIR__ . '/../includes/config.php';
@@ -80,7 +81,7 @@ if ($rawLegacyParam !== '' && in_array($rawLegacyParam, $legacyCodes, true)) {
     if (in_array($rawLegacyParam, ['ACCESSIBLE', 'PWD', 'DISABILITY'], true)) {
         $legacyBanner = [
             'title' => 'Accessibility Support Is Built Into Every Registration Category',
-            'body'  => 'Persons with disabilities do not need a separate pathway. Choose Attendee, Festival Volunteer, or Sign Language Interpreter below — all three forms include our integrated, confidential Accessibility & Reasonable Accommodations section (no medical diagnosis required).',
+            'body'  => 'Persons with disabilities do not need a separate pathway. Choose Attendee, Sign Language Interpreter (SLI), or Festival Volunteer below — all three forms include our integrated, confidential Accessibility & Reasonable Accommodations section (no medical diagnosis required).',
         ];
     } else {
         $legacyBanner = [
@@ -94,236 +95,763 @@ if ($rawLegacyParam !== '' && in_array($rawLegacyParam, $legacyCodes, true)) {
     exit;
 }
 
-$primaryCards = [
+// Strictly 3 Primary Category Boxes in exact order: Attendee, SLI, Volunteer
+$primaryBoxes = [
     [
-        'code'        => 'ATTENDEE',
-        'slug'        => '/apply/attendee',
-        'title'       => 'Attendee',
-        'subtitle'    => 'Visitors, Families, Students, Professionals, Institutions, Para-Sports & Allies',
-        'badge'       => 'Free · Instant Registration ID',
-        'description' => 'Join cultural programmes, the Purple March, We Care Film Festival, policy panels, assistive-tech stalls, and para-sports across 21–23 January 2027 in Vadodara.',
-        'highlights'  => [
-            'Instant confirmed official Registration ID (PFG-2027-NNNNNN)',
-            'Integrated Accessibility & Reasonable Accommodations module',
-            'Optional outstation travel, stay guidance & para-sports interest',
-        ],
-        'cta'         => 'Register as Attendee',
+        'code'     => 'ATTENDEE',
+        'slug'     => '/apply/attendee',
+        'title'    => 'Attendee',
+        'subtitle' => 'Free · Instant Registration ID · Visitors, Students, Delegates & Allies',
     ],
     [
-        'code'        => 'VOLUNTEER',
-        'slug'        => '/apply/volunteer',
-        'title'       => 'Festival Volunteer',
-        'subtitle'    => 'MSU Baroda Students, Alumni, NSS/NCC & Community Volunteers (16+)',
-        'badge'       => 'Free · Coordinator Review',
-        'description' => 'Support stage anchoring, venue logistics, hospitality, peer accessibility assistance, or technical media teams. Volunteers with and without disabilities are equally welcomed.',
-        'highlights'  => [
-            'Choose from 5 official festival roles & 2-shift availability grid',
-            'Reviewed by Volunteer Coordinators before shift assignment',
-            'Includes pre-festival sensitisation & full accessibility support',
-        ],
-        'cta'         => 'Apply as Volunteer',
+        'code'     => 'SLI',
+        'slug'     => '/apply/sli',
+        'title'    => 'Sign Language Interpreter (SLI)',
+        'subtitle' => 'Free · Verification & Assignment · Certified, Deaf & Trainee Interpreters',
     ],
     [
-        'code'        => 'SLI',
-        'slug'        => '/apply/sli',
-        'title'       => 'Sign Language Interpreter (SLI)',
-        'subtitle'    => 'Certified ISL Interpreters, Deaf Interpreters, Practitioners & Trainees (18+)',
-        'badge'       => 'Free · Coordinator Verification',
-        'description' => 'Provide Indian Sign Language (ISL) and tactile interpretation across plenaries, panels, ceremonies, and cultural performances with sustainable paired 20–30 min rotations.',
-        'highlights'  => [
-            'Supports Certified ISL, Deaf/Community Signers & Trainees',
-            'Gujarat priority with national/ISLRTC coordinator review supported',
-            'Paired shift scheduling & built-in interpreter accessibility support',
-        ],
-        'cta'         => 'Apply as Interpreter (SLI)',
+        'code'     => 'VOLUNTEER',
+        'slug'     => '/apply/volunteer',
+        'title'    => 'Festival Volunteer',
+        'subtitle' => 'Free · Coordinator Review · MSU Students, Alumni & Community',
     ],
 ];
 
 $pageTitle = 'Register & Apply | Purple Festival Gujarat 2027';
-$pageDescription = 'Register as an Attendee or apply as a Festival Volunteer or Sign Language Interpreter (SLI) for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara).';
+$pageDescription = 'Choose your registration category — Attendee, Sign Language Interpreter (SLI), or Festival Volunteer — for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara).';
+
+$extraHeadHtml = <<<'HTML'
+<style>
+  .pfg-apply-main {
+    min-height: calc(100vh - 76px);
+    background-color: #ffffff;
+    color: #202D59;
+    padding: 52px 20px 72px;
+    overflow-x: clip;
+  }
+
+  .pfg-apply-wrap {
+    width: 100%;
+    max-width: 580px;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .pfg-apply-heading {
+    margin: 0;
+    font-size: clamp(1.65rem, 4.2vw, 2.25rem);
+    font-weight: 800;
+    line-height: 1.18;
+    letter-spacing: -0.025em;
+    color: #202D59;
+    overflow-wrap: break-word;
+  }
+
+  .pfg-apply-banner {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border: 2px solid #5B2A86;
+    background-color: #F2E9FE;
+    color: #202D59;
+    border-radius: 2px;
+  }
+
+  .pfg-apply-banner-title {
+    margin: 0 0 4px;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: #2B144D;
+  }
+
+  .pfg-apply-banner-body {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #202D59;
+  }
+
+  .pfg-apply-account {
+    margin-top: 18px;
+    padding: 12px 16px;
+    border: 1px solid #DCE5F7;
+    background-color: #FAF9FF;
+    color: #202D59;
+    border-radius: 2px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  .pfg-apply-account-text {
+    margin: 0;
+    color: #46537C;
+    overflow-wrap: anywhere;
+  }
+
+  .pfg-apply-account-text strong {
+    color: #202D59;
+  }
+
+  .pfg-apply-account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pfg-apply-alert {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 2px solid #B45309;
+    background-color: #FFFBEB;
+    color: #451A03;
+    border-radius: 2px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .pfg-apply-alert-text {
+    flex: 1 1 260px;
+    min-width: 0;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .pfg-apply-alert-title {
+    margin: 0 0 2px;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #451A03;
+  }
+
+  .pfg-apply-alert-body {
+    margin: 0;
+    color: #451A03;
+  }
+
+  .pfg-apply-signedin {
+    margin-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: #46537C;
+  }
+
+  .pfg-apply-signedin-text {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .pfg-apply-signedin-text strong {
+    color: #202D59;
+  }
+
+  .pfg-apply-dash-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 4px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #5B2A86;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    white-space: nowrap;
+  }
+
+  .pfg-apply-dash-link:hover,
+  .pfg-apply-dash-link:focus-visible {
+    color: #202D59;
+  }
+
+  .pfg-apply-btn-outline,
+  .pfg-apply-btn-solid {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 14px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 2px;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+    box-sizing: border-box;
+  }
+
+  .pfg-apply-btn-outline {
+    border: 2px solid #202D59;
+    background-color: #ffffff;
+    color: #202D59;
+  }
+
+  .pfg-apply-btn-outline:hover,
+  .pfg-apply-btn-outline:focus-visible {
+    background-color: #202D59;
+    color: #ffffff;
+  }
+
+  .pfg-apply-btn-solid {
+    border: 2px solid #202D59;
+    background-color: #202D59;
+    color: #ffffff;
+  }
+
+  .pfg-apply-btn-solid:hover,
+  .pfg-apply-btn-solid:focus-visible {
+    background-color: #5B2A86;
+    border-color: #5B2A86;
+    color: #ffffff;
+  }
+
+  /* Strictly 3 Stacked Lavender Selector Boxes */
+  .pfg-apply-stack {
+    margin-top: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pfg-apply-item {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .pfg-apply-box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+    min-height: 68px;
+    padding: 16px 20px;
+    background-color: #DDDDF9;
+    border: 2px solid transparent;
+    border-radius: 2px;
+    color: #202D59;
+    text-decoration: none;
+    box-sizing: border-box;
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+
+  .pfg-apply-box:hover,
+  .pfg-apply-box:focus-visible {
+    background-color: #CFCFF8;
+    border-color: #202D59;
+  }
+
+  .pfg-apply-box:focus-visible {
+    outline: 3px solid #A459FF;
+    outline-offset: 2px;
+  }
+
+  .pfg-apply-box-active {
+    width: 100%;
+    min-height: 68px;
+    padding: 16px 20px;
+    background-color: #DDDDF9;
+    border: 2px solid #202D59;
+    border-radius: 2px;
+    color: #202D59;
+    box-sizing: border-box;
+  }
+
+  .pfg-apply-box-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .pfg-apply-box-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .pfg-apply-box-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pfg-apply-box-title {
+    display: block;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: #202D59;
+    overflow-wrap: break-word;
+  }
+
+  .pfg-apply-box-sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: #46537C;
+    overflow-wrap: break-word;
+  }
+
+  .pfg-apply-box-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: #202D59;
+    transition: transform 150ms ease;
+  }
+
+  .pfg-apply-box:hover .pfg-apply-box-icon,
+  .pfg-apply-box:focus-visible .pfg-apply-box-icon {
+    transform: translateX(3px);
+  }
+
+  .pfg-apply-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    line-height: 1.4;
+    border-radius: 9999px;
+    white-space: nowrap;
+  }
+
+  .pfg-apply-pill-draft {
+    background-color: #ffffff;
+    color: #202D59;
+    border: 1.5px solid #202D59;
+  }
+
+  .pfg-apply-pill-status {
+    background-color: #202D59;
+    color: #ffffff;
+    border: 1.5px solid #202D59;
+  }
+
+  .pfg-apply-active-foot {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(32, 45, 89, 0.22);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+  }
+
+  .pfg-apply-reg-id {
+    font-size: 13px;
+    color: #202D59;
+    overflow-wrap: anywhere;
+  }
+
+  .pfg-apply-reg-code {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 2px 7px;
+    background-color: #ffffff;
+    color: #202D59;
+    border: 1px solid rgba(32, 45, 89, 0.28);
+    border-radius: 2px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .pfg-apply-active-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pfg-apply-back-row {
+    margin-top: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .pfg-apply-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 4px;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #202D59;
+    text-decoration: none;
+  }
+
+  .pfg-apply-back-link:hover,
+  .pfg-apply-back-link:focus-visible {
+    color: #5B2A86;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .pfg-apply-note {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid #E5E7F5;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: #46537C;
+  }
+
+  .pfg-apply-note p {
+    margin: 0;
+  }
+
+  .pfg-apply-note p + p {
+    margin-top: 8px;
+  }
+
+  .pfg-apply-note strong {
+    color: #202D59;
+  }
+
+  .pfg-apply-note a {
+    color: #5B2A86;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 640px) {
+    .pfg-apply-main {
+      padding: 36px 16px 56px;
+    }
+
+    .pfg-apply-box,
+    .pfg-apply-box-active {
+      padding: 16px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pfg-apply-box,
+    .pfg-apply-box-icon,
+    .pfg-apply-btn-outline,
+    .pfg-apply-btn-solid {
+      transition: none !important;
+    }
+
+    .pfg-apply-box:hover .pfg-apply-box-icon,
+    .pfg-apply-box:focus-visible .pfg-apply-box-icon {
+      transform: none !important;
+    }
+  }
+
+  html[data-reduced-motion="true"] .pfg-apply-box,
+  html[data-reduced-motion="true"] .pfg-apply-box-icon,
+  html[data-reduced-motion="true"] .pfg-apply-btn-outline,
+  html[data-reduced-motion="true"] .pfg-apply-btn-solid {
+    transition: none !important;
+  }
+
+  html[data-reduced-motion="true"] .pfg-apply-box:hover .pfg-apply-box-icon,
+  html[data-reduced-motion="true"] .pfg-apply-box:focus-visible .pfg-apply-box-icon {
+    transform: none !important;
+  }
+
+  /* High Contrast Mode (#000000 surface, #FFFFFF / #FFEA00 text, >= 17:1 contrast) */
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-main,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-banner,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-account,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-alert,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box-active,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-reg-code,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-pill-draft,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-pill-status,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-outline {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border-color: #ffffff !important;
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box {
+    border: 2px solid #ffffff !important;
+    color: #ffea00 !important;
+    text-decoration: none !important;
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box .pfg-apply-box-title,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box .pfg-apply-box-icon {
+    color: #ffea00 !important;
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box .pfg-apply-box-sub,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box-active .pfg-apply-box-title,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box-active .pfg-apply-box-sub,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box-active .pfg-apply-box-icon,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-heading,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-note,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-note strong,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-account-text,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-account-text strong,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-signedin,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-signedin strong,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-alert-title,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-alert-body,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-banner-title,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-banner-body {
+    color: #ffffff !important;
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-active-foot,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-note {
+    border-top-color: #ffffff !important;
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box:hover,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box:focus-visible,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-solid,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-outline:hover,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-outline:focus-visible {
+    background-color: #ffea00 !important;
+    color: #000000 !important;
+    border-color: #ffffff !important;
+  }
+
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box:hover *,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-box:focus-visible *,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-solid *,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-outline:hover *,
+  :is(html[data-contrast="high"], html.high-contrast) .pfg-apply-btn-outline:focus-visible * {
+    color: #000000 !important;
+    background-color: transparent !important;
+    border-color: #000000 !important;
+  }
+
+  /* Yellow-on-Black Mode (#FFEA00 on #000000, >= 17.7:1 contrast) */
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-main,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-banner,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-account,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-alert,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box-active,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-reg-code,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-pill-draft,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-pill-status,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-outline {
+    background-color: #000000 !important;
+    color: #ffea00 !important;
+    border-color: #ffea00 !important;
+  }
+
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box {
+    border: 2px solid #ffea00 !important;
+    text-decoration: none !important;
+  }
+
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-heading,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box-title,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box-sub,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box-icon,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-note,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-note strong,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-note a,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-account-text,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-account-text strong,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-signedin,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-signedin strong,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-dash-link,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-back-link,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-alert-title,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-alert-body,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-banner-title,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-banner-body {
+    color: #ffea00 !important;
+  }
+
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-active-foot,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-note {
+    border-top-color: #ffea00 !important;
+  }
+
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box:hover,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box:focus-visible,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-solid,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-outline:hover,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-outline:focus-visible {
+    background-color: #ffea00 !important;
+    color: #000000 !important;
+    border-color: #ffea00 !important;
+  }
+
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box:hover *,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-box:focus-visible *,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-solid *,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-outline:hover *,
+  :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-apply-btn-outline:focus-visible * {
+    color: #000000 !important;
+    background-color: transparent !important;
+    border-color: #000000 !important;
+  }
+</style>
+HTML;
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
-<main id="main-content" tabindex="-1" class="min-h-[calc(100vh-76px)] bg-[#FAF9FF] text-[#202D59] focus:outline-none">
-  <div class="mx-auto max-w-[1160px] px-5 py-12 sm:px-8 sm:py-16">
-    <!-- Top Header -->
-    <div class="max-w-3xl">
-      <p class="text-xs font-bold uppercase tracking-[0.16em] text-[#5B2A86]">
-        Purple Festival Gujarat 2027 · 21–23 January 2027 · Vadodara
-      </p>
-      <h1 class="mt-2 text-[clamp(1.85rem,3.6vw,2.75rem)] font-bold leading-[1.15] tracking-[-0.02em] text-[#202D59]">
-        Choose Your Participation Category
-      </h1>
-      <p class="mt-3 text-base leading-relaxed text-[#46537C]">
-        Purple Festival Gujarat 2027 offers <strong>three clear, inclusive participation categories</strong>.
-        Registration is free, uses one verified account, issues an official <strong>Registration ID</strong> for manual check-in at the Vadodara Registration Desk (no QR pass needed), and includes confidential accessibility support inside every form.
-      </p>
-    </div>
+<main id="main-content" tabindex="-1" class="pfg-apply-main focus:outline-none">
+  <div class="pfg-apply-wrap">
+    <h1 class="pfg-apply-heading">
+      What type of registration are you interested in for Purple Fest Gujarat?
+    </h1>
 
-    <!-- Legacy URL Guidance Banner -->
     <?php if ($legacyBanner !== null): ?>
-      <div
-        role="status"
-        aria-live="polite"
-        class="mt-6 rounded-2xl border-2 border-[#5B2A86] bg-[#F2E9FE] p-5 text-[#202D59]"
-      >
-        <h2 class="text-base font-bold text-[#2B144D]"><?= $esc($legacyBanner['title']) ?></h2>
-        <p class="mt-1 text-sm leading-relaxed text-[#202D59]"><?= $esc($legacyBanner['body']) ?></p>
+      <div role="status" aria-live="polite" class="pfg-apply-banner">
+        <h2 class="pfg-apply-banner-title"><?= $esc($legacyBanner['title']) ?></h2>
+        <p class="pfg-apply-banner-body"><?= $esc($legacyBanner['body']) ?></p>
       </div>
     <?php endif; ?>
 
-    <!-- Account Session Callout -->
     <?php if (!$currentUser): ?>
-      <div class="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-[#202D59]/15 bg-white p-5 shadow-xs">
-        <div class="max-w-2xl">
-          <h2 class="text-base font-bold text-[#202D59]">Sign In or Create a Verified Account First</h2>
-          <p class="mt-1 text-sm text-[#46537C]">
-            One verified account lets you save drafts, track application status, update accessibility requests anytime, and register across categories without re-typing your details.
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-3">
-          <a
-            href="/login?next=<?= rawurlencode('/apply') ?>"
-            class="touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-white px-5 py-2.5 text-sm font-bold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
-          >
+      <div class="pfg-apply-account">
+        <p class="pfg-apply-account-text">
+          Sign in or create a free verified account to continue.
+        </p>
+        <div class="pfg-apply-account-actions">
+          <a href="/login?next=<?= rawurlencode('/apply') ?>" class="pfg-apply-btn-outline">
             Sign In
           </a>
-          <a
-            href="/register?next=<?= rawurlencode('/apply') ?>"
-            class="touch-target inline-flex items-center justify-center bg-[#A459FF] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#8D3BF2]"
-          >
+          <a href="/register?next=<?= rawurlencode('/apply') ?>" class="pfg-apply-btn-solid">
             Create Account
           </a>
         </div>
       </div>
     <?php elseif (!$emailVerified): ?>
-      <div
-        role="alert"
-        class="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-amber-600/40 bg-amber-50 p-5 text-[#202D59]"
-      >
-        <div class="max-w-2xl">
-          <h2 class="text-base font-bold text-amber-950">Email Verification Required Before Applying</h2>
-          <p class="mt-1 text-sm text-amber-900">
-            You are signed in as <strong><?= $esc($currentUser['email'] ?? '') ?></strong>, but your email address has not been verified yet. Please verify your email so we can send your official Registration ID and updates.
+      <div role="alert" class="pfg-apply-alert">
+        <div class="pfg-apply-alert-text">
+          <h2 class="pfg-apply-alert-title">Verify your email before applying</h2>
+          <p class="pfg-apply-alert-body">
+            Signed in as <strong><?= $esc($currentUser['email'] ?? '') ?></strong>. Please verify your email address to receive your official Registration ID.
           </p>
         </div>
-        <a
-          href="/verify-email"
-          class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-[#202D59] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#5B2A86]"
-        >
-          Verify Email Address
+        <a href="/verify-email" class="pfg-apply-btn-solid">
+          Verify Email
         </a>
       </div>
     <?php else: ?>
-      <div class="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#DCE5F7] bg-white px-5 py-4">
-        <p class="text-sm text-[#202D59]">
-          Signed in as <strong><?= $esc($currentUser['fullName'] ?? $currentUser['full_name'] ?? '') ?></strong>
-          (<span class="text-[#46537C]"><?= $esc($currentUser['email'] ?? '') ?></span>)
-          <?php if ($allowMultiCategory): ?>
-            · You may hold up to one active registration per category.
-          <?php endif; ?>
+      <div class="pfg-apply-signedin">
+        <p class="pfg-apply-signedin-text">
+          Signed in as <strong><?= $esc($currentUser['fullName'] ?? $currentUser['full_name'] ?? $currentUser['email'] ?? '') ?></strong><?php if ($allowMultiCategory): ?> · Up to one active registration per category<?php endif; ?>
         </p>
-        <a href="/dashboard" class="text-sm font-bold text-[#5B2A86] underline hover:text-[#202D59]">
-          Go to My Dashboard &rarr;
+        <a href="/dashboard" class="pfg-apply-dash-link">
+          My Dashboard &rarr;
         </a>
       </div>
     <?php endif; ?>
 
-    <!-- Strictly 3 Primary Category Cards -->
-    <section aria-label="Primary Registration Categories" class="mt-8 grid gap-6 lg:grid-cols-3">
-      <?php foreach ($primaryCards as $card):
-          $code = $card['code'];
+    <!-- Strictly 3 Stacked Primary Category Boxes -->
+    <section aria-label="Primary Registration Categories" class="pfg-apply-stack">
+      <?php foreach ($primaryBoxes as $box):
+          $code = $box['code'];
           $activeReg = $activeRegsByCat[$code] ?? null;
           $hasDraft = isset($draftsByCat[$code]);
           $targetHref = $currentUser
-              ? ($emailVerified ? $card['slug'] : '/verify-email')
-              : '/login?next=' . rawurlencode($card['slug']);
+              ? ($emailVerified ? $box['slug'] : '/verify-email')
+              : '/login?next=' . rawurlencode($box['slug']);
+          $canEdit = $activeReg && (
+              in_array((string)$activeReg['status'], ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true)
+              || ($code === 'ATTENDEE' && (string)$activeReg['status'] === 'CONFIRMED')
+          );
       ?>
-        <article
-          data-primary-category="<?= $esc($code) ?>"
-          class="flex flex-col justify-between rounded-2xl border-2 <?= $activeReg ? 'border-emerald-700/40 bg-white' : 'border-[#202D59]/15 bg-white hover:border-[#A459FF]' ?> p-6 shadow-xs transition-colors"
-        >
-          <div>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="inline-flex items-center rounded-full bg-[#F2E9FE] px-3 py-1 text-xs font-bold text-[#5B2A86]">
-                <?= $esc($card['badge']) ?>
-              </span>
-              <?php if ($activeReg): ?>
-                <span class="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-900">
-                  <?= $esc($activeReg['status']) ?>
+        <article data-primary-category="<?= $esc($code) ?>" class="pfg-apply-item">
+          <?php if ($activeReg): ?>
+            <div class="pfg-apply-box-active">
+              <div class="pfg-apply-box-head">
+                <div class="pfg-apply-box-text">
+                  <div class="pfg-apply-box-title-row">
+                    <span class="pfg-apply-box-title"><?= $esc($box['title']) ?></span>
+                    <span class="pfg-apply-pill pfg-apply-pill-status"><?= $esc($activeReg['status']) ?></span>
+                  </div>
+                  <span class="pfg-apply-box-sub"><?= $esc($box['subtitle']) ?></span>
+                </div>
+                <span class="pfg-apply-box-icon" aria-hidden="true">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
                 </span>
-              <?php elseif ($hasDraft): ?>
-                <span class="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-950">
-                  Draft Saved
-                </span>
-              <?php endif; ?>
-            </div>
-
-            <h2 class="mt-4 text-2xl font-bold text-[#202D59]"><?= $esc($card['title']) ?></h2>
-            <p class="mt-1 text-sm font-semibold text-[#5B2A86]"><?= $esc($card['subtitle']) ?></p>
-            <p class="mt-3 text-sm leading-relaxed text-[#46537C]"><?= $esc($card['description']) ?></p>
-
-            <ul class="mt-4 space-y-2 text-sm text-[#202D59]">
-              <?php foreach ($card['highlights'] as $hl): ?>
-                <li class="flex items-start gap-2">
-                  <span aria-hidden="true" class="mt-1 inline-block h-2 w-2 shrink-0 rounded-full bg-[#A459FF]"></span>
-                  <span><?= $esc($hl) ?></span>
-                </li>
-              <?php endforeach; ?>
-            </ul>
-          </div>
-
-          <div class="mt-6 border-t border-[#DCE5F7] pt-5">
-            <?php if ($activeReg): ?>
-              <div class="mb-3 rounded-xl bg-[#F6F5FE] px-3.5 py-2.5 text-xs text-[#202D59]">
-                <span class="block font-semibold text-[#46537C]">Your Official Registration ID</span>
-                <span class="mt-0.5 block font-mono text-sm font-bold text-[#202D59]"><?= $esc($activeReg['registration_code']) ?></span>
               </div>
-              <div class="flex flex-wrap gap-2">
-                <a
-                  href="/dashboard"
-                  class="touch-target inline-flex flex-1 items-center justify-center rounded-lg border-2 border-[#202D59] bg-[#202D59] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#5B2A86]"
-                >
-                  View in Dashboard
-                </a>
-                <?php if (in_array((string)$activeReg['status'], ['DRAFT', 'SUBMITTED', 'ADDITIONAL_INFO_REQUIRED'], true) || ($code === 'ATTENDEE' && (string)$activeReg['status'] === 'CONFIRMED')): ?>
-                  <a
-                    href="<?= $esc($card['slug'] . '?edit=' . rawurlencode((string)$activeReg['id'])) ?>"
-                    class="touch-target inline-flex items-center justify-center rounded-lg border-2 border-[#202D59] bg-white px-4 py-2.5 text-sm font-bold text-[#202D59] hover:bg-[#DDDDF9]"
-                  >
-                    Edit
+              <div class="pfg-apply-active-foot">
+                <div class="pfg-apply-reg-id">
+                  Registration ID:<code class="pfg-apply-reg-code"><?= $esc($activeReg['registration_code']) ?></code>
+                </div>
+                <div class="pfg-apply-active-links">
+                  <a href="/dashboard" class="pfg-apply-btn-solid">
+                    View in Dashboard
                   </a>
-                <?php endif; ?>
+                  <?php if ($canEdit): ?>
+                    <a href="<?= $esc($box['slug'] . '?edit=' . rawurlencode((string)$activeReg['id'])) ?>" class="pfg-apply-btn-outline">
+                      Edit
+                    </a>
+                  <?php endif; ?>
+                </div>
               </div>
-            <?php else: ?>
-              <a
-                href="<?= $esc($targetHref) ?>"
-                class="touch-target inline-flex w-full items-center justify-center rounded-lg bg-[#A459FF] px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-[#8D3BF2]"
-              >
-                <?= $esc($hasDraft ? 'Resume ' . $card['title'] . ' Draft' : $card['cta']) ?>
-              </a>
-            <?php endif; ?>
-          </div>
+            </div>
+          <?php else: ?>
+            <a href="<?= $esc($targetHref) ?>" class="pfg-apply-box">
+              <span class="pfg-apply-box-text">
+                <span class="pfg-apply-box-title-row">
+                  <span class="pfg-apply-box-title"><?= $esc($box['title']) ?></span>
+                  <?php if ($hasDraft): ?>
+                    <span class="pfg-apply-pill pfg-apply-pill-draft">Draft Saved</span>
+                  <?php endif; ?>
+                </span>
+                <span class="pfg-apply-box-sub"><?= $esc($box['subtitle']) ?></span>
+              </span>
+              <span class="pfg-apply-box-icon" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </span>
+            </a>
+          <?php endif; ?>
         </article>
       <?php endforeach; ?>
     </section>
 
-    <!-- Accessibility & Out-of-Scope Inquiries Note -->
-    <section class="mt-10 grid gap-5 md:grid-cols-2">
-      <div class="rounded-2xl border border-[#DCE5F7] bg-white p-5">
-        <h2 class="text-base font-bold text-[#202D59]">Need Accessibility Accommodations?</h2>
-        <p class="mt-1.5 text-sm leading-relaxed text-[#46537C]">
-          Every category form includes our shared Accessibility &amp; Reasonable Accommodations section (ISL, Tactile interpretation, Braille, Large Print, Wheelchair seating/charging, Sighted guide, Quiet space, Live captions, Escort support, and more). You never have to disclose a disability diagnosis to request support.
-        </p>
-      </div>
-      <div class="rounded-2xl border border-[#DCE5F7] bg-white p-5">
-        <h2 class="text-base font-bold text-[#202D59]">Performers, Exhibitors, Sponsors &amp; Speakers</h2>
-        <p class="mt-1.5 text-sm leading-relaxed text-[#46537C]">
-          Cultural performance bookings, exhibition stalls (Purple Fair), institutional sponsorships, and speaker nominations are coordinated directly by the Festival Secretariat. Contact
-          <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalvadodara@gmail.com</a>.
-        </p>
-      </div>
-    </section>
+    <div class="pfg-apply-back-row">
+      <a href="/" class="pfg-apply-back-link">
+        <span aria-hidden="true">&larr;</span>
+        <span>Back to Home</span>
+      </a>
+    </div>
+
+    <aside aria-label="Accessibility and Secretariat Information" class="pfg-apply-note">
+      <p>
+        <strong>Accessibility included in every category:</strong> All three forms contain our confidential Accessibility &amp; Reasonable Accommodations section (ISL, tactile interpretation, Braille, large print, wheelchair seating/charging, sighted guide, quiet space, live captions, escort support, and more) — no medical diagnosis required.
+      </p>
+      <p>
+        Registration is free and issues an official <strong>Registration ID</strong> for manual check-in at the Vadodara Registration Desk (21–23 January 2027). For performers, exhibition stalls, sponsorships, or speaker nominations, email <a href="mailto:purplefestivalvadodara@gmail.com">purplefestivalvadodara@gmail.com</a>.
+      </p>
+    </aside>
   </div>
 </main>
 <?php
