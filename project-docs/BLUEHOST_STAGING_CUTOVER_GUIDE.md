@@ -1,7 +1,7 @@
 # Bluehost Restricted Staging & Production Cutover Guide — Purple Festival Gujarat 2027
 
-**Scope:** Account-agnostic Bluehost cPanel/SSH runtime discovery, the **14-Step Restricted Staging Deployment Sequence (§15)**, the **12-Item Resend Activation Checklist (§16)**, Legacy Unprofiled Admin Migration (§5.2), and `.github/workflows/deploy-bluehost-php.yml` / `.cpanel.yml` Auto-Deploy Trigger Analysis (§20).  
-**Current Live Deployment Status:** **`NOT DEPLOYED` (`CONFIGURATION BLOCKED` pending authorized Bluehost staging deployment window)**
+**Scope:** Account-agnostic Bluehost cPanel/SSH runtime discovery for the **`purplefestgujarat.ajeetgraphics.com`** development, staging, and functional testing subdomain (NOT the final public production domain), the **14-Step Restricted Staging Deployment Sequence (§15)**, the **12-Item Resend Activation Checklist (§16)**, Legacy Unprofiled Admin Migration (§5.2), Corrected `.cpanel.yml` + `scripts/deploy-staging.sh`, and the **Ongoing `main` -> Staging Deployment Workflow**.  
+**Current Environment Role:** **`https://purplefestgujarat.ajeetgraphics.com`** = protected Bluehost development/staging/functional testing environment (`REGISTRATION_PUBLIC_OPEN = 0` + Apache Basic Auth + `X-Robots-Tag: noindex, nofollow` + isolated staging database). Final public production domain deployment remains **deferred** until Project Owner sign-off.
 
 > [!IMPORTANT]
 > **Zero Credential Collection in Chat or Git (§16):** Never paste live Bluehost cPanel passwords, SSH keys, database passwords, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, or encryption keys into AI chat transcripts, issues, or Git commits. All secrets are provisioned directly by the Technical Administrator inside `.pfg27_env.php` (`chmod 600`) outside the web document root on the Bluehost server.
@@ -128,7 +128,7 @@ Execute these 14 steps in strict sequential order. **Do not skip any step or ena
   <?php
   return [
       'APP_ENV'                             => 'staging',
-      'APP_URL'                             => 'https://<confirmed-staging-host>',
+      'APP_URL'                             => 'https://purplefestgujarat.ajeetgraphics.com',
       'DB_DRIVER'                           => 'mysql',
       'DB_HOST'                             => 'localhost',
       'DB_PORT'                             => '3306',
@@ -219,12 +219,14 @@ Execute these 14 steps in strict sequential order. **Do not skip any step or ena
     - `POST /api/qr/verify` -> `410 Gone`
     - `POST /api/checkins/confirm` -> `410 Gone`
 
-### Step 10 — Superadmin Creation, Mandatory `D-20` TOTP MFA Enrollment & Legacy Unprofiled Admin Migration (§5.2)
-- [ ] Provision or verify the initial `SUPERADMIN` account via CLI:
+### Step 10 — Superadmin Verification, Revised Auth Policy (`CAD-16`) & Legacy Unprofiled Admin Migration (§5.2)
+- [ ] Provision or verify the initial `SUPERADMIN` account via CLI (note: TOTP/authenticator MFA is discontinued under `CAD-16`; staff authenticate via **username + password** with universal 5-attempt / 3-hour atomic account lockout and automatic unlock):
   ```bash
+  SUPERADMIN_BOOTSTRAP_USERNAME="superadmin" \
+  SUPERADMIN_BOOTSTRAP_PASSWORD="<strong-12+-char-password>" \
   "$PFG_PHP" database/bootstrap-superadmin.php
   ```
-- [ ] Sign in at `https://<staging-host>/staff/login` as `SUPERADMIN`, complete mandatory **TOTP MFA enrollment** (`/admin?mfa_setup=1`), and store the 8 single-use recovery codes in the organizer's offline vault.
+- [ ] Sign in at `https://purplefestgujarat.ajeetgraphics.com/staff/login` as `SUPERADMIN` using **username + password** (confirm direct landing on `/admin` with zero MFA prompts, and confirm `GET /api/auth/mfa` returns `HTTP 410 Gone`).
 - [ ] **Execute the Legacy Unprofiled Admin Migration Procedure (Section 4 below / §5.2)** for any pre-existing `ADMIN` accounts in `users`.
 
 ### Step 11 — Restricted Staging Smoke Tests (Launch Gate, Self-Approval Block, Future-Date Attendance Override)
@@ -296,9 +298,31 @@ To prevent breaking existing pre-Phase-8 `ADMIN` accounts during database upgrad
 
 ---
 
-## 5. `.github/workflows/deploy-bluehost-php.yml` & `.cpanel.yml` Auto-Deploy Trigger Analysis (§20)
+## 5. `.github/workflows/deploy-bluehost-php.yml`, Corrected `.cpanel.yml` & Ongoing Staging Workflow (§20)
 
 | File | Trigger Condition | What It Executes | Cutover Risk Analysis & Operational Rule |
 |---|---|---|---|
-| **`.github/workflows/deploy-bluehost-php.yml`** | Triggered on `push` to `branches: [main]` or manual `workflow_dispatch` on GitHub. | Checks out the repository on `ubuntu-latest`, runs `php -l` syntax checks, invokes `php scripts/build-release-package.php` to build a clean runtime release archive (`bluehost-php-site.tar.gz` / `.zip`), and uploads it to the `latest-php-build` GitHub Release. | **Safe Build Artifact Generator:** This workflow **does not push directly to Bluehost** (no FTP/SSH push step is configured). However, pushing unverified commits to `main` overwrites the `latest-php-build` GitHub Release asset. Always tag and verify commits before merging to `main`. |
-| **`.cpanel.yml`** | Triggered automatically by **Bluehost cPanel Git Version Control** whenever cPanel pulls or receives a push on its tracked branch (if cPanel Git auto-deploy is linked to the repository). | Sets `export DEPLOYPATH=/home1/tstpllmy/public_html/purplefestivalgujarat/`, removes `docs`, `audit`, `project-docs`, `tests`, `README.md` inside that exact path, and copies runtime directories into `$DEPLOYPATH`. | **Path & Surface Sync Hazard if Used Unattended:**<br>1. `.cpanel.yml` hardcodes `/home1/tstpllmy/public_html/purplefestivalgujarat/`. On any other cPanel username, home partition (`/home2/`, etc.), or staging subdomain docroot, the `test "$DEPLOYPATH" = ...` guard will either target the wrong directory or no-op.<br>2. `.cpanel.yml` does not run `database/migrate.php` or preserve a custom Step 5 staging Basic Auth `.htaccess` block.<br>**Operational Mandate:** During restricted staging cutover (Step 6), **deploy via the verified release archive produced by `php scripts/build-release-package.php --zip`** rather than relying on unattended `.cpanel.yml` Git pulls. If cPanel Git Version Control is enabled on the Bluehost account, disable automatic push deployment in cPanel until `$DEPLOYPATH` is updated to match the discovered `$PFG_DOCROOT`. |
+| **`.github/workflows/deploy-bluehost-php.yml`** | Triggered on `push` to `branches: [main]` or manual `workflow_dispatch` on GitHub. | Checks out the repository on `ubuntu-latest`, runs `php -l` syntax checks, invokes `php scripts/build-release-package.php` to build a clean runtime release archive (`bluehost-php-site.tar.gz` / `.zip`), and uploads it to the `latest-php-build` GitHub Release. | **Safe Build Artifact Generator (Zero Direct Production Push):** This workflow **never connects to Bluehost or any unrelated production website** (no SSH/FTP/SFTP push step exists). Pushing verified commits to `main` safely refreshes the downloadable `latest-php-build` GitHub Release assets. |
+| **`.cpanel.yml` + `scripts/deploy-staging.sh`** | Triggered by **Bluehost cPanel Git Version Control** or manually via SSH (`sh scripts/deploy-staging.sh`). | Resolves canonical `$REPO_DIR` (`pwd -P`) and reads `$HOME/.pfg27_staging_docroot`. **Safe no-op (exit 0, zero files modified/deleted)** if `$HOME/.pfg27_staging_docroot` is unset or overlaps `$REPO_DIR`. Only when the Git clone and staging docroot are strictly separate directories does it invoke `scripts/build-release-package.php` into `$HOME/pfg27_releases/cpanel_stage_*`, prepend `$HOME/pfg27_auth/staging_htaccess_header.conf` (if present), and sync strictly allowlisted runtime files into the staging docroot without `rm -rf`. | **Self-Copy & Deletion Hazard Eliminated:** Previous `.cpanel.yml` hardcoded `/home1/tstpllmy/public_html/purplefestivalgujarat/` and ran `rm -rf` + `cp -R`, which failed and deleted tracked files when the Bluehost Git repo and docroot shared one folder. The corrected `.cpanel.yml` is 100% non-destructive and safe even if an older in-place cPanel Git repo pulls `main`. |
+
+### Straightforward Ongoing Development -> Staging Workflow (`main` -> `purplefestgujarat.ajeetgraphics.com`)
+
+Once the initial cutover onto `purplefestgujarat.ajeetgraphics.com` is complete, set up a clean separate Git checkout outside the webroot (never inside `$PFG_DOCROOT`) so every verified push to `main` deploys cleanly in two commands:
+
+```bash
+# One-time setup on Bluehost SSH (outside public_html / subdomain docroot):
+export PFG_HOME="$(cd ~ && pwd -P)"
+export PFG_DOCROOT="<verified-docroot-of-purplefestgujarat.ajeetgraphics.com>"
+git clone -b main https://github.com/gurarpitzz/purplefestivalgujarat.git "${PFG_HOME}/pfg27_repo"
+printf '%s\n' "${PFG_DOCROOT}" > "${PFG_HOME}/.pfg27_staging_docroot"
+chmod 600 "${PFG_HOME}/.pfg27_staging_docroot"
+
+# Save the staging Basic Auth + X-Robots-Tag header outside webroot so every deploy preserves it automatically:
+#   ${PFG_HOME}/pfg27_auth/staging_htaccess_header.conf
+
+# Ongoing deploy after verified changes are pushed to GitHub `main`:
+cd "${PFG_HOME}/pfg27_repo" && git pull --ff-only origin main && sh scripts/deploy-staging.sh
+cd "${PFG_DOCROOT}" && "$PFG_PHP" database/migrate.php --up --seed && "$PFG_PHP" database/migrate.php --verify
+```
+
+*(Optionally, point Bluehost cPanel -> Git Version Control at `${PFG_HOME}/pfg27_repo` on branch `main`; clicking **Update from Remote** -> **Deploy HEAD Commit** will automatically execute `.cpanel.yml` -> `scripts/deploy-staging.sh` safely without overwriting `.pfg27_env.php`, staging `.htaccess` Basic Auth, or database data.)*

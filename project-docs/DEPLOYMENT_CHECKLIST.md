@@ -83,26 +83,28 @@
   ```
 - [ ] Confirm all required checks report `[PASS]` (PHP `>= 8.1`, all 8 extensions loaded, `display_errors=0`, secrets loaded & redacted, PDO MySQL connected, `+05:30` IST timezone, TLS connectivity to `api.resend.com`).
 
-### 2.4 Execute Versioned Migrations (`000`–`011`) & Reference Seed
+### 2.4 Execute Versioned Migrations (`000`–`012`) & Reference Seed
 - [ ] Check current migration status:
   ```bash
-  /usr/local/bin/ea-php82 database/migrate.php --status
+  "$PFG_PHP" database/migrate.php --status
   ```
-- [ ] Apply migrations `000` through `011` and idempotent reference seed data:
+- [ ] Apply migrations `000` through `012` and idempotent reference seed data:
   ```bash
-  /usr/local/bin/ea-php82 database/migrate.php --up --seed
-  /usr/local/bin/ea-php82 database/migrate.php --verify
+  "$PFG_PHP" database/migrate.php --up --seed
+  "$PFG_PHP" database/migrate.php --verify
   ```
 - [ ] Confirm output reports:
-  `Tables: 70 | Foreign Keys: 79 | Applied: 12/12 | Pending: 0` and `VERIFY PASSED`.
-- [ ] Re-run `/usr/local/bin/ea-php82 scripts/verify-bluehost-env.php` and confirm `Versioned Schema Migrations Applied` is `[PASS]`.
+  `Tables: 70 | Foreign Keys: 79 | Applied: 13/13 | Pending: 0` and `VERIFY PASSED`.
+- [ ] Re-run `"$PFG_PHP" scripts/verify-bluehost-env.php` and confirm `Versioned Schema Migrations Applied` is `[PASS]`.
 
-### 2.5 Bootstrap Initial Superadmin & Mandatory D-20 TOTP MFA
-- [ ] Provision or verify the initial `SUPERADMIN` account via CLI:
+### 2.5 Bootstrap Initial Superadmin & Verify Revised Auth Policy (`CAD-16`)
+- [ ] Provision or verify the initial `SUPERADMIN` account via CLI (username + password authentication; TOTP MFA is discontinued under `CAD-16` and `/api/auth/mfa` returns `410 Gone`):
   ```bash
-  /usr/local/bin/ea-php82 database/bootstrap-superadmin.php
+  SUPERADMIN_BOOTSTRAP_USERNAME="superadmin" \
+  SUPERADMIN_BOOTSTRAP_PASSWORD="<strong-12+-char-password>" \
+  "$PFG_PHP" database/bootstrap-superadmin.php
   ```
-- [ ] Navigate to `https://<domain>/staff/login`, sign in as `SUPERADMIN`, and immediately complete **mandatory TOTP MFA enrollment** (`/admin?mfa_setup=1`), storing the 8 single-use recovery codes in the organizer's offline password vault.
+- [ ] Navigate to `https://purplefestgujarat.ajeetgraphics.com/staff/login`, sign in as `SUPERADMIN` with username + password, confirm direct access to `/admin`, and verify universal 5-attempt / 3-hour automatic lockout on an isolated test account.
 
 ---
 

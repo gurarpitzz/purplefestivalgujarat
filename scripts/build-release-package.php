@@ -163,10 +163,12 @@ $strictlyExcludedFiles = [
     'bg1.png',
     'README.md',
     '.cpanel.yml',
+    '.gitattributes',
     '.gitignore',
     'database/schema.sql',
     'database/seed.sql',
     'scripts/build-release-package.php',
+    'scripts/deploy-staging.sh',
 ];
 
 /**

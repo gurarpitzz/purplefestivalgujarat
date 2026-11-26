@@ -96,7 +96,7 @@ $isForbiddenPath = static function (string $relPath): ?string {
     if (str_starts_with($base, '.env') || str_starts_with($base, '.pfg27_env')) {
         return 'secret_env_file';
     }
-    if ($base === 'release_manifest.json' || $base === 'readme.md' || $base === '.cpanel.yml' || $base === '.gitignore') {
+    if ($base === 'release_manifest.json' || $base === 'readme.md' || $base === '.cpanel.yml' || $base === '.gitattributes' || $base === '.gitignore') {
         return "forbidden_meta:{$base}";
     }
     if (preg_match('/\.(md|docx|pptx|xlsx)$/i', $base)) {
@@ -112,6 +112,7 @@ $isForbiddenPath = static function (string $relPath): ?string {
         'database/schema.sql',
         'database/seed.sql',
         'scripts/build-release-package.php',
+        'scripts/deploy-staging.sh',
         'Inclusive Viksit Bharat 2047 Vision.png',
         'Understanding Disability Access Guide.png',
         'bg1.png',
