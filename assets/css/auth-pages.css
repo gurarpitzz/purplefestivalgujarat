@@ -1,0 +1,336 @@
+/* Purple Festival Gujarat 2027 — Authentication pages (WCAG 2.2 AA)
+   Scoped to .pfg-auth so it never leaks into the compiled site stylesheet. */
+
+.pfg-auth {
+  --pfg-navy: #202d59;
+  --pfg-ink: #1c1633;
+  --pfg-muted: #4a5578;
+  --pfg-purple: #5b1fb5;
+  --pfg-purple-hover: #46178f;
+  --pfg-lilac: #f2e9fe;
+  --pfg-line: #5a6785;
+  --pfg-error: #9b1c1c;
+  --pfg-error-bg: #fdecec;
+  --pfg-ok: #14532d;
+  --pfg-ok-bg: #e7f6ec;
+  --pfg-info-bg: #eef2ff;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 70vh;
+  padding: 2.5rem 1rem 4rem;
+  background: linear-gradient(180deg, var(--pfg-lilac) 0%, #ffffff 70%);
+  color: var(--pfg-navy);
+  font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.pfg-auth:focus { outline: none; }
+.pfg-auth *, .pfg-auth *::before, .pfg-auth *::after { box-sizing: border-box; }
+
+.pfg-auth-card {
+  width: 100%;
+  max-width: 30rem;
+  background: #ffffff;
+  border: 1px solid #d9cdee;
+  border-radius: 1rem;
+  padding: 2rem 1.5rem;
+  box-shadow: 0 18px 48px rgba(32, 45, 89, 0.12);
+}
+.pfg-auth-card--wide { max-width: 36rem; }
+@media (min-width: 40rem) { .pfg-auth-card { padding: 2.5rem 2.5rem; } }
+
+.pfg-auth-eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pfg-purple);
+}
+.pfg-auth h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--pfg-navy);
+}
+.pfg-auth h1:focus { outline: none; }
+.pfg-auth-lead { margin: 0 0 1.5rem; font-size: 1rem; line-height: 1.55; color: var(--pfg-muted); }
+
+.pfg-alert {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 2px solid transparent;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  font-weight: 500;
+}
+.pfg-alert[hidden] { display: none; }
+.pfg-alert:focus { outline: 3px solid var(--pfg-navy); outline-offset: 2px; }
+.pfg-alert-error { background: var(--pfg-error-bg); border-color: var(--pfg-error); color: var(--pfg-error); }
+.pfg-alert-success { background: var(--pfg-ok-bg); border-color: var(--pfg-ok); color: var(--pfg-ok); }
+.pfg-alert-info { background: var(--pfg-info-bg); border-color: var(--pfg-navy); color: var(--pfg-navy); }
+.pfg-alert strong { font-weight: 800; }
+
+.pfg-field { margin: 0 0 1.125rem; }
+.pfg-field label, .pfg-field .pfg-label {
+  display: block;
+  margin: 0 0 0.375rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--pfg-navy);
+}
+.pfg-req { color: var(--pfg-error); font-weight: 800; }
+.pfg-hint { margin: 0.375rem 0 0; font-size: 0.875rem; line-height: 1.45; color: var(--pfg-muted); }
+.pfg-field-error { margin: 0.375rem 0 0; font-size: 0.875rem; font-weight: 700; color: var(--pfg-error); }
+.pfg-field-error[hidden] { display: none; }
+
+.pfg-input {
+  display: block;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.6rem 0.875rem;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--pfg-ink);
+  background: #ffffff;
+  border: 2px solid var(--pfg-line);
+  border-radius: 0.5rem;
+}
+.pfg-input::placeholder { color: #5f6b88; opacity: 1; }
+.pfg-input[aria-invalid="true"] { border-color: var(--pfg-error); background: #fffafa; }
+.pfg-input--code { text-align: center; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.18em; font-size: 1.125rem; }
+
+.pfg-password-wrap { position: relative; }
+.pfg-password-wrap .pfg-input { padding-right: 4.5rem; }
+.pfg-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.375rem;
+  transform: translateY(-50%);
+  min-width: 3rem;
+  min-height: 2.5rem;
+  padding: 0 0.625rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--pfg-purple);
+  background: transparent;
+  border: 0;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.pfg-check { display: flex; gap: 0.75rem; align-items: flex-start; margin: 0 0 1.125rem; }
+.pfg-check input[type="checkbox"] { flex: 0 0 auto; width: 1.5rem; height: 1.5rem; margin: 0.125rem 0 0; accent-color: var(--pfg-purple); }
+.pfg-check label { margin: 0; font-weight: 500; font-size: 0.9375rem; line-height: 1.5; }
+
+.pfg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.7rem 1.25rem;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--pfg-purple);
+  border: 2px solid var(--pfg-purple);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+.pfg-btn:hover { background: var(--pfg-purple-hover); border-color: var(--pfg-purple-hover); }
+.pfg-btn[disabled], .pfg-btn[aria-disabled="true"] { opacity: 0.65; cursor: not-allowed; }
+.pfg-btn--ghost { color: var(--pfg-purple); background: #ffffff; }
+.pfg-btn--ghost:hover { color: #ffffff; }
+.pfg-btn--link {
+  width: auto;
+  min-height: 2.75rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--pfg-purple);
+  background: transparent;
+  border-color: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pfg-btn--link:hover { color: var(--pfg-purple-hover); background: transparent; border-color: transparent; }
+
+.pfg-auth a:not(.pfg-btn) { color: var(--pfg-purple); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.pfg-auth a:not(.pfg-btn):hover { color: var(--pfg-purple-hover); }
+
+.pfg-auth :is(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--pfg-navy);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ffffff;
+}
+
+.pfg-links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; justify-content: space-between; margin: 1.25rem 0 0; font-size: 0.9375rem; }
+.pfg-links a { display: inline-flex; align-items: center; min-height: 2.75rem; }
+.pfg-divider { height: 1px; margin: 1.5rem 0; background: #e3dcf1; border: 0; }
+.pfg-panel { margin: 1.25rem 0 0; padding: 1rem; border: 2px dashed var(--pfg-line); border-radius: 0.5rem; background: #faf7ff; }
+.pfg-panel[hidden] { display: none; }
+.pfg-panel p { margin: 0 0 0.75rem; font-size: 0.9375rem; line-height: 1.5; }
+.pfg-stack > * + * { margin-top: 0.75rem; }
+.pfg-staff-badge {
+  display: inline-block;
+  margin: 0 0 0.75rem;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: var(--pfg-navy);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pfg-auth * { transition: none !important; animation: none !important; }
+}
+@media (forced-colors: active) {
+  .pfg-input, .pfg-btn, .pfg-alert { border: 2px solid CanvasText; }
+  .pfg-auth :is(a, button, input):focus-visible { outline: 3px solid Highlight; }
+}
+
+/* High Contrast Mode (WCAG 2.2 AAA >= 14:1 — zero white-on-white surfaces) */
+html[data-contrast="high"] .pfg-auth,
+html.high-contrast .pfg-auth,
+body.high-contrast .pfg-auth {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+html[data-contrast="high"] .pfg-auth-card,
+html.high-contrast .pfg-auth-card,
+body.high-contrast .pfg-auth-card,
+html[data-contrast="high"] .pfg-panel,
+html.high-contrast .pfg-panel,
+body.high-contrast .pfg-panel,
+html[data-contrast="high"] .pfg-alert,
+html.high-contrast .pfg-alert,
+body.high-contrast .pfg-alert {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: none !important;
+}
+html[data-contrast="high"] .pfg-auth-eyebrow,
+html.high-contrast .pfg-auth-eyebrow,
+html[data-contrast="high"] .pfg-auth h1,
+html.high-contrast .pfg-auth h1,
+html[data-contrast="high"] .pfg-auth-lead,
+html.high-contrast .pfg-auth-lead,
+html[data-contrast="high"] .pfg-field label,
+html.high-contrast .pfg-field label,
+html[data-contrast="high"] .pfg-hint,
+html.high-contrast .pfg-hint,
+html[data-contrast="high"] .pfg-check label,
+html.high-contrast .pfg-check label {
+  color: #ffffff !important;
+}
+html[data-contrast="high"] .pfg-req,
+html.high-contrast .pfg-req,
+html[data-contrast="high"] .pfg-field-error,
+html.high-contrast .pfg-field-error,
+html[data-contrast="high"] .pfg-auth a:not(.pfg-btn),
+html.high-contrast .pfg-auth a:not(.pfg-btn),
+html[data-contrast="high"] .pfg-btn--link,
+html.high-contrast .pfg-btn--link {
+  color: #ffea00 !important;
+}
+html[data-contrast="high"] .pfg-input,
+html.high-contrast .pfg-input,
+html[data-contrast="high"] .pfg-btn,
+html.high-contrast .pfg-btn,
+html[data-contrast="high"] .pfg-btn--ghost,
+html.high-contrast .pfg-btn--ghost,
+html[data-contrast="high"] .pfg-staff-badge,
+html.high-contrast .pfg-staff-badge {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+html[data-contrast="high"] .pfg-btn:hover,
+html.high-contrast .pfg-btn:hover {
+  background: #ffea00 !important;
+  color: #000000 !important;
+  border-color: #ffea00 !important;
+}
+html[data-contrast="high"] .pfg-divider,
+html.high-contrast .pfg-divider {
+  background: #ffffff !important;
+}
+
+/* Yellow-on-Black Mode (WCAG 2.2 AAA >= 17:1 — zero yellow-on-white surfaces) */
+html[data-contrast="yellow-black"] .pfg-auth,
+html.yellow-black .pfg-auth,
+body.yellow-black .pfg-auth {
+  background: #000000 !important;
+  color: #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-auth-card,
+html.yellow-black .pfg-auth-card,
+body.yellow-black .pfg-auth-card,
+html[data-contrast="yellow-black"] .pfg-panel,
+html.yellow-black .pfg-panel,
+body.yellow-black .pfg-panel,
+html[data-contrast="yellow-black"] .pfg-alert,
+html.yellow-black .pfg-alert,
+body.yellow-black .pfg-alert {
+  background: #000000 !important;
+  color: #ffea00 !important;
+  border: 2px solid #ffea00 !important;
+  box-shadow: none !important;
+}
+html[data-contrast="yellow-black"] .pfg-auth-eyebrow,
+html.yellow-black .pfg-auth-eyebrow,
+html[data-contrast="yellow-black"] .pfg-auth h1,
+html.yellow-black .pfg-auth h1,
+html[data-contrast="yellow-black"] .pfg-auth-lead,
+html.yellow-black .pfg-auth-lead,
+html[data-contrast="yellow-black"] .pfg-field label,
+html.yellow-black .pfg-field label,
+html[data-contrast="yellow-black"] .pfg-hint,
+html.yellow-black .pfg-hint,
+html[data-contrast="yellow-black"] .pfg-req,
+html.yellow-black .pfg-req,
+html[data-contrast="yellow-black"] .pfg-field-error,
+html.yellow-black .pfg-field-error,
+html[data-contrast="yellow-black"] .pfg-check label,
+html.yellow-black .pfg-check label,
+html[data-contrast="yellow-black"] .pfg-auth a:not(.pfg-btn),
+html.yellow-black .pfg-auth a:not(.pfg-btn),
+html[data-contrast="yellow-black"] .pfg-btn--link,
+html.yellow-black .pfg-btn--link {
+  color: #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-input,
+html.yellow-black .pfg-input,
+html[data-contrast="yellow-black"] .pfg-btn,
+html.yellow-black .pfg-btn,
+html[data-contrast="yellow-black"] .pfg-btn--ghost,
+html.yellow-black .pfg-btn--ghost,
+html[data-contrast="yellow-black"] .pfg-staff-badge,
+html.yellow-black .pfg-staff-badge {
+  background: #000000 !important;
+  color: #ffea00 !important;
+  border: 2px solid #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-btn:hover,
+html.yellow-black .pfg-btn:hover {
+  background: #ffea00 !important;
+  color: #000000 !important;
+  border-color: #ffea00 !important;
+}
+html[data-contrast="yellow-black"] .pfg-divider,
+html.yellow-black .pfg-divider {
+  background: #ffea00 !important;
+}

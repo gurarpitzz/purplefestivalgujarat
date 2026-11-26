@@ -5,6 +5,8 @@ if (!function_exists('renderPurpleFestEmblemSvg')) {
     require_once __DIR__ . '/header.php';
 }
 
+$footerNavState = $pfgNavState ?? 'GUEST';
+
 $exploreLinks = [
     ['label' => 'Home', 'href' => '/'],
     ['label' => 'About', 'href' => '/#about'],
@@ -12,9 +14,20 @@ $exploreLinks = [
     ['label' => 'Accessibility', 'href' => '/accessibility'],
     ['label' => 'Partners', 'href' => '/#partners'],
     ['label' => 'Gallery', 'href' => '/#gallery'],
-    ['label' => 'Registration', 'href' => '/apply'],
-    ['label' => 'Login', 'href' => '/login'],
 ];
+
+if ($footerNavState === 'ADMIN') {
+    $exploreLinks[] = ['label' => 'Admin Portal', 'href' => '/admin'];
+} elseif ($footerNavState === 'RGST') {
+    $exploreLinks[] = ['label' => 'Registration Desk', 'href' => '/rgst'];
+} elseif ($footerNavState === 'PARTICIPANT') {
+    $exploreLinks[] = ['label' => 'Dashboard', 'href' => '/dashboard'];
+    $exploreLinks[] = ['label' => 'Apply', 'href' => '/apply'];
+} else {
+    $exploreLinks[] = ['label' => 'Apply Now', 'href' => '/apply'];
+    $exploreLinks[] = ['label' => 'Login', 'href' => '/login'];
+    $exploreLinks[] = ['label' => 'Register', 'href' => '/register'];
+}
 ?>
   <?php if (empty($hideSiteFooter)): ?>
   <footer class="w-full bg-[#17151C] text-[#F9F7FC]" data-surface="dark">
@@ -127,6 +140,10 @@ $exploreLinks = [
               <span aria-hidden="true">·</span>
               <a href="/legal/accessibility-statement" class="hover:text-white hover:underline">
                 Accessibility Statement
+              </a>
+              <span aria-hidden="true">·</span>
+              <a href="/staff/login" class="hover:text-white hover:underline">
+                Staff Portal
               </a>
             </div>
           </div>
@@ -570,6 +587,48 @@ $exploreLinks = [
   <script src="/assets/js/accessibility.js"></script>
   <script src="/assets/js/preloader.js"></script>
   <script src="/assets/js/crowd-footer.js"></script>
+  <script>
+  (function () {
+    "use strict";
+    var forms = document.querySelectorAll('form[data-pfg-logout-form="true"]');
+    for (var i = 0; i < forms.length; i++) {
+      forms[i].addEventListener("submit", function (e) {
+        e.preventDefault();
+        var form = this;
+        var csrfInput = form.querySelector('input[name="csrf_token"]');
+        var redirectInput = form.querySelector('input[name="redirect"]');
+        var btn = form.querySelector('button[type="submit"]');
+        var csrf = csrfInput ? csrfInput.value : "";
+        var redirectTo = redirectInput && redirectInput.value ? redirectInput.value : "/";
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "Signing out…";
+        }
+        fetch("/api/auth/logout", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-CSRF-Token": csrf
+          },
+          body: JSON.stringify({ csrf_token: csrf, redirect: redirectTo })
+        })
+          .then(function (res) {
+            return res.json().catch(function () { return {}; });
+          })
+          .then(function (data) {
+            window.location.href = (data && typeof data.redirectTo === "string" && data.redirectTo.charAt(0) === "/")
+              ? data.redirectTo
+              : redirectTo;
+          })
+          .catch(function () {
+            window.location.href = redirectTo;
+          });
+      });
+    }
+  })();
+  </script>
   <?php if (!empty($extraFooterHtml)): ?>
     <?= $extraFooterHtml ?>
   <?php endif; ?>

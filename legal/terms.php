@@ -61,25 +61,33 @@ require_once dirname(__DIR__) . '/includes/header.php';
 
         <section class="space-y-2">
           <h2 class="font-display text-xl font-bold text-[#211B29]">
-            2. Registration &amp; Application Review
+            2. Registration Categories, Application Review &amp; No Guaranteed Benefits
           </h2>
           <p class="text-[#4B4257]">
-            General Attendee, Student, Professional, Institutional, and Ally registrations are
-            confirmed upon submission (subject to edition capacity). Volunteer and SLI / Indian
-            Sign Language Interpreter applications undergo verification and coordinator review
-            prior to approval and duty assignment. Submitting an application does not guarantee
-            automatic approval for specialized operational roles.
+            Registration for Purple Festival Gujarat 2027 is offered across three primary
+            categories: <strong>Attendee</strong>, <strong>Volunteer</strong>, and
+            <strong>Sign Language Interpreter (SLI)</strong>. Attendee registrations are
+            confirmed upon submission (subject to festival edition capacity). Volunteer and
+            SLI applications undergo verification and coordinator review prior to approval and
+            duty assignment. Submitting an application does not guarantee approval for
+            operational roles, and registration or approval does
+            <strong>not</strong> guarantee travel reimbursement, lodging, outstation
+            accommodation, or honorarium unless separately confirmed in writing by the Festival
+            Secretariat.
           </p>
         </section>
 
         <section class="space-y-2">
           <h2 class="font-display text-xl font-bold text-[#211B29]">
-            3. Digital QR Credentials &amp; Entry Policy
+            3. Registration ID &amp; Venue Check-in Policy
           </h2>
           <p class="text-[#4B4257]">
-            Issued QR passes are personal and non-transferable. Organizers reserve the right to
-            revoke or reissue credentials if misuse or duplication is detected. Check-in is
-            recorded per festival attendance policy at official venue reception desks.
+            Each registration is assigned a personal, non-transferable Registration ID (for
+            example, <code>PFG-2027-NNNNNN</code>). Attendance check-in is verified manually at
+            official Vadodara Registration Desks using your Registration ID or registered
+            participant details — no event-entry QR pass is required. Organizers reserve the right
+            to cancel or revoke registrations if misuse, impersonation, or violation of this Code
+            of Conduct is detected.
           </p>
         </section>
 
@@ -88,9 +96,11 @@ require_once dirname(__DIR__) . '/includes/header.php';
             4. Programme &amp; Venue Updates
           </h2>
           <p class="text-[#4B4257]">
-            Festival organizers may update session timings, speakers, or venue allocations to
-            maintain participant safety and accessibility standards. All official updates are
-            published directly on this website and communicated to registered participants.
+            Some participating venues and session allocations may be marked as
+            <em>Proposed / Subject to Confirmation</em> while accessibility audits and scheduling
+            are finalized. Festival organizers may update session timings, speakers, or venue
+            allocations to maintain participant safety and accessibility standards. Official
+            updates are published on this website and communicated to registered participants.
           </p>
         </section>
 

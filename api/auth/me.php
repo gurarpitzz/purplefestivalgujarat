@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * GET /api/auth/me
- * Returns the currently authenticated user profile, roles, permissions, MFA status, and session-bound CSRF token.
+ * Returns the currently authenticated user profile, roles, permissions, and session-bound CSRF token.
  */
 
 require_once dirname(__DIR__, 2) . '/includes/auth.php';

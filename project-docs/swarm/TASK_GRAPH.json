@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "centralMigrationAllocations": {
+    "007": "007_phase5_participant_auth_and_verification.php",
+    "008": "008_phase6_7_three_category_registration_and_lifecycle.php",
+    "009": "009_phase8_9_custom_permission_profiles_and_attendance.php",
+    "010": "010_phase12_programme_venues_and_duty_assignments.php"
+  },
+  "nodes": [
+    { "id": "T-DB-MIGRATIONS", "phase": "5-12", "milestone": "M2", "owner": "db-architect", "model": "claude-sonnet-5-5-high", "deps": [], "status": "READY" },
+    { "id": "T-A11Y-CORE", "phase": "15", "milestone": "M6", "owner": "a11y-core", "model": "gemini-4-neon-high", "deps": [], "status": "READY" },
+    { "id": "T-VISUAL-BASELINE", "phase": "14/17", "milestone": "M0", "owner": "coordinator", "model": "gemini-4-neon-xhigh", "deps": [], "status": "READY" },
+    { "id": "T-PHASE5-AUTH", "phase": "5", "milestone": "M2", "owner": "auth-eng", "model": "claude-sonnet-5-5-high", "deps": ["T-DB-MIGRATIONS"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE6-7-REG", "phase": "6-7", "milestone": "M2", "owner": "reg-eng", "model": "gemini-4-neon-high", "deps": ["T-DB-MIGRATIONS"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE8-RBAC", "phase": "8", "milestone": "M3", "owner": "admin-eng", "model": "claude-sonnet-5-5-high", "deps": ["T-DB-MIGRATIONS"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE9-RGST", "phase": "9", "milestone": "M3", "owner": "rgst-eng", "model": "gemini-4-neon-high", "deps": ["T-DB-MIGRATIONS"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE10-DASH", "phase": "10", "milestone": "M4", "owner": "portal-eng", "model": "gemini-4-neon-high", "deps": ["T-PHASE5-AUTH", "T-PHASE6-7-REG"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE11-12-ADMIN-OPS", "phase": "11-12", "milestone": "M4/M5", "owner": "admin-eng", "model": "claude-sonnet-5-5-high", "deps": ["T-PHASE8-RBAC", "T-PHASE6-7-REG"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE13-14-PUBLIC-COMMS", "phase": "13-14", "milestone": "M5", "owner": "public-eng", "model": "gemini-4-neon-high", "deps": ["T-PHASE5-AUTH", "T-PHASE6-7-REG", "T-PHASE11-12-ADMIN-OPS"], "status": "IDENTIFIED" },
+    { "id": "T-INDEPENDENT-REVIEW", "phase": "5-15", "milestone": "M7", "owner": "reviewer", "model": "claude-opus-5-5-high", "deps": ["T-PHASE5-AUTH", "T-PHASE6-7-REG", "T-PHASE8-RBAC", "T-PHASE9-RGST", "T-PHASE10-DASH", "T-PHASE11-12-ADMIN-OPS"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE17-QA-E2E", "phase": "17", "milestone": "M7", "owner": "qa-eng", "model": "gemini-4-neon-high", "deps": ["T-PHASE13-14-PUBLIC-COMMS", "T-A11Y-CORE"], "status": "IDENTIFIED" },
+    { "id": "T-PHASE16-18-RELEASE-DOCS", "phase": "16/18", "milestone": "M8", "owner": "release-docs", "model": "gpt-oss-120b-medium", "deps": ["T-PHASE17-QA-E2E", "T-INDEPENDENT-REVIEW"], "status": "IDENTIFIED" }
+  ]
+}

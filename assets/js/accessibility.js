@@ -1,6 +1,6 @@
 /**
  * Purple Festival Gujarat 2027 — Accessibility Preferences & Navigation Controller
- * Exact Vanilla JS port of src/components/AccessibilityProvider.tsx & src/components/AccessibilityPanel.tsx
+ * WCAG 2.2 AA+ Compliant Vanilla JS Controller (FND-20 & FND-46)
  */
 (function () {
   "use strict";
@@ -16,6 +16,7 @@
     wideSpacing: false,
     highlightLinks: false,
     readingGuide: false,
+    dyslexiaFont: false,
   };
 
   var prefs = {
@@ -25,18 +26,34 @@
     wideSpacing: false,
     highlightLinks: false,
     readingGuide: false,
+    dyslexiaFont: false,
   };
 
   var panelOpen = false;
   var previouslyFocused = null;
   var guideY = 240;
 
+  // Live-region state (prevents FND-46 duplicate announcement drops & page-load spam)
+  var lastAnnounced = { polite: "", assertive: "" };
+  var announceToggle = { polite: false, assertive: false };
+  var announceRaf = { polite: 0, assertive: 0 };
+
   function getOsReducedMotion() {
     try {
-      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      return Boolean(
+        window.matchMedia &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      );
     } catch (e) {
       return false;
     }
+  }
+
+  function isReducedMotion() {
+    var root = document.documentElement;
+    var attrReduced = root && root.getAttribute("data-reduced-motion") === "true";
+    var classReduced = root && root.classList.contains("reduced-motion");
+    return Boolean(prefs.reducedMotion || attrReduced || classReduced || getOsReducedMotion());
   }
 
   function sanitizePrefs(rawObj, osReduced) {
@@ -60,6 +77,7 @@
       wideSpacing: Boolean(rawObj && rawObj.wideSpacing),
       highlightLinks: Boolean(rawObj && rawObj.highlightLinks),
       readingGuide: Boolean(rawObj && rawObj.readingGuide),
+      dyslexiaFont: Boolean(rawObj && rawObj.dyslexiaFont),
     };
   }
 
@@ -93,19 +111,136 @@
   function applyPrefsToDocument() {
     var root = document.documentElement;
     if (!root) return;
+
     root.setAttribute("data-text-scale", String(prefs.textScale));
     root.setAttribute("data-contrast", prefs.contrast);
     root.setAttribute("data-reduced-motion", prefs.reducedMotion ? "true" : "false");
     root.setAttribute("data-spacing", prefs.wideSpacing ? "wide" : "normal");
     root.setAttribute("data-highlight-links", prefs.highlightLinks ? "true" : "false");
+    root.setAttribute("data-dyslexia-font", prefs.dyslexiaFont ? "true" : "false");
     root.style.fontSize = String(prefs.textScale) + "%";
+
+    // Sync semantic utility classes alongside data attributes
+    root.classList.toggle("high-contrast", prefs.contrast === "high");
+    root.classList.toggle("yellow-black", prefs.contrast === "yellow-black");
+    root.classList.toggle("reduced-motion", Boolean(prefs.reducedMotion));
+    root.classList.toggle("dyslexia-font", Boolean(prefs.dyslexiaFont));
   }
 
-  function announce(message) {
-    var liveEl = document.getElementById("a11y-live-status");
-    if (liveEl) {
-      liveEl.textContent = message;
+  function ensureLiveRegion(politeness) {
+    var isAssertive = politeness === "assertive";
+    var id = isAssertive ? "a11y-live-assertive" : "a11y-live-status";
+    var el = document.getElementById(id);
+
+    if (!el && document.body) {
+      el = document.createElement("div");
+      el.id = id;
+      el.className = "sr-only";
+      el.setAttribute("role", isAssertive ? "alert" : "status");
+      el.setAttribute("aria-live", isAssertive ? "assertive" : "polite");
+      el.setAttribute("aria-atomic", "true");
+      document.body.appendChild(el);
+    } else if (el && !el.hasAttribute("aria-atomic")) {
+      el.setAttribute("aria-atomic", "true");
     }
+
+    return el;
+  }
+
+  /**
+   * Announces a message cleanly to screen readers via polite or assertive live regions.
+   * Fixes FND-46: clears and schedules updates via requestAnimationFrame with a zero-width
+   * toggle when repeating identical strings so assistive tech reliably announces updates.
+   */
+  function announce(message, politeness) {
+    var text = typeof message === "string" ? message.trim() : "";
+    if (!text) return;
+
+    var mode = politeness === "assertive" ? "assertive" : "polite";
+    var liveEl = ensureLiveRegion(mode);
+    if (!liveEl) return;
+
+    var raf =
+      typeof window.requestAnimationFrame === "function"
+        ? window.requestAnimationFrame
+        : function (cb) {
+            return window.setTimeout(cb, 16);
+          };
+    var cancelRaf =
+      typeof window.cancelAnimationFrame === "function"
+        ? window.cancelAnimationFrame
+        : window.clearTimeout;
+
+    if (announceRaf[mode]) {
+      cancelRaf(announceRaf[mode]);
+      announceRaf[mode] = 0;
+    }
+
+    var isRepeat = lastAnnounced[mode] === text;
+    if (isRepeat) {
+      announceToggle[mode] = !announceToggle[mode];
+    } else {
+      announceToggle[mode] = false;
+    }
+    lastAnnounced[mode] = text;
+
+    var payload = announceToggle[mode] ? text + "\u200B" : text;
+
+    // Clear first, then write on the next animation frame so SR detects a fresh DOM mutation
+    liveEl.textContent = "";
+    announceRaf[mode] = raf(function () {
+      announceRaf[mode] = raf(function () {
+        announceRaf[mode] = 0;
+        liveEl.textContent = payload;
+      });
+    });
+  }
+
+  function describePrefChange(patch) {
+    if (!patch || typeof patch !== "object") {
+      return "Accessibility preferences updated.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "textScale")) {
+      return "Text size set to " + String(prefs.textScale) + "%.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "contrast")) {
+      var contrastLabels = {
+        default: "Default",
+        high: "High Contrast",
+        "yellow-black": "Yellow on Black",
+      };
+      return (
+        "Color contrast mode set to " +
+        (contrastLabels[prefs.contrast] || "Default") +
+        "."
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "reducedMotion")) {
+      return prefs.reducedMotion
+        ? "Reduce motion enabled."
+        : "Reduce motion disabled.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "wideSpacing")) {
+      return prefs.wideSpacing
+        ? "Increased text and line spacing enabled."
+        : "Increased text and line spacing disabled.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "highlightLinks")) {
+      return prefs.highlightLinks
+        ? "Highlight links and buttons enabled."
+        : "Highlight links and buttons disabled.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "readingGuide")) {
+      return prefs.readingGuide
+        ? "Reading guide band enabled."
+        : "Reading guide band disabled.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "dyslexiaFont")) {
+      return prefs.dyslexiaFont
+        ? "Dyslexia-friendly font enabled."
+        : "Dyslexia-friendly font disabled.";
+    }
+    return "Accessibility preferences updated.";
   }
 
   function dispatchChanged() {
@@ -139,6 +274,7 @@
       var val = btn.getAttribute("data-a11y-contrast");
       var selected = val === prefs.contrast;
       btn.setAttribute("aria-checked", selected ? "true" : "false");
+      btn.setAttribute("tabindex", selected ? "0" : "-1");
       btn.className =
         "touch-target flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors " +
         (selected
@@ -187,12 +323,19 @@
     }
   }
 
-  function updatePrefs(patch) {
+  function updatePrefs(patch, options) {
+    var prevSerialized = JSON.stringify(prefs);
     prefs = sanitizePrefs(Object.assign({}, prefs, patch), getOsReducedMotion());
+    var nextSerialized = JSON.stringify(prefs);
+
     applyPrefsToDocument();
     savePrefs();
     syncPanelUi();
-    announce("Accessibility preferences updated.");
+
+    var silent = options && options.silent === true;
+    if (!silent && nextSerialized !== prevSerialized) {
+      announce(describePrefChange(patch), "polite");
+    }
     dispatchChanged();
   }
 
@@ -206,7 +349,7 @@
       // Ignore
     }
     syncPanelUi();
-    announce("All accessibility preferences reset to default.");
+    announce("All accessibility preferences reset to default.", "polite");
     dispatchChanged();
   }
 
@@ -244,9 +387,13 @@
     setPanelOpen(!panelOpen);
   }
 
-  // Apply immediately on script load to avoid flash of unstyled preferences
+  // Apply immediately on script load to avoid flash of unstyled preferences (no FOUC)
   loadPrefs();
   applyPrefsToDocument();
+
+  // Export clean global accessibility helpers
+  window.pfgAnnounce = announce;
+  window.pfgIsReducedMotion = isReducedMotion;
 
   window.PFG27_A11Y = {
     getPrefs: function () {
@@ -254,6 +401,8 @@
     },
     updatePrefs: updatePrefs,
     resetPrefs: resetPrefs,
+    announce: announce,
+    isReducedMotion: isReducedMotion,
     openPanel: function () {
       setPanelOpen(true);
     },
@@ -264,7 +413,26 @@
   };
 
   function initDomBindings() {
+    // Ensure live regions exist silently without announcing on page load
+    ensureLiveRegion("polite");
     syncPanelUi();
+
+    // Watch OS prefers-reduced-motion changes dynamically
+    try {
+      if (window.matchMedia) {
+        var mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+        var onOsMotionChange = function () {
+          dispatchChanged();
+        };
+        if (typeof mq.addEventListener === "function") {
+          mq.addEventListener("change", onOsMotionChange);
+        } else if (typeof mq.addListener === "function") {
+          mq.addListener(onOsMotionChange);
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
 
     // Accessibility Trigger Buttons
     var triggers = document.querySelectorAll('[data-a11y-trigger="true"]');
@@ -327,15 +495,38 @@
       });
     }
 
-    // Contrast Radio Buttons
+    // Contrast Radio Buttons (click + ARIA radiogroup Arrow key navigation)
     var contrastBtns = document.querySelectorAll("[data-a11y-contrast]");
     for (var c = 0; c < contrastBtns.length; c++) {
-      contrastBtns[c].addEventListener("click", function () {
-        var nextContrast = this.getAttribute("data-a11y-contrast");
-        if (nextContrast) {
-          updatePrefs({ contrast: nextContrast });
-        }
-      });
+      (function (btnIndex) {
+        var btn = contrastBtns[btnIndex];
+        btn.addEventListener("click", function () {
+          var nextContrast = this.getAttribute("data-a11y-contrast");
+          if (nextContrast) {
+            updatePrefs({ contrast: nextContrast });
+          }
+        });
+        btn.addEventListener("keydown", function (e) {
+          if (
+            e.key === "ArrowDown" ||
+            e.key === "ArrowRight" ||
+            e.key === "ArrowUp" ||
+            e.key === "ArrowLeft"
+          ) {
+            e.preventDefault();
+            var dir = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : -1;
+            var nextIdx = (btnIndex + dir + contrastBtns.length) % contrastBtns.length;
+            var nextBtn = contrastBtns[nextIdx];
+            var nextContrast = nextBtn.getAttribute("data-a11y-contrast");
+            if (nextContrast) {
+              updatePrefs({ contrast: nextContrast });
+            }
+            if (typeof nextBtn.focus === "function") {
+              nextBtn.focus();
+            }
+          }
+        });
+      })(c);
     }
 
     // Switch Toggles
@@ -436,10 +627,9 @@
     if (backToTopBtn) {
       backToTopBtn.addEventListener("click", function (e) {
         e.preventDefault();
-        var isReduced = prefs.reducedMotion || getOsReducedMotion();
         window.scrollTo({
           top: 0,
-          behavior: isReduced ? "instant" : "smooth",
+          behavior: isReducedMotion() ? "instant" : "smooth",
         });
         var mainEl = document.getElementById("main-content");
         if (mainEl && typeof mainEl.focus === "function") {
@@ -470,7 +660,7 @@
         var dialog = document.getElementById("a11y-preferences-dialog");
         if (!dialog) return;
         var focusable = dialog.querySelectorAll(
-          'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          'a[href], button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
         );
         if (focusable.length === 0) return;
         var first = focusable[0];

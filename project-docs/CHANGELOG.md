@@ -1,0 +1,59 @@
+# Changelog — Purple Festival Gujarat 2027 (Phases 0–18)
+
+All notable architectural, security, database, accessibility, and operational changes across the 18-phase engineering delivery for Purple Festival Gujarat 2027 are documented chronologically below.
+
+---
+
+## [v2027.0-rc2] — Owner-Directed Authentication Policy Revision (`CAD-16`, `2026-11-26`)
+
+- **TOTP MFA Discontinued (Supersedes `D-20` / `CAD-12`):** Removed all active TOTP/authenticator MFA enforcement, login challenges, enrollment redirects (`/admin?mfa_setup=1`), API gates (`enforceStaffMfaGate()` -> no-op), admin MFA reset controls, and authenticator UI across `/staff/login`, `/admin`, `/dashboard`, `/rgst`, `/legal/privacy`, `assets/js/auth-pages.js`, `assets/js/admin-portal.js`, and `assets/js/participant-dashboard.js`. Decommissioned `/api/auth/mfa` (`HTTP 410 Gone`) and excluded `assets/js/qrcode-gen.js` from the clean release package. Preserved historical MFA database columns intact and inactive with zero destructive migrations; existing MFA-enrolled staff authenticate cleanly with username and password only.
+- **Staff & Participant Auth Policies Retained:** `SUPERADMIN`, `ADMIN` (including all custom operational permission profiles), and `RGST` authenticate via conventional username + password; `PARTICIPANT` accounts continue using verified email + password with email ownership verification and password recovery intact.
+- **Universal 5-Attempt / Exact 3-Hour Atomic Account Lockout:** Implemented persistent per-account lockout across all roles in `api/auth/login.php` using PDO transaction + `SELECT ... FOR UPDATE` PK row locking: 4 consecutive failures do not lock; 5th failure activates an exact 3-hour (180-minute / 10,800-second) lockout rejecting even valid credentials with a generic public `401` error, never extending on additional failures, ignoring IP/device/cookie changes, preserved across password recovery (`api/auth/password-reset.php` & `api/admin/users.php`), and automatically unlocking and resetting upon expiry without a Cron Job. All other security controls (bcrypt cost 12, CSRF, XSS, HttpOnly/SameSite/Secure cookies, session regeneration/revocation, IP rate limiting, RBAC, custom profiles, AES-256-GCM encryption, audit logging, last-Superadmin guard, HTTPS) remain enforced.
+
+---
+
+## [Phases 16–18] — Independent Security Remediation, Full E2E Verification, Release Engineering & Handover (`2026-11-26`)
+
+### Security & Architecture Remediations (Independent Review `CRIT-01`, `HIGH-01`..`07`, `MED-01`..`07`, `LOW-01`..`05`)
+- **Strict Least-Privilege Profile Enforcement (`CRIT-01`, `MED-05`):** Fixed `getUserRolesAndPermissions()` in `includes/auth.php` so `ADMIN` users assigned an active operational permission profile receive **only** `account.read.own` + profile permissions + explicit `custom_permissions` without inheriting the 17 broad `DEFAULT_ROLE_PERMISSIONS['ADMIN']`, and added `audit_logs.read` to `pfgProfileForbiddenPermissions()`.
+- **Canonical Permissions Alignment (`HIGH-01`, Migration `011`):** Added `PROGRAMME_MANAGE` (`programme.manage`) and `COMMUNICATIONS_MANAGE` (`communications.manage`) to `PERMISSIONS` (`includes/config.php`), `includes/admin-common.php`, `database/seed.php`, and Migration `011_phase8_profile_permissions_alignment.php` (+ `_rollback.sql`), updating `programme_coordinator` and `communications_manager` profiles.
+- **Unified Lifecycle State Machine & Participant Actor Resolution (`HIGH-02`, `HIGH-07`, `MED-06`):** Unified `includes/admin-common.php` with `includes/application-lifecycle.php`; forced `'actorType' => 'PARTICIPANT'` on self-service `PATCH`/`POST` in `api/account/registrations.php`; merged existing child rows on partial dashboard quick-edits; persisted `resubmissionNote` to `registration_status_history.public_message`; and cleared/withdrew `accommodation_requests` when all accommodation options are unchecked on edit.
+- **Complete D-01 QR Pass Discontinuation (`HIGH-03`):** Updated `GET /api/qr/pass.php` to return `HTTP 410 Gone`, replaced `/dashboard/pass-print.php` with a QR-free Registration ID confirmation sheet, and removed legacy QR credential/scanner UI elements from `assets/js/admin-portal.js`.
+- **Attendance Desk Concurrency Locking & Override Tightening (`HIGH-04`):** Added `SELECT ... FOR UPDATE` row locking and conditional status updates (`WHERE id = :id AND status = :prev_status`) to `api/attendance/correct.php` and the reinstate path of `api/attendance/mark.php`; restricted D-03 anytime override strictly to `SUPERADMIN` and `ADMIN` holding `registrations.write`; aligned `/rgst` and `/api/attendance` read gates; and enforced an allowlist on `attendanceScope`.
+- **Stored XSS Prevention in Public JSON-LD (`HIGH-06`):** Updated `includes/header.php` to serialize `$structuredData` (`<script type="application/ld+json">`) via `pfgSafeJsonForScript()` (`JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT`), neutralizing `</script>` breakout XSS on database-sourced FAQ entries.
+- **Dashboard & Auth Hygiene Fixes (`HIGH-05`, `MED-01`..`04`, `MED-07`, `LOW-01`..`05`):** Fixed `announcements` column projection (`message AS body, severity AS priority`) in `api/account/dashboard.php`; unified `/api/auth/signup` status code to `HTTP 202` across new and existing emails; suppressed `pendingEmail` collision reflection in `/api/account/profile`; enforced letter+digit complexity and atomic token consumption in `/api/auth/password-reset`; added edition scoping and enum allowlists in `/api/admin/cms`; wired `currentPassword` and one-time `recoveryCodes` display into `/dashboard`; and masked non-public session titles in duty assignment responses.
+
+### Release Engineering & Authoritative Documentation (Phases 16 & 18)
+- **Clean Bluehost Release Packager (`scripts/build-release-package.php`):** Built CLI-only release packager copying strictly production runtime files (`184` files), running `php -l` across all `95` included PHP files (`0` errors), verifying `0` excluded file leaks, and emitting `RELEASE_MANIFEST.json` outside webroot.
+- **Complete Governance & Handover Documentation Suite (`project-docs/`):** Published `SYSTEM_ARCHITECTURE.md`, `API_CONTRACTS.md`, `APPLICATION_STATE_MACHINES.md`, `ROLE_PERMISSION_MATRIX.csv`, `ATTENDANCE_SYSTEM_SPECIFICATION.md`, `ACCESSIBILITY_REPORT.md`, `PHASE_16_CONDITIONAL_FEATURES_MATRIX.md`, `BLUEHOST_COMPATIBILITY_REPORT.md`, `DEPLOYMENT_CHECKLIST.md`, `ROLLBACK_PLAN.md`, `OPERATIONS_HANDBOOK.md`, `FINAL_LAUNCH_CONFIGURATION_AND_OWNER_DECISIONS.md`, `DATABASE_MIGRATION_HISTORY.md`, `CHANGELOG.md`, and updated `IMPLEMENTATION_MASTER_ROADMAP.md`.
+
+---
+
+## [Phases 5–15] — Core Platform Reconstruction & WCAG 2.2 AA Remediation (`2026-11-26`)
+
+- **Phase 5 (Participant Auth, Verification & Legacy Claim — Migration `007`):** Implemented `/register`, `/verify-email`, `/login`, `/forgot-password`, `/reset-password`, isolated `/staff/login`, `/api/auth/signup`, `/api/auth/verify-email` (atomic single-use 256-bit HMAC-SHA256 tokens), `/api/auth/resend-verification`, `/api/auth/claim-legacy` (`legacy_registration_claims`), and `/api/account/profile`.
+- **Phases 6 & 7 (Three-Category Registration & Decoupled Lifecycle State Machine — Migration `008`):** Reconstructed `/apply` around strictly `ATTENDEE`, `VOLUNTEER`, and `SLI` (`category_tier = 'PRIMARY'`); created `/apply/attendee`, `/apply/volunteer`, `/apply/sli`, shared accessibility component (`includes/form-components/shared-accessibility.php`), server validators (`includes/registration-validators.php`), autosave drafts (`/api/account/drafts`), and the canonical state machine (`includes/application-lifecycle.php`, `registration_status_history`).
+- **Phase 8 (Operational Permission Profiles & Staff Lifecycle — Migration `009`):** Implemented `admin_permission_profiles` (`7` seeded operational profiles within the `ADMIN` tier), `/api/admin/permission-profiles`, and hardened `/api/admin/users` with anti-escalation and last-Superadmin guards.
+- **Phase 9 (Manual Registration Desk — `/rgst`):** Retired live QR camera/USB scanning from `/rgst`; built paginated search + 3-day (`2027-01-21..23`) accessible checkbox marking (`api/attendance/index.php`, `api/attendance/mark.php`, `api/attendance/correct.php`, `assets/js/rgst-desk.js`) with `D-03` 15-minute desk undo, audited Admin overrides, and strict desk data minimization.
+- **Phase 10 (Authenticated Participant Dashboard — `/dashboard`):** Reconstructed 5-tab Participant Dashboard (`dashboard/index.php`, `assets/js/participant-dashboard.js`, `api/account/dashboard.php`, `api/account/notifications.php`) displaying registrations, accommodations, duty assignments, in-app notifications, and self-service edit/resubmit/withdraw modals.
+- **Phases 11 & 12 (Operational Admin Portal, Venues, Programme & Duty Assignments — Migration `010`):** Built `/api/admin/venues`, `/api/admin/programme`, `/api/admin/assignments` (`duty_assignments` with shift overlap detection, audited overrides, and 2-SLI rotation pairing), `/api/admin/announcements`, and reconstructed `/admin` (`admin/index.php`, `assets/js/admin-portal.js`).
+- **Phases 13 & 14 (Lifecycle Triggers, Public Navigation & CMS Consent Gating):** Connected all lifecycle triggers to transactional emails and `in_app_notifications`; added role-aware header/footer navigation with POST-only CSRF logout; enforced `partners.consent_verified = 1 AND status = 'PUBLISHED'` on `index.php`; filtered out `DRAFT`/`CANCELLED` sessions and badged non-confirmed venues on `programme.php`; and updated `legal/*` pages.
+- **Phase 15 (WCAG 2.2 AA Remediation):** Fixed High-Contrast (`#000000`/`#FFFFFF`/`#FFEA00`) and Yellow-on-Black (`>= 15.6:1`) themes in `assets/css/app.css` (`FND-20`); eliminated `<button><h3>` invalid HTML nesting in `includes/disabilities-section.php`; fixed polite/assertive live-region announcements and pre-paint FOUC initialization (`FND-46`, `assets/js/accessibility.js`, `includes/header.php`); and enforced `44×44px` / `24×24px` target sizes and `3px` `:focus-visible` outlines.
+
+---
+
+## [Phase 4] — Transactional Email Service, Notification Queue & Delivery Tracking (`2026-11-26`)
+
+- Implemented `includes/notification-service.php`, `includes/notification-templates.php` (29 WCAG 2.2 AA/AAA multipart templates, zero `mail()` fallback, zero QR images, prohibited-field stripping, ephemeral AES-256-GCM secret wipe), Migration `006` (`in_app_notifications`, queue leasing), Bluehost cPanel Cron CLI worker (`scripts/process-notification-queue.php`), Svix HMAC-SHA256 webhook receiver (`api/webhooks/resend.php`), and `/api/admin/notifications` (`82/82` local checks PASS).
+
+---
+
+## [Phase 3] — Versioned Migrations, Atomic Registration IDs & Referential Integrity (`2026-11-26`)
+
+- Built checksummed CLI migration engine (`includes/migrations.php`, `database/migrate.php`, `database/seed.php`, Migrations `000`–`005`, `62` tables, `62` FKs), removed 100% of per-request DDL from `includes/database.php`, implemented atomic InnoDB `AUTO_INCREMENT` Registration IDs (`PFG-2027-NNNNNN`, `includes/registration-id.php`), consolidated 6 duplicate table pairs non-destructively, encrypted legacy disclosures/MFA secrets, and created `attendance_records` / `attendance_correction_logs` (`45/45` PHP + `26/26` Apache PASS).
+
+---
+
+## [Phases 0–2] — Baseline Audit, Native XAMPP/Bluehost Containment & P0 Security Hardening (`2026-11-26`)
+
+- Reconciled 9 festival source documents & 14 audit artifacts (`D-01`–`D-27`, `CAD-01`–`CAD-15`); established native XAMPP isolation (`pfg27_dev`, `pfg27_test`, `MAIL_DRIVER=file`), fail-closed secret loading outside `public_html`, Apache `.htaccess` containment (`26/26` PASS), session-bound CSRF, mandatory D-20 TOTP MFA, persistent DB rate limiting (`security_rate_limits`), AES-256-GCM sensitive data encryption + `SENSITIVE_DATA_READ` auditing, and `D-01` QR retirement (`32/32` PHP + `26/26` Apache PASS).

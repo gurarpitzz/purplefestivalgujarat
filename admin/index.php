@@ -35,10 +35,8 @@ $currentUserPayload = [
     'email'                 => (string)$user['email'],
     'roles'                 => array_values($user['roles'] ?? []),
     'permissions'           => array_values($user['permissions'] ?? []),
-    'mfaEnabled'            => !empty($user['mfaEnabled']),
-    'mfaVerified'           => !empty($user['mfaVerified']),
-    'mfaRequiredForRole'    => !empty($user['mfaRequiredForRole']),
-    'mfaEnrollmentRequired' => !empty($user['mfaEnrollmentRequired']),
+    'permissionProfileId'   => isset($user['permissionProfileId']) && $user['permissionProfileId'] !== null ? (string)$user['permissionProfileId'] : null,
+    'permissionProfileSlug' => isset($user['permissionProfileSlug']) && $user['permissionProfileSlug'] !== null ? (string)$user['permissionProfileSlug'] : null,
 ];
 
 function h_admin(string $val): string
@@ -154,7 +152,7 @@ function h_admin(string $val): string
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
           </button>
           <div>
-            <h2 id="admin-active-tab-title" class="text-lg font-bold text-[#1B1724]">Overview &amp; Analytics</h2>
+            <h2 id="admin-active-tab-title" tabindex="-1" class="text-lg font-bold text-[#1B1724]">Overview &amp; Analytics</h2>
             <p class="text-xs text-[#645C75]">
               Vadodara, Gujarat • 21–23 January 2027 • Live Database Telemetry
             </p>
@@ -191,7 +189,6 @@ function h_admin(string $val): string
     window.PFG_ADMIN_USER = <?= pfgSafeJsonForScript($currentUserPayload) ?>;
     window.PFG_CSRF_TOKEN = <?= pfgSafeJsonForScript(getCsrfToken()) ?>;
   </script>
-  <script src="/assets/js/qrcode-gen.js" defer></script>
   <script src="/assets/js/admin-portal.js" defer></script>
 </body>
 </html>

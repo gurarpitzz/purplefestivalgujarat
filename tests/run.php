@@ -89,16 +89,20 @@ function pfgAssert(bool $cond, string $message): void
 require_once __DIR__ . '/phase1_containment_test.php';
 require_once __DIR__ . '/phase2_security_test.php';
 require_once __DIR__ . '/phase3_database_test.php';
+require_once __DIR__ . '/phase4_notification_test.php';
+require_once __DIR__ . '/phase5_15_full_system_test.php';
 
 echo "\n============================================================\n";
 printf("TOTAL: %d | PASSED: %d | FAILED: %d\n", $passed + $failed, $passed, $failed);
 echo "============================================================\n";
 
 // Write JSON summary for reporting
-file_put_contents(
-    $tmpDir . DIRECTORY_SEPARATOR . 'phase3_results.json',
-    json_encode(['passed' => $passed, 'failed' => $failed, 'results' => $results], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+$summaryJson = json_encode(
+    ['total' => $passed + $failed, 'passed' => $passed, 'failed' => $failed, 'results' => $results],
+    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 );
+file_put_contents($tmpDir . DIRECTORY_SEPARATOR . 'phase17_php_results.json', $summaryJson);
+file_put_contents($tmpDir . DIRECTORY_SEPARATOR . 'phase4_results.json', $summaryJson);
 
 exit($failed > 0 ? 1 : 0);
 

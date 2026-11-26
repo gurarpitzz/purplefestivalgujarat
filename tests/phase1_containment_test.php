@@ -99,26 +99,40 @@ pfgTest('T1-02', 'Isolated MariaDB pfg27_test clean migration & seed initializat
     $pdo = getDb(true);
     $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
     $edCount = (int)$pdo->query('SELECT COUNT(*) FROM festival_editions WHERE is_active = 1')->fetchColumn();
-    $catCount = (int)$pdo->query('SELECT COUNT(*) FROM registration_categories WHERE is_active = 1')->fetchColumn();
-    $primaryCatCount = (int)$pdo->query("SELECT COUNT(*) FROM registration_categories WHERE category_tier = 'PRIMARY'")->fetchColumn();
+    $totalCatCount = (int)$pdo->query('SELECT COUNT(*) FROM registration_categories')->fetchColumn();
+    $primaryActiveCount = (int)$pdo->query("SELECT COUNT(*) FROM registration_categories WHERE category_tier = 'PRIMARY' AND is_active = 1")->fetchColumn();
+    $legacyInactiveCount = (int)$pdo->query("SELECT COUNT(*) FROM registration_categories WHERE category_tier = 'LEGACY' AND is_active = 0")->fetchColumn();
     $partnerCount = (int)$pdo->query("SELECT COUNT(*) FROM partners WHERE status = 'PUBLISHED'")->fetchColumn();
     $fkCount = (int)$pdo->query(
         "SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'"
     )->fetchColumn();
+    $appliedMigrations = (int)$pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
 
-    pfgAssert(count($tables) === 62, 'Expected 62 tables (57 core + security_rate_limits + schema_migrations + registration_number_sequences + attendance_records + attendance_correction_logs), got ' . count($tables));
+    pfgAssert(count($tables) === 70, 'Expected 70 tables across migrations 000–012, got ' . count($tables));
+    pfgAssert($appliedMigrations === 13, 'Expected 13 applied migrations (000–012), got ' . $appliedMigrations);
     pfgAssert(in_array('security_rate_limits', $tables, true), 'Missing Phase 2 security_rate_limits table');
     pfgAssert(in_array('schema_migrations', $tables, true), 'Missing Phase 3 schema_migrations table');
     pfgAssert(in_array('registration_number_sequences', $tables, true), 'Missing Phase 3 registration_number_sequences table');
     pfgAssert(in_array('attendance_records', $tables, true), 'Missing Phase 3 attendance_records table');
+    pfgAssert(in_array('in_app_notifications', $tables, true), 'Missing Phase 4 in_app_notifications table');
+    pfgAssert(in_array('email_verification_tokens', $tables, true), 'Missing Phase 5 email_verification_tokens table');
+    pfgAssert(in_array('legacy_registration_claims', $tables, true), 'Missing Phase 5 legacy_registration_claims table');
+    pfgAssert(in_array('attendee_details', $tables, true), 'Missing Phase 6 attendee_details table');
+    pfgAssert(in_array('registration_drafts', $tables, true), 'Missing Phase 6 registration_drafts table');
+    pfgAssert(in_array('registration_status_history', $tables, true), 'Missing Phase 7 registration_status_history table');
+    pfgAssert(in_array('admin_permission_profiles', $tables, true), 'Missing Phase 8 admin_permission_profiles table');
+    pfgAssert(in_array('duty_assignments', $tables, true), 'Missing Phase 12 duty_assignments table');
     pfgAssert($edCount === 1, 'Expected 1 active festival edition, got ' . $edCount);
-    pfgAssert($catCount === 8 && $primaryCatCount === 3, "Expected 8 active categories (3 PRIMARY), got {$catCount} ({$primaryCatCount} PRIMARY)");
+    pfgAssert(
+        $totalCatCount === 8 && $primaryActiveCount === 3 && $legacyInactiveCount === 5,
+        "Expected 8 total categories (3 PRIMARY active, 5 LEGACY inactive), got total={$totalCatCount} primaryActive={$primaryActiveCount} legacyInactive={$legacyInactiveCount}"
+    );
     pfgAssert($partnerCount === 11, 'Expected 11 seeded partners, got ' . $partnerCount);
-    pfgAssert($fkCount >= 60, 'Expected >= 60 enforced foreign keys, got ' . $fkCount);
+    pfgAssert($fkCount >= 79, 'Expected >= 79 enforced foreign keys, got ' . $fkCount);
 
     return sprintf(
-        'Fresh MariaDB pfg27_test migrated (%d migrations) & seeded: 62 tables, %d FKs, 1 active edition, 8 categories (3 PRIMARY), 11 partners',
-        count($migResult['appliedNow']),
+        'Fresh MariaDB pfg27_test migrated (%d migrations) & seeded: 70 tables, %d FKs, 1 active edition, 8 categories (3 PRIMARY active, 5 LEGACY inactive), 11 partners',
+        $appliedMigrations,
         $fkCount
     );
 });
@@ -289,10 +303,19 @@ pfgTest('T1-10', 'Live native PHP 8.2 + MariaDB HTTP routing & containment smoke
             pfgAssert($r['status'] === $expected, "GET {$path} expected HTTP {$expected}, got {$r['status']}");
             if ($path === '/api/registrations') {
                 $json = json_decode($r['body'], true);
-                pfgAssert(is_array($json) && ($json['edition']['slug'] ?? '') === 'gujarat-2027' && count($json['categories'] ?? []) === 8, 'Invalid /api/registrations payload');
+                $cats = $json['categories'] ?? [];
+                $codes = array_map(static fn(array $c): string => strtoupper((string)($c['code'] ?? '')), is_array($cats) ? $cats : []);
+                sort($codes);
+                pfgAssert(
+                    is_array($json)
+                    && ($json['edition']['slug'] ?? '') === 'gujarat-2027'
+                    && count($cats) === 3
+                    && $codes === ['ATTENDEE', 'SLI', 'VOLUNTEER'],
+                    'Invalid /api/registrations payload (expected strictly 3 PRIMARY categories ATTENDEE, VOLUNTEER, SLI): ' . json_encode($codes)
+                );
             }
         }
-        return 'All 17 live HTTP checks passed (including GET /api/registrations -> 200 w/ 8 DB categories & 403 on all 7 internal/doc paths)';
+        return 'All 17 live HTTP checks passed (GET /api/registrations -> 200 w/ strictly 3 PRIMARY categories & 0 legacy exposed; 403 on all 7 internal/doc paths)';
     } finally {
         proc_terminate($proc);
         if (isset($pipes[0]) && is_resource($pipes[0])) {

@@ -2,33 +2,37 @@
 declare(strict_types=1);
 
 /**
- * GET & POST /api/registrations(/index.php)
- * Exact PHP + PDO MySQL/SQLite port of src/app/api/registrations/route.ts
+ * GET & POST /api/registrations
+ * Purple Festival Gujarat 2027 — Phase 6 & 7 Three-Category Registration API
+ *
+ * Enforces:
+ * - Strictly 3 Primary Categories (ATTENDEE, VOLUNTEER, SLI) with category_tier = 'PRIMARY' AND is_active = 1
+ * - Authenticated, email-verified participant session + CSRF + Idempotency-Key on POST
+ * - Configurable multi-category rule (D-09: default 1 active registration per primary category; blocks duplicate in same category with 409)
+ * - Free Attendee registration default (fee_amount_inr = 0, payment_status = 'NOT_REQUIRED', zero coupon/payment UI)
+ * - Strict server-side validation via includes/registration-validators.php
+ * - Atomic monotonic Registration ID (PFG-2027-NNNNNN) via includes/registration-id.php (ZERO QR credential issuance)
+ * - AES-256-GCM encryption for sensitive free-text fields + stripping from registration_responses
+ * - Immutable registration_status_history + Phase 4 transactional outbox email + in_app_notifications in ONE PDO transaction
  */
 
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/database.php';
-if (file_exists(__DIR__ . '/../../includes/auth.php')) {
-    require_once __DIR__ . '/../../includes/auth.php';
-}
+require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/registration-id.php';
-require_once __DIR__ . '/../../includes/mailer.php';
+require_once __DIR__ . '/../../includes/notification-service.php';
+require_once __DIR__ . '/../../includes/registration-validators.php';
+require_once __DIR__ . '/../../includes/application-lifecycle.php';
 
-if (!function_exists('pfgRegJson')) {
-    function pfgRegJson(array $payload, int $status = 200): void
-    {
-        if (function_exists('jsonResponse')) {
-            jsonResponse($payload, $status);
-            return;
-        }
-        http_response_code($status);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
-    }
+header('Content-Type: application/json; charset=UTF-8');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+
+function pfgRegApiJson(array $payload, int $status = 200): void
+{
+    jsonResponse($payload, $status);
 }
 
-function pfgGetActiveEdition(PDO $pdo): ?array
+function pfgGetActiveFestivalEdition(PDO $pdo): ?array
 {
     $slug = defined('FESTIVAL_EDITION_SLUG') ? FESTIVAL_EDITION_SLUG : 'gujarat-2027';
     $stmt = $pdo->prepare('SELECT * FROM festival_editions WHERE slug = :slug LIMIT 1');
@@ -43,142 +47,62 @@ function pfgGetActiveEdition(PDO $pdo): ?array
     return $active ?: null;
 }
 
-function pfgCreateUserSessionCompat(PDO $pdo, string $userId, ?string $ipAddress, ?string $userAgent): bool
+function pfgFetchAccountProfileRow(PDO $pdo, string $userId): ?array
 {
-    if (function_exists('createSession')) {
-        try {
-            $ref = new ReflectionFunction('createSession');
-            $numParams = $ref->getNumberOfParameters();
-            if ($numParams >= 2) {
-                $firstParam = $ref->getParameters()[0];
-                $firstType = $firstParam->getType();
-                if ($firstType instanceof ReflectionNamedType && $firstType->getName() === 'PDO') {
-                    createSession($pdo, $userId);
-                    return true;
-                }
-                createSession($userId, [
-                    'ipAddress' => $ipAddress,
-                    'userAgent' => $userAgent,
-                ]);
-                return true;
-            }
-            createSession($userId);
-            return true;
-        } catch (Throwable $e) {
-            // Fall through to direct session creation
-        }
-    }
-
-    // Fallback direct session creation
-    try {
-        $rawToken = bin2hex(random_bytes(32));
-        $secret = defined('AUTH_SECRET') ? (string)AUTH_SECRET : 'pfg2027-prod-auth-secret-change-in-env';
-        $tokenHash = hash_hmac('sha256', $rawToken, $secret);
-        $duration = defined('SESSION_DURATION_SECONDS') ? (int)SESSION_DURATION_SECONDS : (60 * 60 * 24 * 7);
-        $expiresAt = date('Y-m-d H:i:s', time() + $duration);
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, mfa_verified, expires_at, created_at)
-             VALUES (:id, :user_id, :token_hash, :ip_address, :user_agent, 0, :expires_at, :created_at)'
-        );
-        $stmt->execute([
-            ':id'         => uuid4(),
-            ':user_id'    => $userId,
-            ':token_hash' => $tokenHash,
-            ':ip_address' => $ipAddress,
-            ':user_agent' => $userAgent,
-            ':expires_at' => $expiresAt,
-            ':created_at' => nowSql(),
-        ]);
-
-        $cookieName = defined('SESSION_COOKIE_NAME') ? (string)SESSION_COOKIE_NAME : 'pfg_session';
-        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
-
-        if (!headers_sent()) {
-            setcookie($cookieName, $rawToken, [
-                'expires'  => time() + $duration,
-                'path'     => '/',
-                'secure'   => $isHttps,
-                'httponly' => true,
-                'samesite' => 'Lax',
-            ]);
-        }
-        $_COOKIE[$cookieName] = $rawToken;
-        return true;
-    } catch (Throwable $e) {
-        return false;
-    }
+    $stmt = $pdo->prepare(
+        'SELECT id, email, email_verified_at, full_name, phone, country,
+                city_district, state, preferred_language,
+                emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
+                is_active, deleted_at
+         FROM users
+         WHERE id = :id AND deleted_at IS NULL
+         LIMIT 1'
+    );
+    $stmt->execute([':id' => $userId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row ?: null;
 }
 
-function pfgQueueNotificationCompat(
-    PDO $pdo,
-    string $templateCode,
-    ?string $recipientUserId,
-    string $recipientEmail,
-    string $subject,
-    array $variables
-): void {
-    $now = nowSql();
-    $safeVars = function_exists('pfgScrubSensitiveArray') ? pfgScrubSensitiveArray($variables) : $variables;
-    $payloadJson = jsonEncode($safeVars);
-
-    try {
-        $stmt = $pdo->prepare(
-            "INSERT INTO notification_queue (
-                id, template_code, event_type, channel, recipient_user_id, recipient_email, subject, payload, status, provider, attempts, max_attempts, created_at, updated_at
-             ) VALUES (
-                :id, :template_code, :event_type, 'EMAIL', :recipient_user_id, :recipient_email, :subject, :payload, 'QUEUED', 'queue', 0, 3, :created_at, :updated_at
-             )"
-        );
-        $stmt->execute([
-            ':id'                => uuid4(),
-            ':template_code'     => $templateCode,
-            ':event_type'        => $templateCode,
-            ':recipient_user_id' => $recipientUserId,
-            ':recipient_email'   => $recipientEmail,
-            ':subject'           => $subject,
-            ':payload'           => $payloadJson,
-            ':created_at'        => $now,
-            ':updated_at'        => $now,
-        ]);
-    } catch (Throwable $e) {
-        error_log('[Registrations] notification_queue insert skipped: ' . $e->getMessage());
+function pfgSanitizeAnswersSnapshot(array $body): array
+{
+    $safe = $body;
+    $stripKeys = [
+        'password',
+        'confirmPassword',
+        'csrfToken',
+        'csrf_token',
+        '_csrf',
+        'isPersonWithDisability',
+        'is_person_with_disability',
+        'disabilityCategoryCodes',
+        'disability_category_codes',
+        'disabilitySelfDescription',
+        'disability_self_description',
+        'accommodationTypes',
+        'accommodation_types',
+        'accommodationFreeText',
+        'accommodation_free_text',
+        'escortAccompanying',
+        'escort_accompanying',
+        'escortName',
+        'escort_name',
+        'dietaryRequirements',
+        'dietary_requirements',
+        'accessibleRoomNeeded',
+        'accessible_room_needed',
+    ];
+    foreach ($stripKeys as $k) {
+        unset($safe[$k]);
     }
-}
-
-function pfgRecordAuditCompat(
-    PDO $pdo,
-    ?string $actorUserId,
-    string $action,
-    string $resourceType,
-    ?string $resourceId,
-    ?string $ipAddress,
-    ?string $userAgent,
-    array $metadata = []
-): void {
-    try {
-        $stmt = $pdo->prepare(
-            'INSERT INTO audit_logs (
-                id, actor_user_id, action, resource_type, resource_id, ip_address, user_agent, metadata, created_at
-             ) VALUES (
-                :id, :actor_user_id, :action, :resource_type, :resource_id, :ip_address, :user_agent, :metadata, :created_at
-             )'
+    if (isset($safe['attendeeDetails']) && is_array($safe['attendeeDetails'])) {
+        unset(
+            $safe['attendeeDetails']['dietaryRequirements'],
+            $safe['attendeeDetails']['dietary_requirements'],
+            $safe['attendeeDetails']['accessibleRoomNeeded'],
+            $safe['attendeeDetails']['accessible_room_needed']
         );
-        $stmt->execute([
-            ':id'            => uuid4(),
-            ':actor_user_id' => $actorUserId,
-            ':action'        => $action,
-            ':resource_type' => $resourceType,
-            ':resource_id'   => $resourceId,
-            ':ip_address'    => $ipAddress,
-            ':user_agent'    => $userAgent,
-            ':metadata'      => jsonEncode($metadata),
-            ':created_at'    => nowSql(),
-        ]);
-    } catch (Throwable $e) {
-        // Do not fail registration if audit log insert fails
     }
+    return $safe;
 }
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
@@ -189,36 +113,40 @@ $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 if ($method === 'GET') {
     try {
         $pdo = getDb();
-        $edition = pfgGetActiveEdition($pdo);
+        $edition = pfgGetActiveFestivalEdition($pdo);
         if (!$edition) {
-            pfgRegJson(['error' => 'No active festival edition configured.'], 404);
+            pfgRegApiJson(['error' => 'No active festival edition configured.'], 404);
         }
 
+        // Strictly PRIMARY active categories ONLY (CAD-02)
         $stmtCat = $pdo->prepare(
-            'SELECT * FROM registration_categories WHERE edition_id = :eid AND is_active = 1 ORDER BY display_order ASC'
+            "SELECT * FROM registration_categories
+             WHERE edition_id = :eid AND category_tier = 'PRIMARY' AND is_active = 1
+             ORDER BY display_order ASC"
         );
         $stmtCat->execute([':eid' => $edition['id']]);
         $catRows = $stmtCat->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $categories = [];
         $categoryNameMap = [];
         foreach ($catRows as $c) {
-            $categoryNameMap[$c['code']] = $c['name'];
+            $categoryNameMap[(string)$c['code']] = (string)$c['name'];
             $categories[] = [
                 'id'               => (string)$c['id'],
                 'editionId'        => (string)$c['edition_id'],
                 'code'             => (string)$c['code'],
+                'categoryTier'     => (string)$c['category_tier'],
                 'name'             => (string)$c['name'],
                 'description'      => $c['description'] ?? null,
                 'requiresApproval' => !empty($c['requires_approval']),
-                'requiresPayment'  => !empty($c['requires_payment']),
-                'feeAmountInr'     => (int)($c['fee_amount_inr'] ?? 0),
+                'requiresPayment'  => false,
+                'feeAmountInr'     => 0,
                 'isActive'         => !empty($c['is_active']),
                 'displayOrder'     => (int)($c['display_order'] ?? 0),
             ];
         }
 
         $stmtDis = $pdo->query('SELECT * FROM disability_categories ORDER BY display_order ASC');
-        $disRows = $stmtDis ? $stmtDis->fetchAll(PDO::FETCH_ASSOC) : [];
+        $disRows = $stmtDis ? ($stmtDis->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
         $disabilityCategories = [];
         foreach ($disRows as $d) {
             $disabilityCategories[] = [
@@ -233,7 +161,7 @@ if ($method === 'GET') {
         }
 
         $stmtAcc = $pdo->query('SELECT * FROM accommodation_types WHERE is_active = 1 ORDER BY display_order ASC');
-        $accRows = $stmtAcc ? $stmtAcc->fetchAll(PDO::FETCH_ASSOC) : [];
+        $accRows = $stmtAcc ? ($stmtAcc->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
         $accommodationTypes = [];
         foreach ($accRows as $a) {
             $accommodationTypes[] = [
@@ -246,49 +174,49 @@ if ($method === 'GET') {
             ];
         }
 
-        $user = function_exists('getCurrentUser') ? getCurrentUser() : null;
+        $user = getCurrentUser($pdo);
+        $registrationOpen = pfgIsPublicRegistrationOpen($pdo);
         if (!$user || empty($user['id'])) {
-            pfgRegJson([
+            pfgRegApiJson([
                 'edition'              => $edition,
                 'categories'           => $categories,
                 'disabilityCategories' => $disabilityCategories,
                 'accommodationTypes'   => $accommodationTypes,
+                'allowMultiCategory'   => pfgIsMultiCategoryAllowed($pdo),
+                'registrationOpen'     => $registrationOpen,
                 'user'                 => null,
                 'registrations'        => [],
             ]);
         }
 
+        $profileRow = pfgFetchAccountProfileRow($pdo, (string)$user['id']);
         $stmtRegs = $pdo->prepare(
             'SELECT * FROM registrations WHERE user_id = :uid AND deleted_at IS NULL ORDER BY created_at DESC'
         );
         $stmtRegs->execute([':uid' => $user['id']]);
         $userRegs = $stmtRegs->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
+        // Also include legacy category names for historical read-only display
+        $allCatStmt = $pdo->prepare('SELECT code, name FROM registration_categories WHERE edition_id = :eid');
+        $allCatStmt->execute([':eid' => $edition['id']]);
+        foreach ($allCatStmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $ac) {
+            if (!isset($categoryNameMap[(string)$ac['code']])) {
+                $categoryNameMap[(string)$ac['code']] = (string)$ac['name'];
+            }
+        }
+
         $enrichedRegistrations = [];
         foreach ($userRegs as $reg) {
             $regId = (string)$reg['id'];
 
-            $stmtCred = $pdo->prepare(
-                "SELECT * FROM qr_credentials WHERE registration_id = :rid AND status = 'ACTIVE' ORDER BY issued_at DESC LIMIT 1"
-            );
-            $stmtCred->execute([':rid' => $regId]);
-            $activeCred = $stmtCred->fetch(PDO::FETCH_ASSOC);
-
-            $activeCredObj = null;
-            if ($activeCred) {
-                $qrToken = function_exists('reconstructQrTokenForCredential')
-                    ? reconstructQrTokenForCredential($activeCred)
-                    : (string)$activeCred['credential_code'];
-                $activeCredObj = [
-                    'id'             => (string)$activeCred['id'],
-                    'credentialCode' => (string)$activeCred['credential_code'],
-                    'status'         => (string)$activeCred['status'],
-                    'issuedAt'       => (string)$activeCred['issued_at'],
-                    'rawToken'       => $qrToken,
-                    'qrDataUrl'      => function_exists('generateQrSvgDataUrl')
-                        ? generateQrSvgDataUrl($qrToken)
-                        : null,
-                ];
+            $stmtAtt = $pdo->prepare('SELECT * FROM attendee_details WHERE registration_id = :rid LIMIT 1');
+            $stmtAtt->execute([':rid' => $regId]);
+            $attDetail = $stmtAtt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if ($attDetail) {
+                $attDetail['self_identification_tags'] = jsonDecode($attDetail['self_identification_tags'] ?? '[]', []);
+                $attDetail['para_sports_events'] = jsonDecode($attDetail['para_sports_events'] ?? '[]', []);
+                $attDetail['dietary_requirements'] = pfgDecryptSensitiveValue($attDetail['dietary_requirements_encrypted'] ?? null);
+                unset($attDetail['dietary_requirements_encrypted']);
             }
 
             $stmtVol = $pdo->prepare('SELECT * FROM volunteer_applications WHERE registration_id = :rid LIMIT 1');
@@ -306,21 +234,18 @@ if ($method === 'GET') {
             $accommReqs = [];
             $stmtAccomm = $pdo->prepare('SELECT * FROM accommodation_requests WHERE registration_id = :rid ORDER BY created_at DESC');
             $stmtAccomm->execute([':rid' => $regId]);
-            $rows = $stmtAccomm->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            foreach ($rows as $r) {
+            foreach ($stmtAccomm->fetchAll(PDO::FETCH_ASSOC) ?: [] as $r) {
                 $accommReqs[] = [
-                    'id'              => (string)$r['id'],
-                    'registrationId'  => (string)$r['registration_id'],
-                    'selectedTypes'   => jsonDecode($r['selected_types'] ?? '[]', []),
-                    'freeTextDetails' => pfgDecryptValue($r['free_text_details'] ?? $r['notes'] ?? null, 'data'),
-                    'status'          => (string)($r['status'] ?? 'REQUESTED'),
-                    'createdAt'       => (string)$r['created_at'],
+                    'id'                 => (string)$r['id'],
+                    'registrationId'     => (string)$r['registration_id'],
+                    'selectedTypes'      => jsonDecode($r['selected_types'] ?? '[]', []),
+                    'freeTextDetails'    => pfgDecryptSensitiveValue($r['free_text_details'] ?? $r['notes'] ?? null),
+                    'escortAccompanying' => !empty($r['escort_accompanying']),
+                    'escortName'         => pfgDecryptSensitiveValue($r['escort_name_encrypted'] ?? null),
+                    'status'             => (string)($r['status'] ?? 'REQUESTED'),
+                    'createdAt'          => (string)$r['created_at'],
                 ];
             }
-
-            $stmtChk = $pdo->prepare('SELECT * FROM checkins WHERE registration_id = :rid ORDER BY checked_in_at DESC');
-            $stmtChk->execute([':rid' => $regId]);
-            $userCheckins = $stmtChk->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
             $enrichedRegistrations[] = [
                 'id'                     => $regId,
@@ -332,38 +257,52 @@ if ($method === 'GET') {
                 'categoryName'           => $categoryNameMap[$reg['category_code']] ?? (string)$reg['category_code'],
                 'status'                 => (string)$reg['status'],
                 'paymentStatus'          => (string)$reg['payment_status'],
+                'assignmentStatus'       => (string)($reg['assignment_status'] ?? 'UNASSIGNED'),
                 'fullName'               => (string)$reg['full_name'],
                 'email'                  => (string)$reg['email'],
                 'phone'                  => (string)$reg['phone'],
                 'country'                => (string)$reg['country'],
+                'cityDistrict'           => $reg['city_district'] ?? null,
+                'state'                  => $reg['state'] ?? null,
                 'occupation'             => $reg['occupation'] ?? null,
                 'organizationName'       => $reg['organization_name'] ?? null,
                 'designation'            => $reg['designation'] ?? null,
                 'isPersonWithDisability' => (string)$reg['is_person_with_disability'],
                 'attendingDays'          => jsonDecode($reg['attending_days'] ?? '[]', []),
                 'interestedTracks'       => jsonDecode($reg['interested_tracks'] ?? '[]', []),
+                'publicReviewNote'       => $reg['public_review_note'] ?? null,
                 'submittedAt'            => (string)($reg['submitted_at'] ?? $reg['created_at']),
                 'createdAt'              => (string)$reg['created_at'],
-                'activeCredential'       => $activeCredObj,
+                'attendeeDetails'        => $attDetail,
                 'volunteerApplication'   => $volApp,
                 'sliApplication'         => $sliApp,
                 'delegateDetails'        => $delDetail,
                 'accommodationRequests'  => $accommReqs,
-                'checkins'               => $userCheckins,
             ];
         }
 
-        pfgRegJson([
+        $userPayload = $user;
+        if ($profileRow) {
+            $userPayload['emailVerified'] = !empty($profileRow['email_verified_at']);
+            $userPayload['emailVerifiedAt'] = $profileRow['email_verified_at'] ?? null;
+            $userPayload['cityDistrict'] = $profileRow['city_district'] ?? null;
+            $userPayload['state'] = $profileRow['state'] ?? null;
+            $userPayload['preferredLanguage'] = $profileRow['preferred_language'] ?? null;
+        }
+
+        pfgRegApiJson([
             'edition'              => $edition,
             'categories'           => $categories,
             'disabilityCategories' => $disabilityCategories,
             'accommodationTypes'   => $accommodationTypes,
-            'user'                 => $user,
+            'allowMultiCategory'   => pfgIsMultiCategoryAllowed($pdo),
+            'registrationOpen'     => $registrationOpen,
+            'user'                 => $userPayload,
             'registrations'        => $enrichedRegistrations,
         ]);
     } catch (Throwable $e) {
         error_log('GET /api/registrations error: ' . $e->getMessage());
-        pfgRegJson(['error' => 'Unable to load registration data.'], 500);
+        pfgRegApiJson(['error' => 'Unable to load registration data.'], 500);
     }
 }
 
@@ -371,116 +310,69 @@ if ($method === 'GET') {
 // POST /api/registrations
 // ============================================================================
 if ($method !== 'POST') {
-    pfgRegJson(['error' => 'Method not allowed.'], 405);
+    pfgRegApiJson(['error' => 'Method not allowed.'], 405);
 }
 
 try {
-    $body = function_exists('readRequestInput') ? readRequestInput() : [];
-    if (!is_array($body) || empty($body)) {
-        pfgRegJson(['error' => 'Please check the highlighted form fields.'], 400);
-    }
-
-    // 1. Validate inputs matching src/lib/validation.ts (baseRegistrationSchema)
-    $fullName = trim((string)($body['fullName'] ?? ''));
-    $email = trim((string)($body['email'] ?? ''));
-    $phone = trim((string)($body['phone'] ?? ''));
-    $country = trim((string)($body['country'] ?? 'India'));
-    if ($country === '') {
-        $country = 'India';
-    }
-    $password = isset($body['password']) && is_string($body['password']) ? $body['password'] : '';
-    $categoryCode = strtoupper(trim((string)($body['categoryCode'] ?? '')));
-    $occupation = trim((string)($body['occupation'] ?? ''));
-    $organizationName = trim((string)($body['organizationName'] ?? ''));
-    $designation = trim((string)($body['designation'] ?? ''));
-    $isPersonWithDisability = strtoupper(trim((string)($body['isPersonWithDisability'] ?? 'PREFER_NOT_TO_SAY')));
-
-    $disabilityCategoryCodes = isset($body['disabilityCategoryCodes']) && is_array($body['disabilityCategoryCodes'])
-        ? array_values(array_filter(array_map('strval', $body['disabilityCategoryCodes'])))
-        : [];
-    $disabilitySelfDescription = trim((string)($body['disabilitySelfDescription'] ?? ''));
-
-    $accommodationTypes = isset($body['accommodationTypes']) && is_array($body['accommodationTypes'])
-        ? array_values(array_filter(array_map('strval', $body['accommodationTypes'])))
-        : [];
-    $accommodationFreeText = trim((string)($body['accommodationFreeText'] ?? ''));
-
-    $attendingDays = isset($body['attendingDays']) && is_array($body['attendingDays'])
-        ? array_values(array_filter(array_map('strval', $body['attendingDays'])))
-        : [];
-    $interestedTracks = isset($body['interestedTracks']) && is_array($body['interestedTracks'])
-        ? array_values(array_filter(array_map('strval', $body['interestedTracks'])))
-        : [];
-    $couponCode = trim((string)($body['couponCode'] ?? ''));
-
-    $consentZeroTolerance = filter_var($body['consentZeroTolerance'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $consentDataProcessing = filter_var($body['consentDataProcessing'] ?? false, FILTER_VALIDATE_BOOLEAN);
-    $consentMediaPhotography = filter_var($body['consentMediaPhotography'] ?? false, FILTER_VALIDATE_BOOLEAN);
-
-    if (mb_strlen($fullName) < 2 || mb_strlen($fullName) > 200) {
-        pfgRegJson(['error' => 'Please enter your full name.'], 400);
-    }
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
-        pfgRegJson(['error' => 'Please enter a valid email address.'], 400);
-    }
-    if (!preg_match('/^\+?[0-9\s\-()]{7,20}$/', $phone)) {
-        pfgRegJson(['error' => 'Please enter a valid phone number (e.g., +91 98250 12345).'], 400);
-    }
-    if (mb_strlen($country) < 2 || mb_strlen($country) > 100) {
-        pfgRegJson(['error' => 'Please enter your country.'], 400);
-    }
-    if ($password !== '' && strlen($password) < 8) {
-        pfgRegJson(['error' => 'Password must be at least 8 characters.'], 400);
-    }
-    if (strlen($categoryCode) < 2 || strlen($categoryCode) > 64) {
-        pfgRegJson(['error' => 'Please choose a registration category.'], 400);
-    }
-    if (mb_strlen($occupation) < 2 || mb_strlen($occupation) > 120) {
-        pfgRegJson(['error' => 'Please select your occupation or affiliation.'], 400);
-    }
-    if (!in_array($isPersonWithDisability, ['YES', 'NO', 'PREFER_NOT_TO_SAY'], true)) {
-        pfgRegJson(['error' => 'Invalid disability disclosure option.'], 400);
-    }
-    if (!$consentZeroTolerance) {
-        pfgRegJson(['error' => 'You must acknowledge the zero-tolerance policy towards harassment.'], 400);
-    }
-    if (!$consentDataProcessing) {
-        pfgRegJson(['error' => 'You must consent to the processing of your registration information.'], 400);
-    }
-
-    $delegateDetails = isset($body['delegateDetails']) && is_array($body['delegateDetails'])
-        ? $body['delegateDetails']
-        : null;
-    $volunteerDetails = isset($body['volunteerDetails']) && is_array($body['volunteerDetails'])
-        ? $body['volunteerDetails']
-        : null;
-    $sliDetails = isset($body['sliDetails']) && is_array($body['sliDetails'])
-        ? $body['sliDetails']
-        : null;
-
-    if ($sliDetails && !empty($sliDetails['videoDemoUrl'])) {
-        $videoUrl = trim((string)$sliDetails['videoDemoUrl']);
-        if ($videoUrl !== '') {
-            $safeVideoUrl = pfgValidateSafeUrl($videoUrl, false);
-            if ($safeVideoUrl === null) {
-                pfgRegJson(['error' => 'Please enter a valid http:// or https:// video demo URL.'], 400);
-            }
-            $sliDetails['videoDemoUrl'] = $safeVideoUrl;
-        }
-    }
-
     $pdo = getDb();
-    if (function_exists('pfgRequireRateLimit')) {
-        $clientIp = getClientIp() ?: 'unknown';
-        pfgRequireRateLimit($pdo, 'public_registration_ip', $clientIp, 25, 900, 900);
+    $clientIp = getClientIp() ?: 'unknown';
+    pfgRequireRateLimit($pdo, 'registration_submit_ip', $clientIp, 30, 900, 900);
+
+    // §6 Centralized Registration Launch Activation Gate (blocks BEFORE any mutation)
+    if (!pfgIsPublicRegistrationOpen($pdo)) {
+        pfgRegApiJson([
+            'error'              => 'Festival registration is not currently open.',
+            'registrationClosed' => true,
+        ], 503);
     }
-    $edition = pfgGetActiveEdition($pdo);
+
+    // 1. Authenticated participant session strictly required (Phase 5 + CAD-03)
+    $currentUser = getCurrentUser($pdo);
+    if (!is_array($currentUser) || empty($currentUser['id'])) {
+        pfgRegApiJson([
+            'error'        => 'Authentication required. Please sign in or create a verified participant account before registering.',
+            'authRequired' => true,
+        ], 401);
+    }
+
+    enforceStaffMfaGate($currentUser);
+    requireCsrfToken($currentUser);
+
+    $userId = (string)$currentUser['id'];
+    $userRow = pfgFetchAccountProfileRow($pdo, $userId);
+    if (!$userRow || empty($userRow['is_active'])) {
+        pfgRegApiJson(['error' => 'Your account is not active.'], 403);
+    }
+
+    if (empty($userRow['email_verified_at'])) {
+        pfgRegApiJson([
+            'error'                     => 'Please verify your email address before submitting a registration.',
+            'emailVerificationRequired' => true,
+        ], 403);
+    }
+
+    $body = readRequestInput();
+    if (!is_array($body) || empty($body)) {
+        pfgRegApiJson(['error' => 'Please check the highlighted form fields.'], 400);
+    }
+
+    $edition = pfgGetActiveFestivalEdition($pdo);
     if (!$edition) {
-        pfgRegJson(['error' => 'Festival registration is not currently active.'], 404);
+        pfgRegApiJson(['error' => 'Festival registration is not currently active.'], 404);
+    }
+
+    // 2. Strictly enforce 3 Primary Categories (category_tier = 'PRIMARY' AND is_active = 1)
+    $categoryCode = strtoupper(trim((string)($body['categoryCode'] ?? $body['category_code'] ?? '')));
+    if ($categoryCode === '' || !in_array($categoryCode, PFG_PRIMARY_CATEGORIES, true)) {
+        pfgRegApiJson([
+            'error' => 'Selected registration category is not available. Only Attendee, Festival Volunteer, and Sign Language Interpreter (SLI) registrations are open.',
+        ], 400);
     }
 
     $stmtCat = $pdo->prepare(
-        'SELECT * FROM registration_categories WHERE edition_id = :eid AND UPPER(code) = :code AND is_active = 1 LIMIT 1'
+        "SELECT * FROM registration_categories
+         WHERE edition_id = :eid AND UPPER(code) = :code AND category_tier = 'PRIMARY' AND is_active = 1
+         LIMIT 1"
     );
     $stmtCat->execute([
         ':eid'  => $edition['id'],
@@ -489,130 +381,37 @@ try {
     $category = $stmtCat->fetch(PDO::FETCH_ASSOC);
 
     if (!$category) {
-        pfgRegJson(['error' => 'Selected registration category is not available.'], 400);
+        pfgRegApiJson([
+            'error' => 'Selected registration category is not currently active.',
+        ], 400);
     }
 
     $nowTs = time();
     if (!empty($category['opens_at'])) {
         $opensTs = strtotime((string)$category['opens_at']);
         if ($opensTs !== false && $opensTs > $nowTs) {
-            pfgRegJson(['error' => 'Registration for this category has not opened yet.'], 400);
+            pfgRegApiJson(['error' => 'Registration for this category has not opened yet.'], 400);
         }
     }
     if (!empty($category['closes_at'])) {
         $closesTs = strtotime((string)$category['closes_at']);
         if ($closesTs !== false && $closesTs < $nowTs) {
-            pfgRegJson(['error' => 'Registration for this category has closed.'], 400);
+            pfgRegApiJson(['error' => 'Registration for this category has closed.'], 400);
         }
     }
 
-    $ipAddress = getClientIp();
-    $userAgent = getClientUserAgent();
-
-    // Optional Idempotency-Key (header or request payload) for safe retriable submissions (Phase 3I)
-    $rawIdempotencyKey = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? $body['idempotencyKey'] ?? $body['idempotency_key'] ?? ''));
-    $idempotencyKey = $rawIdempotencyKey !== '' ? substr(preg_replace('/[^A-Za-z0-9_\-:.]/', '', $rawIdempotencyKey) ?? '', 0, 128) : null;
+    // 3. Idempotency-Key check (owner-scoped)
+    $rawIdem = trim((string)($_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? $body['idempotencyKey'] ?? $body['idempotency_key'] ?? ''));
+    $idempotencyKey = $rawIdem !== '' ? substr(preg_replace('/[^A-Za-z0-9_\-:.]/', '', $rawIdem) ?? '', 0, 128) : null;
     if ($idempotencyKey === '') {
         $idempotencyKey = null;
     }
 
-    // 2. Identity & ownership protection (FND-07):
-    // NEVER allow an unauthenticated caller to attach a new registration to ANY existing user record
-    // (participant or staff) and NEVER leak existingRegistrationCode to unauthenticated requests.
-    $currentUser = function_exists('getCurrentUser') ? getCurrentUser() : null;
-    $normalizedEmail = strtolower($email);
-    $userId = '';
-    $needsNewUser = false;
-    $passwordHash = null;
-
-    if (is_array($currentUser) && !empty($currentUser['id'])) {
-        requireCsrfToken($currentUser);
-        if (strtolower((string)($currentUser['email'] ?? '')) !== $normalizedEmail) {
-            pfgRegJson([
-                'error' => 'Authenticated submissions must use your signed-in account email address.',
-            ], 403);
-        }
-        $userId = (string)$currentUser['id'];
-    } else {
-        // Check idempotency replay FIRST before rejecting existing email (only if exact email + key match)
-        if ($idempotencyKey !== null) {
-            $stmtIdem = $pdo->prepare(
-                'SELECT * FROM registrations WHERE edition_id = :eid AND idempotency_key = :ikey AND LOWER(email) = :email AND deleted_at IS NULL LIMIT 1'
-            );
-            $stmtIdem->execute([
-                ':eid'   => $edition['id'],
-                ':ikey'  => $idempotencyKey,
-                ':email' => $normalizedEmail,
-            ]);
-            $idemReg = $stmtIdem->fetch(PDO::FETCH_ASSOC);
-            if ($idemReg) {
-                pfgRegJson([
-                    'registration' => [
-                        'id'                     => (string)$idemReg['id'],
-                        'registrationCode'       => (string)$idemReg['registration_code'],
-                        'editionId'              => (string)$idemReg['edition_id'],
-                        'userId'                 => (string)$idemReg['user_id'],
-                        'categoryId'             => (string)$idemReg['category_id'],
-                        'categoryCode'           => (string)$idemReg['category_code'],
-                        'status'                 => (string)$idemReg['status'],
-                        'paymentStatus'          => (string)$idemReg['payment_status'],
-                        'fullName'               => (string)$idemReg['full_name'],
-                        'email'                  => (string)$idemReg['email'],
-                        'phone'                  => (string)$idemReg['phone'],
-                        'country'                => (string)$idemReg['country'],
-                        'occupation'             => $idemReg['occupation'] ?? null,
-                        'organizationName'       => $idemReg['organization_name'] ?? null,
-                        'designation'            => $idemReg['designation'] ?? null,
-                        'isPersonWithDisability' => (string)$idemReg['is_person_with_disability'],
-                        'attendingDays'          => jsonDecode($idemReg['attending_days'] ?? '[]', []),
-                        'interestedTracks'       => jsonDecode($idemReg['interested_tracks'] ?? '[]', []),
-                        'submittedAt'            => (string)($idemReg['submitted_at'] ?? $idemReg['created_at']),
-                        'createdAt'              => (string)$idemReg['created_at'],
-                    ],
-                    'category' => [
-                        'code'             => (string)$category['code'],
-                        'name'             => (string)$category['name'],
-                        'requiresApproval' => !empty($category['requires_approval']),
-                        'requiresPayment'  => !empty($category['requires_payment']),
-                    ],
-                    'idempotentReplay' => true,
-                ], 200);
-            }
-        }
-
-        $stmtUser = $pdo->prepare('SELECT id, is_active, deleted_at FROM users WHERE LOWER(email) = :email LIMIT 1');
-        $stmtUser->execute([':email' => $normalizedEmail]);
-        $existingUser = $stmtUser->fetch(PDO::FETCH_ASSOC);
-
-        if ($existingUser) {
-            pfgRecordAuditCompat(
-                $pdo,
-                null,
-                'UNAUTHORIZED_ACCOUNT_ATTACHMENT_BLOCKED',
-                'user',
-                (string)$existingUser['id'],
-                $ipAddress,
-                $userAgent,
-                ['categoryCode' => $categoryCode]
-            );
-            pfgRegJson([
-                'error' => 'Unable to complete registration with this email address. If you already registered or hold an account, please contact the festival secretariat.',
-            ], 409);
-        }
-
-        $needsNewUser = true;
-        $userId = uuid4();
-        if ($password !== '') {
-            $passwordHash = function_exists('hashPassword')
-                ? hashPassword($password)
-                : password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-        }
-    }
-
-    // Authenticated idempotency replay check
-    if (!$needsNewUser && $idempotencyKey !== null) {
+    if ($idempotencyKey !== null) {
         $stmtIdem = $pdo->prepare(
-            'SELECT * FROM registrations WHERE edition_id = :eid AND idempotency_key = :ikey AND user_id = :uid AND deleted_at IS NULL LIMIT 1'
+            'SELECT * FROM registrations
+             WHERE edition_id = :eid AND idempotency_key = :ikey AND user_id = :uid AND deleted_at IS NULL
+             LIMIT 1'
         );
         $stmtIdem->execute([
             ':eid'  => $edition['id'],
@@ -621,7 +420,7 @@ try {
         ]);
         $idemReg = $stmtIdem->fetch(PDO::FETCH_ASSOC);
         if ($idemReg) {
-            pfgRegJson([
+            pfgRegApiJson([
                 'registration' => [
                     'id'                     => (string)$idemReg['id'],
                     'registrationCode'       => (string)$idemReg['registration_code'],
@@ -631,14 +430,13 @@ try {
                     'categoryCode'           => (string)$idemReg['category_code'],
                     'status'                 => (string)$idemReg['status'],
                     'paymentStatus'          => (string)$idemReg['payment_status'],
+                    'assignmentStatus'       => (string)($idemReg['assignment_status'] ?? 'UNASSIGNED'),
                     'fullName'               => (string)$idemReg['full_name'],
                     'email'                  => (string)$idemReg['email'],
                     'phone'                  => (string)$idemReg['phone'],
                     'country'                => (string)$idemReg['country'],
-                    'occupation'             => $idemReg['occupation'] ?? null,
-                    'organizationName'       => $idemReg['organization_name'] ?? null,
-                    'designation'            => $idemReg['designation'] ?? null,
-                    'isPersonWithDisability' => (string)$idemReg['is_person_with_disability'],
+                    'cityDistrict'           => $idemReg['city_district'] ?? null,
+                    'state'                  => $idemReg['state'] ?? null,
                     'attendingDays'          => jsonDecode($idemReg['attending_days'] ?? '[]', []),
                     'interestedTracks'       => jsonDecode($idemReg['interested_tracks'] ?? '[]', []),
                     'submittedAt'            => (string)($idemReg['submitted_at'] ?? $idemReg['created_at']),
@@ -648,197 +446,147 @@ try {
                     'code'             => (string)$category['code'],
                     'name'             => (string)$category['name'],
                     'requiresApproval' => !empty($category['requires_approval']),
-                    'requiresPayment'  => !empty($category['requires_payment']),
+                    'requiresPayment'  => false,
                 ],
                 'idempotentReplay' => true,
             ], 200);
         }
     }
 
-    // 3. Prevent duplicate active registration in the SAME category for this edition
-    if (!$needsNewUser) {
-        $stmtDup = $pdo->prepare(
-            "SELECT * FROM registrations
+    // 4. Duplicate active registration guard (configurable D-09)
+    $stmtDup = $pdo->prepare(
+        "SELECT id, registration_code, category_code, status FROM registrations
+         WHERE user_id = :uid
+           AND edition_id = :eid
+           AND UPPER(category_code) = :ccode
+           AND deleted_at IS NULL
+           AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
+         LIMIT 1"
+    );
+    $stmtDup->execute([
+        ':uid'   => $userId,
+        ':eid'   => $edition['id'],
+        ':ccode' => $categoryCode,
+    ]);
+    $dupSameCat = $stmtDup->fetch(PDO::FETCH_ASSOC);
+    if ($dupSameCat) {
+        pfgRegApiJson([
+            'error'                    => "You already have an active {$category['name']} registration ({$dupSameCat['registration_code']}). You may manage it from your dashboard or apply for a different category.",
+            'existingRegistrationCode' => (string)$dupSameCat['registration_code'],
+            'existingRegistrationId'   => (string)$dupSameCat['id'],
+            'existingStatus'           => (string)$dupSameCat['status'],
+        ], 409);
+    }
+
+    if (!pfgIsMultiCategoryAllowed($pdo)) {
+        $stmtAny = $pdo->prepare(
+            "SELECT id, registration_code, category_code, status FROM registrations
              WHERE user_id = :uid
                AND edition_id = :eid
-               AND category_code = :ccode
                AND deleted_at IS NULL
                AND status NOT IN ('WITHDRAWN', 'CANCELLED', 'REJECTED')
              LIMIT 1"
         );
-        $stmtDup->execute([
-            ':uid'   => $userId,
-            ':eid'   => $edition['id'],
-            ':ccode' => $categoryCode,
+        $stmtAny->execute([
+            ':uid' => $userId,
+            ':eid' => $edition['id'],
         ]);
-        $duplicateReg = $stmtDup->fetch(PDO::FETCH_ASSOC);
-
-        if ($duplicateReg) {
-            $dupPayload = [
-                'error' => "You already have an active {$category['name']} registration. You can still register for a different role under your account.",
-            ];
-            if (is_array($currentUser) && !empty($currentUser['id'])) {
-                $dupPayload['existingRegistrationCode'] = (string)$duplicateReg['registration_code'];
-            }
-            pfgRegJson($dupPayload, 409);
+        $existingAny = $stmtAny->fetch(PDO::FETCH_ASSOC);
+        if ($existingAny) {
+            pfgRegApiJson([
+                'error'                    => "Only one active registration per account is currently permitted (existing: {$existingAny['registration_code']}).",
+                'existingRegistrationCode' => (string)$existingAny['registration_code'],
+                'existingRegistrationId'   => (string)$existingAny['id'],
+            ], 409);
         }
     }
 
-    // 4. Server-side coupon validation & fee calculation (canonical `coupons` table ONLY)
-    $feeAmountInr = (int)($category['fee_amount_inr'] ?? 0);
+    // 5. Strict server-side validation across all category fields, accessibility, emergency contact & consents
+    $validation = pfgValidateRegistrationPayload($pdo, $categoryCode, $body, $userRow, false);
+    if (!$validation['valid']) {
+        pfgRegApiJson([
+            'error'  => $validation['error'] ?? 'Please review the highlighted fields.',
+            'errors' => $validation['errors'],
+        ], 400);
+    }
+
+    $vData = $validation['data'];
+    $access = $vData['accessibility'];
+    $ec = $vData['emergencyContact'];
+    $consents = $vData['consents'];
+    $catData = $vData['categoryData'];
+
+    // 6. Configurable owner default: Free registration path (D-05)
+    $feeAmountInr = 0;
     $discountInr = 0;
-    $appliedCoupon = null;
-
-    if ($couponCode !== '') {
-        $normalizedCouponCode = strtoupper($couponCode);
-        $stmtC = $pdo->prepare(
-            'SELECT * FROM coupons WHERE UPPER(code) = :code AND (edition_id = :eid OR edition_id IS NULL) LIMIT 1'
-        );
-        $stmtC->execute([':code' => $normalizedCouponCode, ':eid' => $edition['id']]);
-        $coupon = $stmtC->fetch(PDO::FETCH_ASSOC) ?: null;
-
-        if (!$coupon || empty($coupon['is_active'])) {
-            pfgRegJson(['error' => 'The coupon code entered is invalid or inactive.'], 400);
-        }
-
-        if (!empty($coupon['valid_from'])) {
-            $fromTs = strtotime((string)$coupon['valid_from']);
-            if ($fromTs !== false && $fromTs > $nowTs) {
-                pfgRegJson(['error' => 'This coupon code is not active yet.'], 400);
-            }
-        }
-
-        if (!empty($coupon['valid_until'])) {
-            $untilTs = strtotime((string)$coupon['valid_until']);
-            if ($untilTs !== false && $untilTs < $nowTs) {
-                pfgRegJson(['error' => 'This coupon code has expired.'], 400);
-            }
-        }
-
-        if ($coupon['max_uses'] !== null && $coupon['max_uses'] !== '' && (int)$coupon['used_count'] >= (int)$coupon['max_uses']) {
-            pfgRegJson(['error' => 'This coupon code has reached its maximum usage limit.'], 400);
-        }
-
-        $eligible = jsonDecode($coupon['eligible_categories'] ?? '[]', []);
-        if (!is_array($eligible)) {
-            $eligible = [];
-        }
-        $eligibleUpper = array_map(static fn($v): string => strtoupper(trim((string)$v)), $eligible);
-        if (!empty($eligibleUpper) && !in_array($categoryCode, $eligibleUpper, true)) {
-            pfgRegJson([
-                'error' => "This coupon code is not eligible for the {$category['name']} category.",
-            ], 400);
-        }
-
-        if (!$needsNewUser) {
-            $stmtRed = $pdo->prepare(
-                'SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id = :cid AND user_id = :uid'
-            );
-            $stmtRed->execute([':cid' => $coupon['id'], ':uid' => $userId]);
-            $userRedemptionCount = (int)$stmtRed->fetchColumn();
-            $maxPerUser = isset($coupon['max_uses_per_user']) ? (int)$coupon['max_uses_per_user'] : 1;
-            if ($userRedemptionCount >= max(1, $maxPerUser)) {
-                pfgRegJson(['error' => 'You have already used this coupon code.'], 400);
-            }
-        }
-
-        $discountType = strtoupper((string)($coupon['discount_type'] ?? 'PERCENTAGE'));
-        $discountVal = (int)($coupon['discount_value'] ?? 0);
-        if ($discountType === 'FULL_WAIVER') {
-            $discountInr = $feeAmountInr;
-        } elseif ($discountType === 'PERCENTAGE') {
-            $discountInr = min($feeAmountInr, (int)round(($feeAmountInr * $discountVal) / 100));
-        } else {
-            $discountInr = min($feeAmountInr, $discountVal);
-        }
-
-        $appliedCoupon = $coupon;
-    }
-
-    $netAmountInr = max(0, $feeAmountInr - $discountInr);
-
-    // 5. Determine initial registration status & payment status
-    $status = 'CONFIRMED';
+    $netAmountInr = 0;
     $paymentStatus = 'NOT_REQUIRED';
-    $shouldSendConfirmationEmail = true;
 
-    if (!empty($category['requires_approval'])) {
-        $status = 'SUBMITTED';
-        $paymentStatus = 'NOT_REQUIRED';
-        $shouldSendConfirmationEmail = false;
-    } elseif (!empty($category['requires_payment']) && $netAmountInr > 0) {
-        $status = 'SUBMITTED';
-        $paymentStatus = 'PENDING';
-        $shouldSendConfirmationEmail = false;
-    }
+    $requiresApproval = !empty($category['requires_approval']) || in_array($categoryCode, ['VOLUNTEER', 'SLI'], true);
+    $status = $requiresApproval ? 'SUBMITTED' : 'CONFIRMED';
 
-    // 6. Atomically allocate next monotonic Registration ID BEFORE the outer registration transaction
-    //    so rolled-back transactions NEVER reuse a number and server restarts preserve the high-water mark.
-    $registrationCode = allocateNextRegistrationCode($pdo, (string)$edition['id']);
+    // 7. Atomically allocate next monotonic Registration ID BEFORE the outer transaction
+    $registrationCode = pfgAllocateRegistrationCode($pdo, (string)$edition['id']);
     $registrationId = uuid4();
     $now = nowSql();
+    $ipAddress = getClientIp();
+    $userAgent = getClientUserAgent();
+    $outboxQueueIds = [];
 
-    // 7. Execute ALL registration writes (including new user creation & role assignment — FND-21)
-    //    inside ONE single atomic PDO transaction against CANONICAL tables ONLY.
+    // 8. Persist ALL canonical writes inside ONE atomic PDO transaction
     $pdo->beginTransaction();
 
     try {
-        if ($needsNewUser) {
-            $stmtInsUser = $pdo->prepare(
-                "INSERT INTO users (id, email, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at)
-                 VALUES (:id, :email, :password_hash, :full_name, :phone, :country, 1, 'ACTIVE', :created_at, :updated_at)"
-            );
-            $stmtInsUser->execute([
-                ':id'            => $userId,
-                ':email'         => $normalizedEmail,
-                ':password_hash' => $passwordHash,
-                ':full_name'     => $fullName,
-                ':phone'         => $phone,
-                ':country'       => $country,
-                ':created_at'    => $now,
-                ':updated_at'    => $now,
-            ]);
-
-            $stmtRole = $pdo->prepare("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1");
-            $stmtRole->execute();
-            $roleId = (string)$stmtRole->fetchColumn();
-
-            if ($roleId === '') {
-                $roleId = uuid4();
-                $stmtInsRole = $pdo->prepare(
-                    "INSERT INTO roles (id, code, name, description, created_at)
-                     VALUES (:id, 'PARTICIPANT', 'Participant', 'Festival participant account.', :created_at)"
-                );
-                $stmtInsRole->execute([
-                    ':id'         => $roleId,
-                    ':created_at' => $now,
-                ]);
-            }
-
-            $stmtUr = $pdo->prepare(
-                'INSERT IGNORE INTO user_roles (id, user_id, role_id, assigned_at)
-                 VALUES (:id, :user_id, :role_id, :assigned_at)'
-            );
-            $stmtUr->execute([
-                ':id'          => uuid4(),
-                ':user_id'     => $userId,
-                ':role_id'     => $roleId,
-                ':assigned_at' => $now,
-            ]);
+        // Backfill blank profile fields on users so participant never has to re-enter them on a second category
+        $profileUpdates = [];
+        $profileParams = [':uid' => $userId, ':now' => $now];
+        if (empty($userRow['phone']) && !empty($vData['phone'])) {
+            $profileUpdates[] = 'phone = :phone';
+            $profileParams[':phone'] = $vData['phone'];
+        }
+        if (empty($userRow['city_district']) && !empty($vData['cityDistrict'])) {
+            $profileUpdates[] = 'city_district = :city_district';
+            $profileParams[':city_district'] = $vData['cityDistrict'];
+        }
+        if (empty($userRow['state']) && !empty($vData['state'])) {
+            $profileUpdates[] = 'state = :state';
+            $profileParams[':state'] = $vData['state'];
+        }
+        if (empty($userRow['emergency_contact_name']) && !empty($ec['emergencyContactName'])) {
+            $profileUpdates[] = 'emergency_contact_name = :ec_name';
+            $profileParams[':ec_name'] = $ec['emergencyContactName'];
+        }
+        if (empty($userRow['emergency_contact_relationship']) && !empty($ec['emergencyContactRelationship'])) {
+            $profileUpdates[] = 'emergency_contact_relationship = :ec_rel';
+            $profileParams[':ec_rel'] = $ec['emergencyContactRelationship'];
+        }
+        if (empty($userRow['emergency_contact_phone']) && !empty($ec['emergencyContactPhone'])) {
+            $profileUpdates[] = 'emergency_contact_phone = :ec_phone';
+            $profileParams[':ec_phone'] = $ec['emergencyContactPhone'];
+        }
+        if (!empty($profileUpdates)) {
+            $profileUpdates[] = 'updated_at = :now';
+            $pdo->prepare('UPDATE users SET ' . implode(', ', $profileUpdates) . ' WHERE id = :uid')
+                ->execute($profileParams);
         }
 
+        // Insert master registration row
         $stmtInsReg = $pdo->prepare(
             "INSERT INTO registrations (
                 id, registration_code, idempotency_key, edition_id, user_id, category_id, category_code,
-                status, payment_status, assignment_status, full_name, email, phone, country,
+                status, payment_status, assignment_status,
+                full_name, email, phone, country, city_district, state,
+                emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
                 occupation, organization_name, designation, is_person_with_disability,
                 attending_days, interested_tracks, coupon_code, fee_amount_inr, discount_inr, net_amount_inr,
                 submitted_at, created_at, updated_at
              ) VALUES (
                 :id, :registration_code, :idempotency_key, :edition_id, :user_id, :category_id, :category_code,
-                :status, :payment_status, 'UNASSIGNED', :full_name, :email, :phone, :country,
+                :status, :payment_status, 'UNASSIGNED',
+                :full_name, :email, :phone, :country, :city_district, :state,
+                :ec_name, :ec_rel, :ec_phone,
                 :occupation, :organization_name, :designation, :is_person_with_disability,
-                :attending_days, :interested_tracks, :coupon_code, :fee_amount_inr, :discount_inr, :net_amount_inr,
+                :attending_days, :interested_tracks, NULL, :fee_amount_inr, :discount_inr, :net_amount_inr,
                 :submitted_at, :created_at, :updated_at
              )"
         );
@@ -852,17 +600,21 @@ try {
             ':category_code'             => $categoryCode,
             ':status'                    => $status,
             ':payment_status'            => $paymentStatus,
-            ':full_name'                 => $fullName,
-            ':email'                     => $normalizedEmail,
-            ':phone'                     => $phone,
-            ':country'                   => $country,
-            ':occupation'                => $occupation,
-            ':organization_name'         => $organizationName !== '' ? $organizationName : null,
-            ':designation'               => $designation !== '' ? $designation : null,
-            ':is_person_with_disability' => $isPersonWithDisability,
-            ':attending_days'            => jsonEncode($attendingDays),
-            ':interested_tracks'         => jsonEncode($interestedTracks),
-            ':coupon_code'               => $appliedCoupon ? (string)$appliedCoupon['code'] : null,
+            ':full_name'                 => $vData['fullName'],
+            ':email'                     => $vData['email'],
+            ':phone'                     => $vData['phone'],
+            ':country'                   => $vData['country'],
+            ':city_district'             => $vData['cityDistrict'],
+            ':state'                     => $vData['state'],
+            ':ec_name'                   => $ec['emergencyContactName'],
+            ':ec_rel'                    => $ec['emergencyContactRelationship'],
+            ':ec_phone'                  => $ec['emergencyContactPhone'],
+            ':occupation'                => $vData['occupation'],
+            ':organization_name'         => $vData['organizationName'],
+            ':designation'               => $vData['designation'],
+            ':is_person_with_disability' => $access['isPersonWithDisability'],
+            ':attending_days'            => jsonEncode($vData['attendingDays']),
+            ':interested_tracks'         => jsonEncode($vData['interestedTracks']),
             ':fee_amount_inr'            => $feeAmountInr,
             ':discount_inr'              => $discountInr,
             ':net_amount_inr'            => $netAmountInr,
@@ -871,23 +623,15 @@ try {
             ':updated_at'                => $now,
         ]);
 
-        // Store sanitized form response snapshot (never store password or sensitive disability/accommodation free-text — FND-11)
-        $safeAnswers = $body;
-        unset(
-            $safeAnswers['password'],
-            $safeAnswers['csrfToken'],
-            $safeAnswers['csrf_token'],
-            $safeAnswers['isPersonWithDisability'],
-            $safeAnswers['disabilityCategoryCodes'],
-            $safeAnswers['disabilitySelfDescription'],
-            $safeAnswers['accommodationTypes'],
-            $safeAnswers['accommodationFreeText']
-        );
-        $stmtResp = $pdo->prepare(
+        // Sanitized form snapshot (all sensitive disability/accommodation/dietary/escort fields stripped)
+        $safeAnswers = pfgSanitizeAnswersSnapshot($body);
+        if ($categoryCode === 'SLI' && !empty($catData['outstationReviewTag'])) {
+            $safeAnswers['outstationCoordinatorReview'] = true;
+        }
+        $pdo->prepare(
             'INSERT INTO registration_responses (id, registration_id, answers, created_at, updated_at)
              VALUES (:id, :registration_id, :answers, :created_at, :updated_at)'
-        );
-        $stmtResp->execute([
+        )->execute([
             ':id'              => uuid4(),
             ':registration_id' => $registrationId,
             ':answers'         => jsonEncode($safeAnswers),
@@ -895,268 +639,339 @@ try {
             ':updated_at'      => $now,
         ]);
 
-        // Role-specific details
-        if ($categoryCode === 'DELEGATE' && $delegateDetails) {
-            $delParams = [
-                ':registration_id'            => $registrationId,
-                ':gender'                     => !empty($delegateDetails['gender']) ? trim((string)$delegateDetails['gender']) : null,
-                ':age'                        => isset($delegateDetails['age']) && $delegateDetails['age'] !== '' ? (int)$delegateDetails['age'] : null,
-                ':city_state'                 => !empty($delegateDetails['cityState']) ? trim((string)$delegateDetails['cityState']) : null,
-                ':para_sports_interests'      => jsonEncode(isset($delegateDetails['paraSportsInterests']) && is_array($delegateDetails['paraSportsInterests']) ? $delegateDetails['paraSportsInterests'] : []),
-                ':outstation_travel_required' => !empty($delegateDetails['outstationTravelRequired']) ? 1 : 0,
-                ':accommodation_needed'       => !empty($delegateDetails['accommodationNeeded']) ? 1 : 0,
-                ':food_preference'            => !empty($delegateDetails['foodPreference']) ? trim((string)$delegateDetails['foodPreference']) : null,
-                ':emergency_contact_name'     => !empty($delegateDetails['emergencyContactName']) ? trim((string)$delegateDetails['emergencyContactName']) : null,
-                ':emergency_contact_phone'    => !empty($delegateDetails['emergencyContactPhone']) ? trim((string)$delegateDetails['emergencyContactPhone']) : null,
-                ':guardian_name'              => !empty($delegateDetails['guardianName']) ? trim((string)$delegateDetails['guardianName']) : null,
-                ':created_at'                 => $now,
-            ];
-
-            $stmtDel = $pdo->prepare(
-                'INSERT INTO delegate_details (
-                    id, registration_id, gender, age, city_state, para_sports_interests,
-                    outstation_travel_required, accommodation_needed, food_preference,
-                    emergency_contact_name, emergency_contact_phone, guardian_name, created_at
+        // Category-specific canonical child table writes
+        if ($categoryCode === 'ATTENDEE') {
+            $encDietary = pfgEncryptSensitiveValue($catData['dietaryRequirements']);
+            $pdo->prepare(
+                'INSERT INTO attendee_details (
+                    id, registration_id, age_group, gender, self_identification_tags,
+                    guardian_name, guardian_relationship, guardian_phone,
+                    para_sports_athlete, para_sports_events, para_sports_other,
+                    outstation_travel_required, arrival_at, departure_at, travel_mode,
+                    lodging_needed, accessible_room_needed, accompanying_count,
+                    food_preference, dietary_requirements_encrypted, created_at, updated_at
                  ) VALUES (
-                    :id, :registration_id, :gender, :age, :city_state, :para_sports_interests,
-                    :outstation_travel_required, :accommodation_needed, :food_preference,
-                    :emergency_contact_name, :emergency_contact_phone, :guardian_name, :created_at
+                    :id, :rid, :age_group, :gender, :self_tags,
+                    :g_name, :g_rel, :g_phone,
+                    :ps_ath, :ps_events, :ps_other,
+                    :outstation, :arrival_at, :departure_at, :travel_mode,
+                    :lodging, :acc_room, :acc_count,
+                    :food_pref, :dietary_enc, :now1, :now2
                  )'
-            );
-            $stmtDel->execute(array_merge([':id' => uuid4()], $delParams));
-        }
-
-        if ($categoryCode === 'VOLUNTEER') {
-            $v = $volunteerDetails ?? [];
-            $vAvail = isset($v['availabilityDays']) && is_array($v['availabilityDays']) && count($v['availabilityDays']) > 0
-                ? $v['availabilityDays']
-                : $attendingDays;
-
-            $stmtVol = $pdo->prepare(
+            )->execute([
+                ':id'          => uuid4(),
+                ':rid'         => $registrationId,
+                ':age_group'   => $catData['ageGroup'],
+                ':gender'      => $catData['gender'],
+                ':self_tags'   => jsonEncode($catData['selfIdentificationTags']),
+                ':g_name'      => $catData['guardianName'],
+                ':g_rel'       => $catData['guardianRelationship'],
+                ':g_phone'     => $catData['guardianPhone'],
+                ':ps_ath'      => $catData['paraSportsAthlete'] ? 1 : 0,
+                ':ps_events'   => jsonEncode($catData['paraSportsEvents']),
+                ':ps_other'    => $catData['paraSportsOther'],
+                ':outstation'  => $catData['outstationTravelRequired'] ? 1 : 0,
+                ':arrival_at'  => $catData['arrivalAt'],
+                ':departure_at'=> $catData['departureAt'],
+                ':travel_mode' => $catData['travelMode'],
+                ':lodging'     => $catData['lodgingNeeded'] ? 1 : 0,
+                ':acc_room'    => $catData['accessibleRoomNeeded'] ? 1 : 0,
+                ':acc_count'   => $catData['accompanyingCount'],
+                ':food_pref'   => $catData['foodPreference'],
+                ':dietary_enc' => $encDietary,
+                ':now1'        => $now,
+                ':now2'        => $now,
+            ]);
+        } elseif ($categoryCode === 'VOLUNTEER') {
+            $cityStateCompat = trim(($vData['cityDistrict'] ?? '') . (!empty($vData['state']) ? ', ' . $vData['state'] : ''));
+            $pdo->prepare(
                 'INSERT INTO volunteer_applications (
                     id, registration_id, age, gender, city_state, institution_name,
-                    is_msu_student_or_alumni, crr_number, preferred_roles, availability_days,
-                    languages_spoken, relevant_experience, emergency_contact_name, emergency_contact_phone,
-                    created_at, updated_at
+                    is_msu_student_or_alumni, msu_affiliation_status, msu_faculty_department,
+                    crr_number, primary_role, preferred_roles, anchoring_experience, relevant_experience,
+                    availability_days, availability_shifts, languages_spoken, languages_other,
+                    emergency_contact_name, emergency_contact_phone, created_at, updated_at
                  ) VALUES (
-                    :id, :registration_id, :age, :gender, :city_state, :institution_name,
-                    :is_msu_student_or_alumni, :crr_number, :preferred_roles, :availability_days,
-                    :languages_spoken, :relevant_experience, :emergency_contact_name, :emergency_contact_phone,
-                    :created_at, :updated_at
+                    :id, :rid, :age, :gender, :city_state, :inst_name,
+                    :is_msu, :msu_status, :msu_fac,
+                    :crr, :primary_role, :pref_roles, :anch_exp, :rel_exp,
+                    :avail_days, :avail_shifts, :langs, :langs_other,
+                    :ec_name, :ec_phone, :now1, :now2
                  )'
-            );
-            $stmtVol->execute([
-                ':id'                       => uuid4(),
-                ':registration_id'          => $registrationId,
-                ':age'                      => isset($v['age']) && $v['age'] !== '' ? (int)$v['age'] : null,
-                ':gender'                   => !empty($v['gender']) ? trim((string)$v['gender']) : null,
-                ':city_state'               => !empty($v['cityState']) ? trim((string)$v['cityState']) : null,
-                ':institution_name'         => !empty($v['institutionName']) ? trim((string)$v['institutionName']) : ($organizationName !== '' ? $organizationName : null),
-                ':is_msu_student_or_alumni' => !empty($v['isMsuStudentOrAlumni']) ? 1 : 0,
-                ':crr_number'               => !empty($v['crrNumber']) ? trim((string)$v['crrNumber']) : null,
-                ':preferred_roles'          => jsonEncode(isset($v['preferredRoles']) && is_array($v['preferredRoles']) ? $v['preferredRoles'] : []),
-                ':availability_days'        => jsonEncode($vAvail),
-                ':languages_spoken'         => jsonEncode(isset($v['languagesSpoken']) && is_array($v['languagesSpoken']) ? $v['languagesSpoken'] : []),
-                ':relevant_experience'      => !empty($v['relevantExperience']) ? trim((string)$v['relevantExperience']) : null,
-                ':emergency_contact_name'   => !empty($v['emergencyContactName']) ? trim((string)$v['emergencyContactName']) : null,
-                ':emergency_contact_phone'  => !empty($v['emergencyContactPhone']) ? trim((string)$v['emergencyContactPhone']) : null,
-                ':created_at'               => $now,
-                ':updated_at'               => $now,
+            )->execute([
+                ':id'           => uuid4(),
+                ':rid'          => $registrationId,
+                ':age'          => $catData['age'],
+                ':gender'       => $catData['gender'],
+                ':city_state'   => $cityStateCompat !== '' ? $cityStateCompat : null,
+                ':inst_name'    => $catData['institutionName'],
+                ':is_msu'       => $catData['isMsuStudentOrAlumni'] ? 1 : 0,
+                ':msu_status'   => $catData['msuAffiliationStatus'],
+                ':msu_fac'      => $catData['msuFacultyDepartment'],
+                ':crr'          => $catData['crrNumber'],
+                ':primary_role' => $catData['primaryRole'],
+                ':pref_roles'   => jsonEncode($catData['preferredRoles']),
+                ':anch_exp'     => $catData['anchoringExperience'],
+                ':rel_exp'      => $catData['relevantExperience'],
+                ':avail_days'   => jsonEncode($catData['availabilityDays']),
+                ':avail_shifts' => jsonEncode($catData['availabilityShifts']),
+                ':langs'        => jsonEncode($catData['languagesSpoken']),
+                ':langs_other'  => $catData['languagesOther'],
+                ':ec_name'      => $ec['emergencyContactName'],
+                ':ec_phone'     => $ec['emergencyContactPhone'],
+                ':now1'         => $now,
+                ':now2'         => $now,
             ]);
-        }
-
-        if ($categoryCode === 'SLI') {
-            $s = $sliDetails ?? [];
-            $sAvail = isset($s['availabilityDays']) && is_array($s['availabilityDays']) && count($s['availabilityDays']) > 0
-                ? $s['availabilityDays']
-                : $attendingDays;
-
-            $stmtSli = $pdo->prepare(
+        } elseif ($categoryCode === 'SLI') {
+            $pdo->prepare(
                 'INSERT INTO sli_applications (
-                    id, registration_id, city_state, based_in_gujarat, crr_number,
-                    qualifications, training_institute, certification_level, years_of_experience,
-                    professional_affiliation, areas_of_expertise, interpretation_preferences,
-                    availability_days, video_demo_url, honorarium_or_travel_notes,
-                    created_at, updated_at
+                    id, registration_id, age, city_state, based_in_gujarat, crr_number,
+                    qualification_category, certification_level, qualifications,
+                    experience_band, training_institute, professional_affiliation,
+                    areas_of_expertise, interpretation_preferences,
+                    availability_days, availability_shifts, comfortable_public_stage,
+                    video_demo_url, honorarium_or_travel_notes, created_at, updated_at
                  ) VALUES (
-                    :id, :registration_id, :city_state, :based_in_gujarat, :crr_number,
-                    :qualifications, :training_institute, :certification_level, :years_of_experience,
-                    :professional_affiliation, :areas_of_expertise, :interpretation_preferences,
-                    :availability_days, :video_demo_url, :honorarium_or_travel_notes,
-                    :created_at, :updated_at
+                    :id, :rid, :age, :city_state, :in_guj, :crr,
+                    :qual_cat, :cert_lvl, :quals,
+                    :exp_band, :institute, :prof_aff,
+                    :expertise, :prefs,
+                    :avail_days, :avail_shifts, :comfort_stage,
+                    :video_url, :hon_notes, :now1, :now2
                  )'
-            );
-            $stmtSli->execute([
-                ':id'                         => uuid4(),
-                ':registration_id'            => $registrationId,
-                ':city_state'                 => !empty($s['cityState']) ? trim((string)$s['cityState']) : null,
-                ':based_in_gujarat'           => (!isset($s['basedInGujarat']) || !empty($s['basedInGujarat'])) ? 1 : 0,
-                ':crr_number'                 => !empty($s['crrNumber']) ? trim((string)$s['crrNumber']) : null,
-                ':qualifications'             => !empty($s['qualifications']) ? trim((string)$s['qualifications']) : null,
-                ':training_institute'         => !empty($s['trainingInstitute']) ? trim((string)$s['trainingInstitute']) : null,
-                ':certification_level'        => !empty($s['certificationLevel']) ? trim((string)$s['certificationLevel']) : null,
-                ':years_of_experience'        => isset($s['yearsOfExperience']) && $s['yearsOfExperience'] !== '' ? (int)$s['yearsOfExperience'] : null,
-                ':professional_affiliation'   => !empty($s['professionalAffiliation']) ? trim((string)$s['professionalAffiliation']) : ($organizationName !== '' ? $organizationName : null),
-                ':areas_of_expertise'         => jsonEncode(isset($s['areasOfExpertise']) && is_array($s['areasOfExpertise']) ? $s['areasOfExpertise'] : []),
-                ':interpretation_preferences' => jsonEncode(isset($s['interpretationPreferences']) && is_array($s['interpretationPreferences']) ? $s['interpretationPreferences'] : []),
-                ':availability_days'          => jsonEncode($sAvail),
-                ':video_demo_url'             => !empty($s['videoDemoUrl']) ? trim((string)$s['videoDemoUrl']) : null,
-                ':honorarium_or_travel_notes' => !empty($s['honorariumOrTravelNotes']) ? trim((string)$s['honorariumOrTravelNotes']) : null,
-                ':created_at'                 => $now,
-                ':updated_at'                 => $now,
+            )->execute([
+                ':id'            => uuid4(),
+                ':rid'           => $registrationId,
+                ':age'           => $catData['age'],
+                ':city_state'    => $catData['cityState'] !== '' ? $catData['cityState'] : null,
+                ':in_guj'        => $catData['basedInGujarat'] ? 1 : 0,
+                ':crr'           => $catData['crrNumber'],
+                ':qual_cat'      => $catData['qualificationCategory'],
+                ':cert_lvl'      => $catData['certificationLevel'],
+                ':quals'         => $catData['qualifications'],
+                ':exp_band'      => $catData['experienceBand'],
+                ':institute'     => $catData['trainingInstitute'],
+                ':prof_aff'      => $catData['professionalAffiliation'],
+                ':expertise'     => jsonEncode($catData['areasOfExpertise']),
+                ':prefs'         => jsonEncode($catData['interpretationPreferences']),
+                ':avail_days'    => jsonEncode($catData['availabilityDays']),
+                ':avail_shifts'  => jsonEncode($catData['availabilityShifts']),
+                ':comfort_stage' => $catData['comfortablePublicStage'] ? 1 : 0,
+                ':video_url'     => $catData['videoDemoUrl'],
+                ':hon_notes'     => $catData['honorariumOrTravelNotes'],
+                ':now1'          => $now,
+                ':now2'          => $now,
             ]);
         }
 
-        // Separate Privacy & Consent Records (DPDP Act 2023 compliant)
-        $consents = [
-            ['type' => 'ZERO_TOLERANCE_HARASSMENT', 'granted' => 1],
-            ['type' => 'DATA_PROCESSING_DPDP',      'granted' => 1],
-            ['type' => 'PHOTOGRAPHY_MEDIA',         'granted' => $consentMediaPhotography ? 1 : 0],
+        // DPDP Act 2023 Consent Ledger (version 2.0)
+        $consentRows = [
+            ['type' => 'ZERO_TOLERANCE_HARASSMENT', 'granted' => $consents['consentZeroTolerance'] ? 1 : 0],
+            ['type' => 'DATA_PROCESSING_DPDP',      'granted' => $consents['consentDataProcessing'] ? 1 : 0],
+            ['type' => 'INFORMATION_ACCURACY',      'granted' => $consents['consentAccuracy'] ? 1 : 0],
+            ['type' => 'PHOTOGRAPHY_MEDIA',         'granted' => $consents['consentMediaPhotography'] ? 1 : 0],
+            ['type' => 'FUTURE_EVENT_UPDATES',      'granted' => $consents['consentFutureUpdates'] ? 1 : 0],
         ];
         $stmtConsent = $pdo->prepare(
             "INSERT INTO privacy_consent_records (
                 id, user_id, registration_id, consent_type, consent_version, granted, ip_address, recorded_at
              ) VALUES (
-                :id, :user_id, :registration_id, :consent_type, '1.0', :granted, :ip_address, :recorded_at
+                :id, :uid, :rid, :ctype, '2.0', :granted, :ip, :now
              )"
         );
-        foreach ($consents as $cItem) {
+        foreach ($consentRows as $cItem) {
             $stmtConsent->execute([
-                ':id'              => uuid4(),
-                ':user_id'         => $userId,
-                ':registration_id' => $registrationId,
-                ':consent_type'    => $cItem['type'],
-                ':granted'         => $cItem['granted'],
-                ':ip_address'      => $ipAddress,
-                ':recorded_at'     => $now,
+                ':id'      => uuid4(),
+                ':uid'     => $userId,
+                ':rid'     => $registrationId,
+                ':ctype'   => $cItem['type'],
+                ':granted' => $cItem['granted'],
+                ':ip'      => $ipAddress,
+                ':now'     => $now,
             ]);
         }
 
-        // Protected Disability Disclosure (canonical `participant_disability_disclosures` ONLY — encrypted free-text)
-        $encryptedDisabilityDesc = $disabilitySelfDescription !== ''
-            ? pfgEncryptValue($disabilitySelfDescription, 'data')
-            : null;
+        // Protected Disability Disclosures (strictly ONLY when YES; AES-256-GCM encrypted free-text)
+        $encSelfDesc = pfgEncryptSensitiveValue($access['disabilitySelfDescription']);
         if (
-            $isPersonWithDisability === 'YES' &&
-            (!empty($disabilityCategoryCodes) || $disabilitySelfDescription !== '')
+            $access['isPersonWithDisability'] === 'YES' &&
+            (!empty($access['resolvedDisabilityMap']) || $encSelfDesc !== null)
         ) {
-            if (!empty($disabilityCategoryCodes)) {
-                $placeholders = implode(',', array_fill(0, count($disabilityCategoryCodes), '?'));
-                $stmtDisLookup = $pdo->prepare(
-                    "SELECT id, code FROM disability_categories WHERE code IN ({$placeholders})"
+            if (!empty($access['resolvedDisabilityMap'])) {
+                $stmtDisIns = $pdo->prepare(
+                    'INSERT INTO participant_disability_disclosures (
+                        id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
+                     ) VALUES (
+                        :id, :rid, :dis_id, :dcode, :ccode, :self_desc, :notes, :now
+                     )'
                 );
-                $stmtDisLookup->execute($disabilityCategoryCodes);
-                $matchedCats = $stmtDisLookup->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-                if (!empty($matchedCats)) {
-                    $stmtInsDis = $pdo->prepare(
-                        'INSERT INTO participant_disability_disclosures (
-                            id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
-                         ) VALUES (
-                            :id, :registration_id, :disability_category_id, :disability_code, :category_code, :self_description, :notes, :created_at
-                         )'
-                    );
-                    foreach ($matchedCats as $idx => $mc) {
-                        $selfDesc = ($idx === 0 && $encryptedDisabilityDesc !== null) ? $encryptedDisabilityDesc : null;
-                        $stmtInsDis->execute([
-                            ':id'                     => uuid4(),
-                            ':registration_id'        => $registrationId,
-                            ':disability_category_id' => $mc['id'],
-                            ':disability_code'        => $mc['code'],
-                            ':category_code'          => $mc['code'],
-                            ':self_description'       => $selfDesc,
-                            ':notes'                  => $selfDesc,
-                            ':created_at'             => $now,
-                        ]);
-                    }
-                } else {
-                    $stmtInsDis = $pdo->prepare(
-                        'INSERT INTO participant_disability_disclosures (
-                            id, registration_id, disability_category_id, disability_code, category_code, self_description, notes, created_at
-                         ) VALUES (
-                            :id, :registration_id, NULL, :disability_code, :category_code, :self_description, :notes, :created_at
-                         )'
-                    );
-                    foreach ($disabilityCategoryCodes as $idx => $dCode) {
-                        $selfDesc = ($idx === 0 && $encryptedDisabilityDesc !== null) ? $encryptedDisabilityDesc : null;
-                        $stmtInsDis->execute([
-                            ':id'               => uuid4(),
-                            ':registration_id'  => $registrationId,
-                            ':disability_code'  => $dCode,
-                            ':category_code'    => $dCode,
-                            ':self_description' => $selfDesc,
-                            ':notes'            => $selfDesc,
-                            ':created_at'       => $now,
-                        ]);
-                    }
+                $idx = 0;
+                foreach ($access['resolvedDisabilityMap'] as $dCode => $dId) {
+                    $descVal = ($idx === 0) ? $encSelfDesc : null;
+                    // Only pass FK UUID when it matches a real row ID (36-char UUID)
+                    $fkId = (strlen($dId) === 36) ? $dId : null;
+                    $stmtDisIns->execute([
+                        ':id'        => uuid4(),
+                        ':rid'       => $registrationId,
+                        ':dis_id'    => $fkId,
+                        ':dcode'     => $dCode,
+                        ':ccode'     => $dCode,
+                        ':self_desc' => $descVal,
+                        ':notes'     => $descVal,
+                        ':now'       => $now,
+                    ]);
+                    $idx++;
                 }
             } else {
-                $stmtInsDis = $pdo->prepare(
+                $pdo->prepare(
                     'INSERT INTO participant_disability_disclosures (
                         id, registration_id, disability_category_id, self_description, notes, created_at
                      ) VALUES (
-                        :id, :registration_id, NULL, :self_description, :notes, :created_at
+                        :id, :rid, NULL, :self_desc, :notes, :now
                      )'
-                );
-                $stmtInsDis->execute([
-                    ':id'               => uuid4(),
-                    ':registration_id'  => $registrationId,
-                    ':self_description' => $encryptedDisabilityDesc,
-                    ':notes'            => $encryptedDisabilityDesc,
-                    ':created_at'       => $now,
+                )->execute([
+                    ':id'        => uuid4(),
+                    ':rid'       => $registrationId,
+                    ':self_desc' => $encSelfDesc,
+                    ':notes'     => $encSelfDesc,
+                    ':now'       => $now,
                 ]);
             }
         }
 
-        // Protected Accommodation Requests (canonical `accommodation_requests` ONLY — encrypted free-text)
-        if (!empty($accommodationTypes) || $accommodationFreeText !== '') {
-            $firstCode = !empty($accommodationTypes) ? (string)$accommodationTypes[0] : null;
-            $encryptedAccommText = $accommodationFreeText !== ''
-                ? pfgEncryptValue($accommodationFreeText, 'data')
-                : null;
-            $stmtInsAcc = $pdo->prepare(
+        // Protected Accommodation Requests (open to ALL participants regardless of disability disclosure — CAD-07)
+        $hasAccomm = !empty($access['accommodationTypes'])
+            || $access['accommodationFreeText'] !== ''
+            || !empty($access['escortAccompanying']);
+
+        if ($hasAccomm) {
+            $encAccommNotes = pfgEncryptSensitiveValue($access['accommodationFreeText']);
+            $encEscortName = $access['escortAccompanying'] ? pfgEncryptSensitiveValue($access['escortName']) : null;
+            $firstCode = !empty($access['accommodationTypes']) ? (string)$access['accommodationTypes'][0] : null;
+
+            $pdo->prepare(
                 "INSERT INTO accommodation_requests (
-                    id, registration_id, user_id, accommodation_code, selected_types, free_text_details, notes, status, created_at, updated_at
+                    id, registration_id, user_id, accommodation_code, selected_types,
+                    free_text_details, notes, escort_accompanying, escort_name_encrypted,
+                    status, created_at, updated_at
                  ) VALUES (
-                    :id, :registration_id, :user_id, :accommodation_code, :selected_types, :free_text_details, :notes, 'REQUESTED', :created_at, :updated_at
+                    :id, :rid, :uid, :acode, :sel_types,
+                    :ft_details, :notes, :escort_acc, :escort_enc,
+                    'REQUESTED', :now1, :now2
                  )"
-            );
-            $stmtInsAcc->execute([
-                ':id'                 => uuid4(),
-                ':registration_id'    => $registrationId,
-                ':user_id'            => $userId,
-                ':accommodation_code' => $firstCode,
-                ':selected_types'     => jsonEncode($accommodationTypes),
-                ':free_text_details'  => $encryptedAccommText,
-                ':notes'              => $encryptedAccommText,
-                ':created_at'         => $now,
-                ':updated_at'         => $now,
+            )->execute([
+                ':id'         => uuid4(),
+                ':rid'        => $registrationId,
+                ':uid'        => $userId,
+                ':acode'      => $firstCode,
+                ':sel_types'  => jsonEncode($access['accommodationTypes']),
+                ':ft_details' => $encAccommNotes,
+                ':notes'      => $encAccommNotes,
+                ':escort_acc' => $access['escortAccompanying'] ? 1 : 0,
+                ':escort_enc' => $encEscortName,
+                ':now1'       => $now,
+                ':now2'       => $now,
             ]);
         }
 
-        // Coupon redemption record (canonical `coupons` table ONLY)
-        if ($appliedCoupon) {
-            $stmtInsRed = $pdo->prepare(
-                'INSERT INTO coupon_redemptions (id, coupon_id, registration_id, user_id, discount_applied_inr, redeemed_at)
-                 VALUES (:id, :coupon_id, :registration_id, :user_id, :discount_applied_inr, :redeemed_at)'
+        // Immutable lifecycle status history entries
+        pfgRecordRegistrationStatusHistory(
+            $pdo,
+            $registrationId,
+            null,
+            'SUBMITTED',
+            $userId,
+            'PARTICIPANT',
+            null,
+            'Registration submitted by authenticated participant.'
+        );
+        if ($status === 'CONFIRMED') {
+            pfgRecordRegistrationStatusHistory(
+                $pdo,
+                $registrationId,
+                'SUBMITTED',
+                'CONFIRMED',
+                null,
+                'SYSTEM',
+                'Instant confirmation under free Attendee policy.',
+                'Your Attendee registration is confirmed.'
             );
-            $stmtInsRed->execute([
-                ':id'                   => uuid4(),
-                ':coupon_id'            => $appliedCoupon['id'],
-                ':registration_id'      => $registrationId,
-                ':user_id'              => $userId,
-                ':discount_applied_inr' => $discountInr,
-                ':redeemed_at'          => $now,
-            ]);
-
-            $stmtUpdC = $pdo->prepare('UPDATE coupons SET used_count = used_count + 1 WHERE id = :id');
-            $stmtUpdC->execute([':id' => $appliedCoupon['id']]);
         }
 
-        // D-01: Participant QR entry credential issuance is discontinued; Registration ID is the official identifier.
-        $qrPass = null;
-        $qrEmailed = false;
-        $emailResult = null;
+        // Clean up any saved draft for this category
+        $pdo->prepare(
+            'DELETE FROM registration_drafts WHERE edition_id = :eid AND user_id = :uid AND category_code = :ccode'
+        )->execute([
+            ':eid'   => $edition['id'],
+            ':uid'   => $userId,
+            ':ccode' => $categoryCode,
+        ]);
+
+        // Phase 4 Transactional Outbox: enqueue registration confirmation / application received email
+        if ($status === 'CONFIRMED') {
+            $qRes = pfgEnqueueNotification($pdo, [
+                'to'              => $vData['email'],
+                'templateCode'    => 'ATTENDEE_REGISTRATION_CONFIRMED',
+                'variables'       => [
+                    'fullName'          => $vData['fullName'],
+                    'registrationCode'  => $registrationCode,
+                    'categoryName'      => (string)$category['name'],
+                    'status'            => 'CONFIRMED',
+                    'attendingDaysText' => implode(', ', $vData['attendingDays']),
+                ],
+                'recipientUserId' => $userId,
+                'entityType'      => 'registration',
+                'entityId'        => $registrationId,
+                'idempotencyKey'  => 'reg-confirm:' . $registrationId,
+                'createInApp'     => true,
+                'inAppTitle'      => "Registration Confirmed ({$registrationCode})",
+                'inAppMessage'    => "Your {$category['name']} registration ({$registrationCode}) is confirmed. Quote this Registration ID at the Vadodara Registration Desk.",
+                'inAppActionUrl'  => '/dashboard',
+            ]);
+            $outboxQueueIds[] = (string)$qRes['queueId'];
+        } else {
+            $appTpl = $categoryCode === 'SLI' ? 'SLI_APPLICATION_RECEIVED' : 'VOLUNTEER_APPLICATION_RECEIVED';
+            $qRes = pfgEnqueueNotification($pdo, [
+                'to'              => $vData['email'],
+                'templateCode'    => $appTpl,
+                'variables'       => [
+                    'fullName'         => $vData['fullName'],
+                    'registrationCode' => $registrationCode,
+                    'categoryName'     => (string)$category['name'],
+                    'status'           => 'SUBMITTED',
+                ],
+                'recipientUserId' => $userId,
+                'entityType'      => 'registration',
+                'entityId'        => $registrationId,
+                'idempotencyKey'  => 'app-received:' . $registrationId,
+                'createInApp'     => true,
+                'inAppTitle'      => "Application Received ({$registrationCode})",
+                'inAppMessage'    => "Your {$category['name']} application ({$registrationCode}) has been received and is pending coordinator review.",
+                'inAppActionUrl'  => '/dashboard',
+            ]);
+            $outboxQueueIds[] = (string)$qRes['queueId'];
+        }
+
+        if ($hasAccomm) {
+            $accQ = pfgEnqueueNotification($pdo, [
+                'to'              => $vData['email'],
+                'templateCode'    => 'ACCESSIBILITY_REQUEST_RECEIVED',
+                'variables'       => [
+                    'fullName'           => $vData['fullName'],
+                    'registrationCode'   => $registrationCode,
+                    'accommodationCount' => (string)max(1, count($access['accommodationTypes'])),
+                ],
+                'recipientUserId' => $userId,
+                'entityType'      => 'registration',
+                'entityId'        => $registrationId,
+                'idempotencyKey'  => 'accomm-submit:' . $registrationId,
+                'createInApp'     => true,
+                'inAppTitle'      => "Accessibility Request Received ({$registrationCode})",
+                'inAppMessage'    => "Your accessibility support preferences for {$registrationCode} have been securely recorded for our coordinators.",
+                'inAppActionUrl'  => '/dashboard',
+            ]);
+            $outboxQueueIds[] = (string)$accQ['queueId'];
+        }
 
         $pdo->commit();
     } catch (Throwable $txErr) {
@@ -1166,90 +981,88 @@ try {
         throw $txErr;
     }
 
-    if ($shouldSendConfirmationEmail) {
-        $emailResult = sendRegistrationConfirmationEmail($pdo, [
-            'to'               => $normalizedEmail,
-            'fullName'         => $fullName,
-            'registrationCode' => $registrationCode,
-            'categoryName'     => (string)$category['name'],
-            'status'           => $status,
-            'recipientUserId'  => $userId,
-            'idempotencyKey'   => 'reg-confirm:' . $registrationId,
-        ]);
-    } elseif (!empty($category['requires_approval'])) {
-        $emailResult = sendApplicationReceivedEmail($pdo, [
-            'to'               => $normalizedEmail,
-            'fullName'         => $fullName,
-            'registrationCode' => $registrationCode,
-            'categoryName'     => (string)$category['name'],
-            'recipientUserId'  => $userId,
-            'idempotencyKey'   => 'app-received:' . $registrationId,
-        ]);
+    // Best-effort post-commit local file-sink dispatch
+    $emailDelivery = ['queued' => count($outboxQueueIds), 'status' => 'QUEUED'];
+    if (!empty($outboxQueueIds) && defined('MAIL_DRIVER') && MAIL_DRIVER === 'file') {
+        try {
+            $processed = 0;
+            foreach ($outboxQueueIds as $qid) {
+                if (pfgDispatchQueuedIdNow($pdo, $qid) !== null) {
+                    $processed++;
+                }
+            }
+            $emailDelivery = ['queued' => count($outboxQueueIds), 'status' => 'CAPTURED_LOCAL', 'processed' => $processed];
+        } catch (Throwable $mailErr) {
+            error_log('[POST /api/registrations] file-sink dispatch warning: ' . $mailErr->getMessage());
+        }
     }
 
-    pfgRecordAuditCompat(
-        $pdo,
-        $userId,
-        'REGISTRATION_SUBMITTED',
-        'registration',
-        $registrationId,
-        $ipAddress,
-        $userAgent,
-        [
-            'registrationCode' => $registrationCode,
-            'categoryCode'     => $categoryCode,
-            'status'           => $status,
-            'paymentStatus'    => $paymentStatus,
-            'qrIssued'         => $qrPass !== null,
-        ]
-    );
-
-    $registrationPayload = [
-        'id'                     => $registrationId,
-        'registrationCode'       => $registrationCode,
-        'editionId'              => (string)$edition['id'],
-        'userId'                 => $userId,
-        'categoryId'             => (string)$category['id'],
-        'categoryCode'           => $categoryCode,
-        'status'                 => $status,
-        'paymentStatus'          => $paymentStatus,
-        'fullName'               => $fullName,
-        'email'                  => $normalizedEmail,
-        'phone'                  => $phone,
-        'country'                => $country,
-        'occupation'             => $occupation,
-        'organizationName'       => $organizationName !== '' ? $organizationName : null,
-        'designation'            => $designation !== '' ? $designation : null,
-        'isPersonWithDisability' => $isPersonWithDisability,
-        'attendingDays'          => $attendingDays,
-        'interestedTracks'       => $interestedTracks,
-        'submittedAt'            => $now,
-        'createdAt'              => $now,
+    $auditMeta = [
+        'registrationCode' => $registrationCode,
+        'categoryCode'     => $categoryCode,
+        'status'           => $status,
+        'paymentStatus'    => $paymentStatus,
+        'qrIssued'         => false,
     ];
+    if ($categoryCode === 'SLI' && !empty($catData['outstationReviewTag'])) {
+        $auditMeta['outstationSliCoordinatorReview'] = true;
+    }
 
-    pfgRegJson([
-        'registration' => $registrationPayload,
-        'category'     => [
+    logAudit($pdo, [
+        'actorUserId'  => $userId,
+        'action'       => 'REGISTRATION_SUBMITTED',
+        'resourceType' => 'registration',
+        'resourceId'   => $registrationId,
+        'ipAddress'    => $ipAddress,
+        'userAgent'    => $userAgent,
+        'metadata'     => $auditMeta,
+    ]);
+
+    pfgRegApiJson([
+        'registration' => [
+            'id'                     => $registrationId,
+            'registrationCode'       => $registrationCode,
+            'editionId'              => (string)$edition['id'],
+            'userId'                 => $userId,
+            'categoryId'             => (string)$category['id'],
+            'categoryCode'           => $categoryCode,
+            'categoryName'           => (string)$category['name'],
+            'status'                 => $status,
+            'paymentStatus'          => $paymentStatus,
+            'assignmentStatus'       => 'UNASSIGNED',
+            'fullName'               => $vData['fullName'],
+            'email'                  => $vData['email'],
+            'phone'                  => $vData['phone'],
+            'country'                => $vData['country'],
+            'cityDistrict'           => $vData['cityDistrict'],
+            'state'                  => $vData['state'],
+            'organizationName'       => $vData['organizationName'],
+            'designation'            => $vData['designation'],
+            'isPersonWithDisability' => $access['isPersonWithDisability'],
+            'attendingDays'          => $vData['attendingDays'],
+            'interestedTracks'       => $vData['interestedTracks'],
+            'submittedAt'            => $now,
+            'createdAt'              => $now,
+        ],
+        'category' => [
             'code'             => (string)$category['code'],
             'name'             => (string)$category['name'],
-            'requiresApproval' => !empty($category['requires_approval']),
-            'requiresPayment'  => !empty($category['requires_payment']),
+            'requiresApproval' => $requiresApproval,
+            'requiresPayment'  => false,
         ],
-        'pricing'      => [
-            'feeAmountInr' => $feeAmountInr,
-            'discountInr'  => $discountInr,
-            'netAmountInr' => $netAmountInr,
-            'couponCode'   => $appliedCoupon ? (string)$appliedCoupon['code'] : null,
+        'pricing' => [
+            'feeAmountInr' => 0,
+            'discountInr'  => 0,
+            'netAmountInr' => 0,
+            'couponCode'   => null,
         ],
-        'qrPass'         => $qrPass,
-        'qrEmailed'      => $qrEmailed,
-        'emailSentTo'    => $normalizedEmail,
-        'emailDelivery'  => $emailResult,
-        'sessionCreated' => false,
+        'qrPass'        => null,
+        'emailSentTo'   => $vData['email'],
+        'emailDelivery' => $emailDelivery,
     ], 201);
 } catch (Throwable $e) {
     error_log('POST /api/registrations error: ' . $e->getMessage());
-    pfgRegJson([
+    pfgRegApiJson([
         'error' => 'Unable to complete registration right now. Please try again.',
     ], 500);
 }

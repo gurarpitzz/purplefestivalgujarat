@@ -1,0 +1,5 @@
+Queue Volume,Parallel Workers,Claimed Total,Processed Total,Accepted Total,Duplicate Claims,Duplicate Deliveries,Retry Records,Failed Records,Wall Duration (ms),Peak Memory (KB),Status,Runtime
+10,4,10,10,10,0,0,0,0,136,2048,PASS,PHP 8.2.12 CLI + MariaDB 10.4.32 (resend_simulated)
+100,4,100,100,100,0,0,0,0,147,2048,PASS,PHP 8.2.12 CLI + MariaDB 10.4.32 (resend_simulated)
+500,4,500,500,500,0,0,0,0,387,2048,PASS,PHP 8.2.12 CLI + MariaDB 10.4.32 (resend_simulated)
+1000,4,1000,1000,1000,0,0,0,0,675,2048,PASS,PHP 8.2.12 CLI + MariaDB 10.4.32 (resend_simulated)

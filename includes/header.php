@@ -35,6 +35,42 @@ $resolvedCanonical = isset($pageCanonical) && trim((string)$pageCanonical) !== '
 
 $ogImage = $siteUrl . '/assets/logos/purple-festival.jpg';
 
+// Safely resolve authenticated state and session-bound CSRF token for header/footer navigation
+$pfgHeaderUser = null;
+$pfgHeaderRoles = [];
+$pfgHeaderCsrfToken = '';
+$pfgNavState = 'GUEST'; // GUEST | PARTICIPANT | ADMIN | RGST
+
+try {
+    if (!function_exists('getCurrentUser') && is_file(__DIR__ . '/auth.php')) {
+        require_once __DIR__ . '/auth.php';
+    }
+    if (function_exists('getCurrentUser')) {
+        $sessionCookieName = defined('SESSION_COOKIE_NAME') ? SESSION_COOKIE_NAME : 'pfg_session';
+        if (!empty($_COOKIE[$sessionCookieName]) && is_string($_COOKIE[$sessionCookieName])) {
+            $pfgHeaderUser = getCurrentUser();
+        }
+    }
+    if (is_array($pfgHeaderUser)) {
+        $pfgHeaderRoles = is_array($pfgHeaderUser['roles'] ?? null) ? $pfgHeaderUser['roles'] : ['PARTICIPANT'];
+        if (in_array('SUPERADMIN', $pfgHeaderRoles, true) || in_array('ADMIN', $pfgHeaderRoles, true)) {
+            $pfgNavState = 'ADMIN';
+        } elseif (in_array('RGST', $pfgHeaderRoles, true)) {
+            $pfgNavState = 'RGST';
+        } else {
+            $pfgNavState = 'PARTICIPANT';
+        }
+        if (function_exists('getCsrfToken')) {
+            $pfgHeaderCsrfToken = getCsrfToken();
+        }
+    }
+} catch (\Throwable $e) {
+    $pfgHeaderUser = null;
+    $pfgHeaderRoles = [];
+    $pfgHeaderCsrfToken = '';
+    $pfgNavState = 'GUEST';
+}
+
 $navLinks = [
     ['label' => 'Programme & Zones', 'href' => '/programme'],
     ['label' => 'About', 'href' => '/#about'],
@@ -62,7 +98,7 @@ $defaultSchemaGraph = [
             'image' => [$ogImage],
             'location' => [
                 '@type' => 'Place',
-                'name' => 'The Maharaja Sayajirao University of Baroda & Vadodara Sports Venues',
+                'name' => 'Sama Indoor Stadium & Participating Vadodara Venues',
                 'address' => [
                     '@type' => 'PostalAddress',
                     'addressLocality' => 'Vadodara',
@@ -95,9 +131,15 @@ $defaultSchemaGraph = [
     ],
 ];
 
-$schemaJsonOutput = isset($structuredData) && is_array($structuredData)
-    ? json_encode($structuredData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-    : json_encode($defaultSchemaGraph, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+$schemaPayload = isset($structuredData) && is_array($structuredData)
+    ? $structuredData
+    : $defaultSchemaGraph;
+$schemaJsonOutput = function_exists('pfgSafeJsonForScript')
+    ? pfgSafeJsonForScript($schemaPayload)
+    : (json_encode(
+        $schemaPayload,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    ) ?: '{}');
 ?>
 <!DOCTYPE html>
 <html lang="en" data-text-scale="100" data-contrast="default" data-reduced-motion="false" data-spacing="normal" data-highlight-links="false">
@@ -141,6 +183,11 @@ $schemaJsonOutput = isset($structuredData) && is_array($structuredData)
   <!-- Hero Illustration Preloads -->
   <link rel="preload" as="image" href="/assets/illustrations/statue-of-unity.png" />
   <link rel="preload" as="image" href="/assets/illustrations/somnath-temple.png" />
+
+  <!-- Early Accessibility Preferences Init (prevents FOUC before first paint — FND-46) -->
+  <script>
+  (function(){try{var r=document.documentElement,raw=localStorage.getItem('pfg27_a11y_prefs')||localStorage.getItem('pfg27_a11y_prefs_v1'),osRM=false;try{osRM=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}var p=raw?JSON.parse(raw):{};var scales=[90,100,115,130,150,175,200],sc=Number(p&&p.textScale);if(scales.indexOf(sc)===-1)sc=100;var ct=(p&&(p.contrast==='high'||p.contrast==='yellow-black'))?p.contrast:'default';var rm=(p&&typeof p.reducedMotion==='boolean')?p.reducedMotion:osRM;var sp=Boolean(p&&p.wideSpacing);var hl=Boolean(p&&p.highlightLinks);r.setAttribute('data-text-scale',String(sc));r.setAttribute('data-contrast',ct);r.setAttribute('data-reduced-motion',rm?'true':'false');r.setAttribute('data-spacing',sp?'wide':'normal');r.setAttribute('data-highlight-links',hl?'true':'false');r.style.fontSize=sc+'%';}catch(e){}})();
+  </script>
 
   <!-- Compiled Tailwind & Design System CSS -->
   <link rel="stylesheet" href="/assets/css/app.css" />
@@ -188,21 +235,103 @@ $schemaJsonOutput = isset($structuredData) && is_array($structuredData)
         <?php endforeach; ?>
       </nav>
 
-      <!-- Right Controls: Outlined Login, Solid #A459FF Apply Now, Circular Accessibility -->
+      <!-- Right Controls: Auth-Aware Portal Controls, Apply Now, Circular Accessibility -->
       <div class="flex items-center gap-3">
-        <a
-          href="/login"
-          class="touch-target hidden items-center justify-center border-2 border-[#202D59] bg-transparent px-6 py-2 text-[16px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white sm:inline-flex"
-        >
-          Login
-        </a>
-
-        <a
-          href="/apply"
-          class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-6 py-2 text-[16px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
-        >
-          Apply Now
-        </a>
+        <?php if ($pfgNavState === 'ADMIN'): ?>
+          <a
+            href="/admin"
+            class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-5 py-2 text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
+          >
+            Admin Portal
+          </a>
+          <form
+            method="post"
+            action="/api/auth/logout"
+            data-pfg-logout-form="true"
+            class="hidden sm:inline-flex"
+          >
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
+            <input type="hidden" name="redirect" value="/" />
+            <button
+              type="submit"
+              data-pfg-logout-btn="true"
+              class="touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
+            >
+              Logout
+            </button>
+          </form>
+        <?php elseif ($pfgNavState === 'RGST'): ?>
+          <a
+            href="/rgst"
+            class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-5 py-2 text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
+          >
+            Registration Desk
+          </a>
+          <form
+            method="post"
+            action="/api/auth/logout"
+            data-pfg-logout-form="true"
+            class="hidden sm:inline-flex"
+          >
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
+            <input type="hidden" name="redirect" value="/" />
+            <button
+              type="submit"
+              data-pfg-logout-btn="true"
+              class="touch-target inline-flex items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white"
+            >
+              Logout
+            </button>
+          </form>
+        <?php elseif ($pfgNavState === 'PARTICIPANT'): ?>
+          <a
+            href="/dashboard"
+            class="touch-target hidden items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white sm:inline-flex"
+          >
+            Dashboard
+          </a>
+          <a
+            href="/apply"
+            class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-5 py-2 text-[15px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
+          >
+            Apply
+          </a>
+          <form
+            method="post"
+            action="/api/auth/logout"
+            data-pfg-logout-form="true"
+            class="hidden md:inline-flex"
+          >
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
+            <input type="hidden" name="redirect" value="/" />
+            <button
+              type="submit"
+              data-pfg-logout-btn="true"
+              class="touch-target inline-flex items-center justify-center border border-[#202D59]/35 bg-white/70 px-4 py-2 text-[14px] font-semibold text-[#202D59] transition-colors hover:border-[#202D59] hover:bg-[#202D59] hover:text-white"
+            >
+              Logout
+            </button>
+          </form>
+        <?php else: ?>
+          <a
+            href="/login"
+            class="touch-target hidden items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-2 text-[16px] font-semibold text-[#202D59] transition-colors hover:bg-[#202D59] hover:text-white sm:inline-flex"
+          >
+            Login
+          </a>
+          <a
+            href="/register"
+            class="touch-target hidden items-center justify-center px-3 py-2 text-[15px] font-semibold text-[#202D59] transition-colors hover:text-[#A459FF] xl:inline-flex"
+          >
+            Register
+          </a>
+          <a
+            href="/apply"
+            class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-6 py-2 text-[16px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
+          >
+            Apply Now
+          </a>
+        <?php endif; ?>
 
         <button
           type="button"
@@ -259,21 +388,103 @@ $schemaJsonOutput = isset($structuredData) && is_array($structuredData)
           </a>
         <?php endforeach; ?>
       </nav>
-      <div class="mt-4 flex flex-col gap-2.5 border-t border-[#202D59]/15 pt-4 sm:hidden">
-        <a
-          href="/login"
-          data-mobile-nav-link="true"
-          class="touch-target flex items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
-        >
-          Participant &amp; Staff Login
-        </a>
-        <a
-          href="/apply"
-          data-mobile-nav-link="true"
-          class="btn-primary-pfg touch-target flex items-center justify-center bg-[#A459FF] px-4 py-2.5 text-sm font-bold text-white"
-        >
-          Apply Now
-        </a>
+      <div class="mt-4 flex flex-col gap-2.5 border-t border-[#202D59]/15 pt-4">
+        <?php if ($pfgNavState === 'ADMIN'): ?>
+          <a
+            href="/admin"
+            data-mobile-nav-link="true"
+            class="btn-primary-pfg touch-target flex items-center justify-center bg-[#A459FF] px-4 py-2.5 text-sm font-bold text-white"
+          >
+            Admin Portal
+          </a>
+          <form method="post" action="/api/auth/logout" data-pfg-logout-form="true" class="w-full">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
+            <input type="hidden" name="redirect" value="/" />
+            <button
+              type="submit"
+              data-pfg-logout-btn="true"
+              class="touch-target flex w-full items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
+            >
+              Logout
+            </button>
+          </form>
+        <?php elseif ($pfgNavState === 'RGST'): ?>
+          <a
+            href="/rgst"
+            data-mobile-nav-link="true"
+            class="btn-primary-pfg touch-target flex items-center justify-center bg-[#A459FF] px-4 py-2.5 text-sm font-bold text-white"
+          >
+            Registration Desk
+          </a>
+          <form method="post" action="/api/auth/logout" data-pfg-logout-form="true" class="w-full">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
+            <input type="hidden" name="redirect" value="/" />
+            <button
+              type="submit"
+              data-pfg-logout-btn="true"
+              class="touch-target flex w-full items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
+            >
+              Logout
+            </button>
+          </form>
+        <?php elseif ($pfgNavState === 'PARTICIPANT'): ?>
+          <a
+            href="/dashboard"
+            data-mobile-nav-link="true"
+            class="touch-target flex items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
+          >
+            Dashboard
+          </a>
+          <a
+            href="/apply"
+            data-mobile-nav-link="true"
+            class="btn-primary-pfg touch-target flex items-center justify-center bg-[#A459FF] px-4 py-2.5 text-sm font-bold text-white"
+          >
+            Apply
+          </a>
+          <form method="post" action="/api/auth/logout" data-pfg-logout-form="true" class="w-full">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($pfgHeaderCsrfToken, ENT_QUOTES, 'UTF-8') ?>" />
+            <input type="hidden" name="redirect" value="/" />
+            <button
+              type="submit"
+              data-pfg-logout-btn="true"
+              class="touch-target flex w-full items-center justify-center border border-[#202D59]/35 bg-white/70 px-4 py-2.5 text-sm font-bold text-[#202D59]"
+            >
+              Logout
+            </button>
+          </form>
+        <?php else: ?>
+          <a
+            href="/apply"
+            data-mobile-nav-link="true"
+            class="btn-primary-pfg touch-target flex items-center justify-center bg-[#A459FF] px-4 py-2.5 text-sm font-bold text-white"
+          >
+            Apply Now
+          </a>
+          <div class="grid grid-cols-2 gap-2.5">
+            <a
+              href="/login"
+              data-mobile-nav-link="true"
+              class="touch-target flex items-center justify-center border-2 border-[#202D59] px-4 py-2.5 text-sm font-bold text-[#202D59]"
+            >
+              Login
+            </a>
+            <a
+              href="/register"
+              data-mobile-nav-link="true"
+              class="touch-target flex items-center justify-center border border-[#202D59]/35 bg-white/75 px-4 py-2.5 text-sm font-bold text-[#202D59]"
+            >
+              Register
+            </a>
+          </div>
+          <a
+            href="/staff/login"
+            data-mobile-nav-link="true"
+            class="mt-1 inline-flex items-center justify-center py-1.5 text-xs font-semibold text-[#202D59]/75 underline-offset-4 hover:text-[#202D59] hover:underline"
+          >
+            Staff Portal
+          </a>
+        <?php endif; ?>
       </div>
     </div>
   </header>

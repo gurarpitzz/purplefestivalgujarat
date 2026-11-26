@@ -47,10 +47,18 @@ DirectoryIndex index.php index.html
     # 3. Explicit clean route mappings for core pages & portals
     RewriteRule ^$ index.php [QSA,L]
     RewriteRule ^login/?$ login.php [QSA,L]
+    RewriteRule ^register/?$ register.php [QSA,L]
+    RewriteRule ^verify-email/?$ verify-email.php [QSA,L]
+    RewriteRule ^forgot-password/?$ forgot-password.php [QSA,L]
+    RewriteRule ^reset-password/?$ reset-password.php [QSA,L]
+    RewriteRule ^staff/login/?$ staff/login.php [QSA,L]
     RewriteRule ^auth/login/?$ auth/login.php [QSA,L]
     RewriteRule ^programme/?$ programme.php [QSA,L]
     RewriteRule ^accessibility/?$ accessibility.php [QSA,L]
     RewriteRule ^apply/?$ apply/index.php [QSA,L]
+    RewriteRule ^apply/attendee/?$ apply/attendee.php [QSA,L]
+    RewriteRule ^apply/volunteer/?$ apply/volunteer.php [QSA,L]
+    RewriteRule ^apply/sli/?$ apply/sli.php [QSA,L]
     RewriteRule ^dashboard/?$ dashboard/index.php [QSA,L]
     RewriteRule ^dashboard/pass-print/?$ dashboard/pass-print.php [QSA,L]
     RewriteRule ^admin/?$ admin/index.php [QSA,L]
@@ -61,6 +69,9 @@ DirectoryIndex index.php index.html
 
     # 4. Explicit clean route mappings for JSON API endpoints
     RewriteRule ^api/registrations/?$ api/registrations/index.php [QSA,L]
+    RewriteRule ^api/attendance/?$ api/attendance/index.php [QSA,L]
+    RewriteRule ^api/attendance/mark/?$ api/attendance/mark.php [QSA,L]
+    RewriteRule ^api/attendance/correct/?$ api/attendance/correct.php [QSA,L]
     RewriteRule ^api/checkins/?$ api/checkins/index.php [QSA,L]
     RewriteRule ^api/checkins/confirm/?$ api/checkins/confirm.php [QSA,L]
     RewriteRule ^api/coupons/validate/?$ api/coupons/validate.php [QSA,L]

@@ -83,21 +83,24 @@ try {
                 ':now'        => $now,
             ]);
 
-            $resetUrl = APP_URL . '/login?resetToken=' . rawurlencode($rawToken);
-            $safeName = htmlspecialchars((string)$user['full_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-            $safeUrl = htmlspecialchars($resetUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $resetUrl = APP_URL . '/reset-password?token=' . rawurlencode($rawToken);
 
-            // Deliver via mailer without persisting rawToken or resetUrl in notification_queue.payload
+            // Phase 4L Secure Ephemeral Delivery: actionUrl encrypted in ephemeral_secret_enc & wiped immediately upon handoff;
+            // NEVER persisted in notification_queue.payload or notification_delivery_logs.
             sendFestivalEmail($pdo, [
                 'to'              => (string)$user['email'],
-                'subject'         => 'Reset your Purple Festival Gujarat 2027 password',
-                'html'            => "<p>Dear {$safeName},</p><p>Use the link below within 1 hour to reset your password:</p><p><a href=\"{$safeUrl}\">Reset Password</a></p><p>If you did not request this, you can safely ignore this email.</p>",
-                'text'            => "Dear {$user['full_name']},\n\nReset your password within 1 hour using this link:\n{$resetUrl}\n\nIf you did not request this, ignore this email.",
-                'templateCode'    => 'PASSWORD_RESET',
-                'recipientUserId' => (string)$user['id'],
-                'metadata'        => [
-                    'expiresAt' => $expiresAt,
+                'templateCode'    => 'PASSWORD_RECOVERY',
+                'variables'       => [
+                    'fullName'      => (string)($user['full_name'] ?: 'Participant'),
+                    'expiresInText' => '1 hour',
                 ],
+                'ephemeralVars'   => [
+                    'actionUrl' => $resetUrl,
+                ],
+                'recipientUserId' => (string)$user['id'],
+                'entityType'      => 'user',
+                'entityId'        => (string)$user['id'],
+                'priority'        => 1,
             ]);
 
             logAudit([
@@ -125,25 +128,21 @@ try {
             jsonResponse(['error' => 'Invalid password reset token.'], 400);
         }
         if (strlen($newPassword) < 8 || strlen($newPassword) > 128) {
-            jsonResponse(['error' => 'New password must be at least 8 characters.'], 400);
+            jsonResponse(['error' => 'New password must be between 8 and 128 characters.'], 400);
+        }
+        if (!preg_match('/[A-Za-z]/', $newPassword) || !preg_match('/[0-9]/', $newPassword)) {
+            jsonResponse(['error' => 'New password must include at least one letter and one number.'], 400);
         }
 
         $tokenHash = hashToken($rawToken);
         $now = nowSql();
+        $newHash = hashPassword($newPassword);
 
-        $stmt = $pdo->prepare("
-            SELECT id, user_id
-            FROM auth_accounts
-            WHERE provider = 'password_reset'
-              AND token_hash = :token_hash
-              AND expires_at > :now
-            LIMIT 1
-        ");
-        $stmt->execute([':token_hash' => $tokenHash, ':now' => $now]);
-        $resetRecord = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$resetRecord) {
-            $stmt2 = $pdo->prepare("
+        // Atomic token lookup + single-use consumption BEFORE updating users.password_hash (MED-03)
+        $targetUserId = null;
+        $pdo->beginTransaction();
+        try {
+            $stmtPrt = $pdo->prepare("
                 SELECT id, user_id
                 FROM password_reset_tokens
                 WHERE token_hash = :token_hash
@@ -151,38 +150,100 @@ try {
                   AND expires_at > :now
                 LIMIT 1
             ");
-            $stmt2->execute([':token_hash' => $tokenHash, ':now' => $now]);
-            $resetRecord = $stmt2->fetch(PDO::FETCH_ASSOC);
+            $stmtPrt->execute([':token_hash' => $tokenHash, ':now' => $now]);
+            $prtRecord = $stmtPrt->fetch(PDO::FETCH_ASSOC);
+
+            if ($prtRecord && !empty($prtRecord['user_id'])) {
+                $consumePrt = $pdo->prepare("
+                    UPDATE password_reset_tokens
+                    SET used_at = :now
+                    WHERE id = :id
+                      AND used_at IS NULL
+                      AND expires_at > :now2
+                ");
+                $consumePrt->execute([
+                    ':now'  => $now,
+                    ':id'   => $prtRecord['id'],
+                    ':now2' => $now,
+                ]);
+                if ($consumePrt->rowCount() !== 1) {
+                    $pdo->rollBack();
+                    jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+                }
+                $targetUserId = (string)$prtRecord['user_id'];
+            } else {
+                $stmtAa = $pdo->prepare("
+                    SELECT id, user_id
+                    FROM auth_accounts
+                    WHERE provider = 'password_reset'
+                      AND token_hash = :token_hash
+                      AND expires_at > :now
+                    LIMIT 1
+                ");
+                $stmtAa->execute([':token_hash' => $tokenHash, ':now' => $now]);
+                $aaRecord = $stmtAa->fetch(PDO::FETCH_ASSOC);
+
+                if (!$aaRecord || empty($aaRecord['user_id'])) {
+                    $pdo->rollBack();
+                    jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+                }
+
+                $consumeAa = $pdo->prepare("
+                    DELETE FROM auth_accounts
+                    WHERE id = :id
+                      AND provider = 'password_reset'
+                      AND expires_at > :now
+                ");
+                $consumeAa->execute([
+                    ':id'  => $aaRecord['id'],
+                    ':now' => $now,
+                ]);
+                if ($consumeAa->rowCount() !== 1) {
+                    $pdo->rollBack();
+                    jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
+                }
+                $targetUserId = (string)$aaRecord['user_id'];
+            }
+
+            // Update password while strictly preserving any active 3-hour account lockout
+            // (password recovery must never silently bypass an active lockout window).
+            $pdo->prepare("
+                UPDATE users
+                SET password_hash = :hash,
+                    failed_login_attempts = CASE
+                        WHEN locked_until IS NOT NULL AND locked_until > :now_chk1 THEN failed_login_attempts
+                        ELSE 0
+                    END,
+                    locked_until = CASE
+                        WHEN locked_until IS NOT NULL AND locked_until > :now_chk2 THEN locked_until
+                        ELSE NULL
+                    END,
+                    updated_at = :now
+                WHERE id = :uid
+            ")->execute([
+                ':hash'     => $newHash,
+                ':now_chk1' => $now,
+                ':now_chk2' => $now,
+                ':now'      => $now,
+                ':uid'      => $targetUserId,
+            ]);
+
+            // Invalidate any remaining reset tokens for this user across both tables
+            $pdo->prepare("UPDATE password_reset_tokens SET used_at = :now WHERE user_id = :uid AND used_at IS NULL")
+                ->execute([':now' => $now, ':uid' => $targetUserId]);
+            $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'password_reset'")
+                ->execute([':uid' => $targetUserId]);
+
+            $pdo->commit();
+        } catch (Throwable $txErr) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $txErr;
         }
-
-        if (!$resetRecord || empty($resetRecord['user_id'])) {
-            jsonResponse(['error' => 'This password reset link is invalid or has expired.'], 400);
-        }
-
-        $targetUserId = (string)$resetRecord['user_id'];
-        $newHash = hashPassword($newPassword);
-
-        $pdo->prepare("
-            UPDATE users
-            SET password_hash = :hash,
-                failed_login_attempts = 0,
-                locked_until = NULL,
-                updated_at = :now
-            WHERE id = :uid
-        ")->execute([
-            ':hash' => $newHash,
-            ':now'  => $now,
-            ':uid'  => $targetUserId,
-        ]);
 
         // Revoke all active sessions for security
         revokeAllUserSessions($targetUserId, null, $pdo, $targetUserId, 'password_reset_completed');
-
-        // Consume reset token in both tables
-        $pdo->prepare("DELETE FROM auth_accounts WHERE user_id = :uid AND provider = 'password_reset'")
-            ->execute([':uid' => $targetUserId]);
-        $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id = :uid")
-            ->execute([':uid' => $targetUserId]);
 
         logAudit([
             'actorUserId'  => $targetUserId,
@@ -190,6 +251,29 @@ try {
             'resourceType' => 'user',
             'resourceId'   => $targetUserId,
         ]);
+
+        // Send password reset confirmation email (Phase 4K Template #5)
+        try {
+            $uStmt = $pdo->prepare('SELECT email, full_name FROM users WHERE id = :uid LIMIT 1');
+            $uStmt->execute([':uid' => $targetUserId]);
+            $uInfo = $uStmt->fetch(PDO::FETCH_ASSOC);
+            if ($uInfo && !empty($uInfo['email'])) {
+                sendFestivalEmail($pdo, [
+                    'to'              => (string)$uInfo['email'],
+                    'templateCode'    => 'PASSWORD_RESET_CONFIRMATION',
+                    'variables'       => [
+                        'fullName'     => (string)($uInfo['full_name'] ?: 'Participant'),
+                        'changedAtIst' => formatIstTimestamp($now),
+                    ],
+                    'recipientUserId' => $targetUserId,
+                    'entityType'      => 'user',
+                    'entityId'        => $targetUserId,
+                    'priority'        => 2,
+                ]);
+            }
+        } catch (Throwable $mailErr) {
+            error_log('/api/auth/password-reset confirmation email warning: ' . $mailErr->getMessage());
+        }
 
         jsonResponse([
             'success' => true,

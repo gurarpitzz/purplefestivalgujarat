@@ -1,6 +1,13 @@
 ---
+# Purple Festival Gujarat 2027 — Safe Bluehost cPanel Git Deployment Configuration
+#
+# SAFETY POLICY:
+# - Never executes destructive `rm -rf` or self-copy operations when the Git repository
+#   checkout and web document root point to the same or overlapping directories.
+# - Only deploys when an explicit, strictly separate staging docroot is configured in
+#   `$HOME/.pfg27_staging_docroot` (outside public_html), using `scripts/build-release-package.php`
+#   so only verified production runtime files reach the webroot and staging `.htaccess`
+#   protection (Basic Auth + X-Robots-Tag) is preserved automatically.
 deployment:
   tasks:
-    - export DEPLOYPATH=/home1/tstpllmy/public_html/purplefestivalgujarat/
-    - test -n "$DEPLOYPATH" && test "$DEPLOYPATH" = "/home1/tstpllmy/public_html/purplefestivalgujarat/" && /bin/rm -rf "${DEPLOYPATH}docs" "${DEPLOYPATH}audit" "${DEPLOYPATH}project-docs" "${DEPLOYPATH}tests" "${DEPLOYPATH}README.md"
-    - test -n "$DEPLOYPATH" && test "$DEPLOYPATH" = "/home1/tstpllmy/public_html/purplefestivalgujarat/" && /bin/cp -R index.php login.php programme.php accessibility.php .htaccess .user.ini admin api apply assets auth dashboard database includes legal rgst "$DEPLOYPATH"
+    - /bin/sh scripts/deploy-staging.sh

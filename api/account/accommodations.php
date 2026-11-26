@@ -9,6 +9,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/includes/config.php';
 require_once dirname(__DIR__, 2) . '/includes/database.php';
 require_once dirname(__DIR__, 2) . '/includes/auth.php';
+require_once dirname(__DIR__, 2) . '/includes/notification-service.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
@@ -172,6 +173,30 @@ try {
             ':created_at'         => $now,
             ':updated_at'         => $now,
         ]);
+
+        // Privacy-safe accessibility receipt notification (never repeats free-text disclosures in email)
+        if (!empty($user['email'])) {
+            try {
+                pfgEnqueueNotification($pdo, [
+                    'to'              => (string)$user['email'],
+                    'templateCode'    => 'ACCESSIBILITY_REQUEST_RECEIVED',
+                    'variables'       => [
+                        'fullName'           => (string)($user['fullName'] ?? $user['full_name'] ?? 'Participant'),
+                        'registrationCode'   => (string)$reg['registration_code'],
+                        'accommodationCount' => (string)max(1, count($selectedTypes)),
+                    ],
+                    'recipientUserId' => (string)$user['id'],
+                    'entityType'      => 'accommodation_request',
+                    'entityId'        => $reqId,
+                    'idempotencyKey'  => 'accomm-req-recv:' . $reqId,
+                    'createInApp'     => true,
+                    'inAppTitle'      => 'Accessibility Request Received',
+                    'inAppMessage'    => "Your accessibility support request for {$reg['registration_code']} has been received.",
+                ]);
+            } catch (Throwable $mailErr) {
+                error_log('[/api/account/accommodations] notification enqueue warning: ' . $mailErr->getMessage());
+            }
+        }
 
         if (function_exists('logAudit')) {
             logAudit(

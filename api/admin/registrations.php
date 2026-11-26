@@ -2,11 +2,16 @@
 declare(strict_types=1);
 
 /**
- * Purple Festival Gujarat 2027 — Admin Registrations, Volunteer/SLI Review, QR Issuance & CSV Export API
+ * Purple Festival Gujarat 2027 — Admin Registrations, Volunteer/SLI Review & CSV Export API
  * Endpoints:
- *   GET    /api/admin/registrations (list + filter + search + ?export=csv / ?format=csv)
- *   GET    /api/admin/registrations?id=<uuid> or /api/admin/registrations/<uuid> (single detail)
- *   PATCH  /api/admin/registrations (or POST) — status review, volunteer/SLI assignment, QR issue/reissue/revoke
+ *   GET    /api/admin/registrations (SQL-paginated list + filters + ?export=csv / ?format=csv)
+ *   GET    /api/admin/registrations?id=<uuid> or /api/admin/registrations/<uuid> (full detail payload)
+ *   PATCH  /api/admin/registrations (or POST) — lifecycle status review, legacy duty fields, legacy credential revocation
+ *
+ * Phase 7 integration: every status change is validated against the canonical application state machine
+ * (local fallback in includes/admin-common.php mirrors includes/application-lifecycle.php), is written to
+ * `registration_status_history`, and keeps approval, assignment and attendance as three separate dimensions.
+ * Sensitive disability / accommodation data stays gated behind `accommodations.read` + SENSITIVE_DATA_READ audit.
  */
 
 require_once __DIR__ . '/../../includes/config.php';
@@ -14,6 +19,8 @@ require_once __DIR__ . '/../../includes/database.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/qr-service.php';
 require_once __DIR__ . '/../../includes/mailer.php';
+require_once __DIR__ . '/../../includes/notification-service.php';
+require_once __DIR__ . '/../../includes/admin-common.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     http_response_code(204);
@@ -90,6 +97,18 @@ function pfgResolveRegistrationId(array $input = []): string
     return '';
 }
 
+/**
+ * Participant-supplied URLs are only echoed back when they are valid http(s) URLs.
+ */
+function pfgRegSafeUrl($url): ?string
+{
+    if (!is_string($url) || trim($url) === '') {
+        return null;
+    }
+    $safe = pfgValidateSafeUrl($url, false);
+    return ($safe !== null && $safe !== '') ? $safe : null;
+}
+
 function pfgFormatVolunteerRow(?array $v): ?array
 {
     if (!$v) {
@@ -103,14 +122,20 @@ function pfgFormatVolunteerRow(?array $v): ?array
         'cityState'              => $v['city_state'] ?? null,
         'institutionName'        => $v['institution_name'] ?? null,
         'isMsuStudentOrAlumni'   => !empty($v['is_msu_student_or_alumni']),
+        'msuAffiliationStatus'   => $v['msu_affiliation_status'] ?? null,
+        'msuFacultyDepartment'   => $v['msu_faculty_department'] ?? null,
         'crrNumber'              => $v['crr_number'] ?? null,
+        'primaryRole'            => $v['primary_role'] ?? null,
         'preferredRoles'         => jsonDecode($v['preferred_roles'] ?? '[]', []),
         'availabilityDays'       => jsonDecode($v['availability_days'] ?? '[]', []),
+        'availabilityShifts'     => jsonDecode($v['availability_shifts'] ?? '[]', []),
         'languagesSpoken'        => jsonDecode($v['languages_spoken'] ?? '[]', []),
+        'languagesOther'         => $v['languages_other'] ?? null,
         'relevantExperience'     => $v['relevant_experience'] ?? null,
+        'anchoringExperience'    => $v['anchoring_experience'] ?? null,
         'emergencyContactName'   => $v['emergency_contact_name'] ?? null,
         'emergencyContactPhone'  => $v['emergency_contact_phone'] ?? null,
-        'documentUrl'            => $v['document_url'] ?? null,
+        'documentUrl'            => pfgRegSafeUrl($v['document_url'] ?? null),
         'assignedDepartment'     => $v['assigned_department'] ?? null,
         'assignedResponsibility' => $v['assigned_responsibility'] ?? null,
         'assignedSupervisor'     => $v['assigned_supervisor'] ?? null,
@@ -131,19 +156,24 @@ function pfgFormatSliRow(?array $s): ?array
     return [
         'id'                        => (string)($s['id'] ?? ''),
         'registrationId'            => (string)($s['registration_id'] ?? ''),
+        'age'                       => isset($s['age']) ? (int)$s['age'] : null,
         'cityState'                 => $s['city_state'] ?? null,
         'basedInGujarat'            => !isset($s['based_in_gujarat']) || !empty($s['based_in_gujarat']),
         'crrNumber'                 => $s['crr_number'] ?? null,
         'qualifications'            => $s['qualifications'] ?? null,
+        'qualificationCategory'     => $s['qualification_category'] ?? null,
         'trainingInstitute'         => $s['training_institute'] ?? null,
         'certificationLevel'        => $s['certification_level'] ?? null,
         'yearsOfExperience'         => isset($s['years_of_experience']) ? (int)$s['years_of_experience'] : null,
+        'experienceBand'            => $s['experience_band'] ?? null,
+        'comfortablePublicStage'    => isset($s['comfortable_public_stage']) ? !empty($s['comfortable_public_stage']) : null,
         'professionalAffiliation'   => $s['professional_affiliation'] ?? null,
         'areasOfExpertise'          => jsonDecode($s['areas_of_expertise'] ?? '[]', []),
         'interpretationPreferences' => jsonDecode($s['interpretation_preferences'] ?? '[]', []),
         'availabilityDays'          => jsonDecode($s['availability_days'] ?? '[]', []),
-        'videoDemoUrl'              => $s['video_demo_url'] ?? null,
-        'documentUrl'               => $s['document_url'] ?? null,
+        'availabilityShifts'        => jsonDecode($s['availability_shifts'] ?? '[]', []),
+        'videoDemoUrl'              => pfgRegSafeUrl($s['video_demo_url'] ?? null),
+        'documentUrl'               => pfgRegSafeUrl($s['document_url'] ?? null),
         'honorariumOrTravelNotes'   => $s['honorarium_or_travel_notes'] ?? null,
         'assignedSessions'          => jsonDecode($s['assigned_sessions'] ?? '[]', []),
         'assignedVenue'             => $s['assigned_venue'] ?? null,
@@ -154,9 +184,9 @@ function pfgFormatSliRow(?array $s): ?array
     ];
 }
 
-function pfgFormatRegistrationRow(array $r, bool $canReadAccomm = true): array
+function pfgFormatRegistrationRow(array $r, bool $canReadAccomm = true, bool $detail = false): array
 {
-    return [
+    $row = [
         'id'                     => (string)$r['id'],
         'registrationCode'       => (string)$r['registration_code'],
         'editionId'              => (string)($r['edition_id'] ?? ''),
@@ -164,6 +194,7 @@ function pfgFormatRegistrationRow(array $r, bool $canReadAccomm = true): array
         'categoryId'             => (string)($r['category_id'] ?? ''),
         'categoryCode'           => (string)$r['category_code'],
         'status'                 => (string)$r['status'],
+        'assignmentStatus'       => (string)($r['assignment_status'] ?? 'UNASSIGNED'),
         'paymentStatus'          => (string)($r['payment_status'] ?? 'NOT_REQUIRED'),
         'fullName'               => (string)$r['full_name'],
         'email'                  => (string)$r['email'],
@@ -182,6 +213,16 @@ function pfgFormatRegistrationRow(array $r, bool $canReadAccomm = true): array
         'createdAt'              => $r['created_at'] ?? null,
         'updatedAt'              => $r['updated_at'] ?? null,
     ];
+    if ($detail) {
+        $row['cityDistrict'] = $r['city_district'] ?? null;
+        $row['state'] = $r['state'] ?? null;
+        $row['emergencyContactName'] = $r['emergency_contact_name'] ?? null;
+        $row['emergencyContactRelationship'] = $r['emergency_contact_relationship'] ?? null;
+        $row['emergencyContactPhone'] = $r['emergency_contact_phone'] ?? null;
+        $row['publicReviewNote'] = $r['public_review_note'] ?? null;
+        $row['couponCode'] = $r['coupon_code'] ?? null;
+    }
+    return $row;
 }
 
 function pfgEscapeCsvCell($value): string
@@ -195,6 +236,137 @@ function pfgEscapeCsvCell($value): string
         return '"' . str_replace('"', '""', $str) . '"';
     }
     return $str;
+}
+
+/**
+ * Escapes LIKE wildcards in user search input.
+ */
+function pfgRegLike(string $s): string
+{
+    return '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], strtolower($s)) . '%';
+}
+
+/**
+ * Bulk-loads attendance, credentials, accommodation, duty and category detail rows for a set of registration rows
+ * (a single page — never the whole table) and returns enriched list items.
+ */
+function pfgRegEnrichRows(PDO $pdo, array $rows, bool $canReadAccomm): array
+{
+    if (!$rows) {
+        return [];
+    }
+    $ids = array_map(static fn(array $r): string => (string)$r['id'], $rows);
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+
+    $attendance = [];
+    if (pfgAdminTableExists($pdo, 'attendance_records')) {
+        $st = $pdo->prepare("SELECT registration_id, attendance_date_ist, marked_at, venue_label FROM attendance_records WHERE registration_id IN ({$ph}) AND status = 'PRESENT' ORDER BY marked_at DESC");
+        $st->execute($ids);
+        foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $a) {
+            $rid = (string)$a['registration_id'];
+            if (!isset($attendance[$rid])) {
+                $attendance[$rid] = ['count' => 0, 'lastAt' => (string)$a['marked_at'], 'lastVenue' => (string)($a['venue_label'] ?? 'Registration Desk'), 'days' => []];
+            }
+            $attendance[$rid]['count']++;
+            $attendance[$rid]['days'][] = (string)$a['attendance_date_ist'];
+        }
+    }
+
+    $credByReg = [];
+    if (pfgAdminTableExists($pdo, 'qr_credentials')) {
+        $st = $pdo->prepare("SELECT registration_id, status, credential_code FROM qr_credentials WHERE registration_id IN ({$ph}) ORDER BY issued_at DESC");
+        $st->execute($ids);
+        foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $cr) {
+            $rid = (string)$cr['registration_id'];
+            if (!isset($credByReg[$rid])) {
+                $credByReg[$rid] = ['status' => (string)$cr['status'], 'code' => (string)$cr['credential_code']];
+            }
+        }
+    }
+
+    $accommByReg = [];
+    if ($canReadAccomm) {
+        $st = $pdo->prepare("SELECT registration_id, status, selected_types, accommodation_code, free_text_details, notes FROM accommodation_requests WHERE registration_id IN ({$ph})");
+        $st->execute($ids);
+        foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $ac) {
+            $rid = (string)$ac['registration_id'];
+            $types = jsonDecode($ac['selected_types'] ?? '[]', []);
+            if (empty($types) && !empty($ac['accommodation_code'])) {
+                $types = [(string)$ac['accommodation_code']];
+            }
+            $types = is_array($types) ? $types : [];
+            if (!isset($accommByReg[$rid])) {
+                $accommByReg[$rid] = [
+                    'status'          => (string)($ac['status'] ?? 'REQUESTED'),
+                    'selectedTypes'   => $types,
+                    'freeTextDetails' => pfgDecryptValue($ac['free_text_details'] ?? $ac['notes'] ?? null, 'data'),
+                ];
+            } else {
+                $accommByReg[$rid]['selectedTypes'] = array_values(array_unique(array_merge($accommByReg[$rid]['selectedTypes'], $types)));
+            }
+        }
+    }
+
+    $dutyCounts = [];
+    if (pfgAdminTableExists($pdo, 'duty_assignments')) {
+        $st = $pdo->prepare("SELECT registration_id, COUNT(*) AS c FROM duty_assignments WHERE registration_id IN ({$ph}) AND status = 'ASSIGNED' GROUP BY registration_id");
+        $st->execute($ids);
+        foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $d) {
+            $dutyCounts[(string)$d['registration_id']] = (int)$d['c'];
+        }
+    }
+
+    $volByReg = [];
+    $sliByReg = [];
+    $hasVol = false;
+    $hasSli = false;
+    foreach ($rows as $r) {
+        $cat = strtoupper((string)$r['category_code']);
+        $hasVol = $hasVol || $cat === 'VOLUNTEER';
+        $hasSli = $hasSli || $cat === 'SLI';
+    }
+    if ($hasVol) {
+        $st = $pdo->prepare("SELECT * FROM volunteer_applications WHERE registration_id IN ({$ph})");
+        $st->execute($ids);
+        foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $v) {
+            $volByReg[(string)$v['registration_id']] = pfgFormatVolunteerRow($v);
+        }
+    }
+    if ($hasSli) {
+        $st = $pdo->prepare("SELECT * FROM sli_applications WHERE registration_id IN ({$ph})");
+        $st->execute($ids);
+        foreach (($st->fetchAll(PDO::FETCH_ASSOC) ?: []) as $s) {
+            $sliByReg[(string)$s['registration_id']] = pfgFormatSliRow($s);
+        }
+    }
+
+    $items = [];
+    foreach ($rows as $r) {
+        $rid = (string)$r['id'];
+        $ck = $attendance[$rid] ?? null;
+        $cred = $credByReg[$rid] ?? null;
+        $accomm = $accommByReg[$rid] ?? null;
+
+        $item = pfgFormatRegistrationRow($r, $canReadAccomm);
+        $item['checkedIn'] = $ck !== null;
+        $item['checkinCount'] = $ck['count'] ?? 0;
+        $item['lastCheckinAt'] = $ck['lastAt'] ?? null;
+        $item['lastCheckinVenue'] = $ck['lastVenue'] ?? null;
+        $item['attendanceDays'] = $ck ? array_values(array_unique($ck['days'])) : [];
+        $item['credentialStatus'] = $cred['status'] ?? null;
+        $item['credentialCode'] = $cred['code'] ?? null;
+        $item['activeDutyCount'] = $dutyCounts[$rid] ?? 0;
+        if ($canReadAccomm) {
+            $item['hasAccommodationRequest'] = $accomm !== null;
+            $item['accommodationStatus'] = $accomm['status'] ?? null;
+            $item['accommodationTypes'] = $accomm['selectedTypes'] ?? [];
+            $item['accommodationFreeText'] = $accomm['freeTextDetails'] ?? null;
+        }
+        $item['volunteerDetails'] = $volByReg[$rid] ?? null;
+        $item['sliDetails'] = $sliByReg[$rid] ?? null;
+        $items[] = $item;
+    }
+    return $items;
 }
 
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
@@ -221,7 +393,7 @@ try {
                 jsonResponse(['error' => 'Registration not found.'], 404);
             }
 
-            // Delegate details (canonical `delegate_details` ONLY)
+            // Legacy delegate details (canonical `delegate_details` ONLY)
             $delegateRow = null;
             $stDel = $pdo->prepare('SELECT * FROM delegate_details WHERE registration_id = :rid LIMIT 1');
             $stDel->execute([':rid' => $singleId]);
@@ -243,51 +415,164 @@ try {
                 ];
             }
 
-            // Volunteer details
+            // Phase 6 attendee details (dietary requirements are health-adjacent: gated behind accommodations.read)
+            $attendeeRow = null;
+            $dietaryRead = false;
+            if (pfgAdminTableExists($pdo, 'attendee_details')) {
+                $stAtt = $pdo->prepare('SELECT * FROM attendee_details WHERE registration_id = :rid LIMIT 1');
+                $stAtt->execute([':rid' => $singleId]);
+                $ad = $stAtt->fetch(PDO::FETCH_ASSOC);
+                if ($ad) {
+                    $dietary = null;
+                    if ($canReadAccomm && !empty($ad['dietary_requirements_encrypted'])) {
+                        $dietary = pfgDecryptValue((string)$ad['dietary_requirements_encrypted'], 'data');
+                        $dietaryRead = $dietary !== null && $dietary !== '';
+                    }
+                    $attendeeRow = [
+                        'id'                       => (string)$ad['id'],
+                        'ageGroup'                 => $ad['age_group'] ?? null,
+                        'gender'                   => $ad['gender'] ?? null,
+                        'selfIdentificationTags'   => $canReadAccomm ? jsonDecode($ad['self_identification_tags'] ?? '[]', []) : null,
+                        'guardianName'             => $ad['guardian_name'] ?? null,
+                        'guardianRelationship'     => $ad['guardian_relationship'] ?? null,
+                        'guardianPhone'            => $ad['guardian_phone'] ?? null,
+                        'paraSportsAthlete'        => !empty($ad['para_sports_athlete']),
+                        'paraSportsEvents'         => jsonDecode($ad['para_sports_events'] ?? '[]', []),
+                        'paraSportsOther'          => $ad['para_sports_other'] ?? null,
+                        'outstationTravelRequired' => !empty($ad['outstation_travel_required']),
+                        'arrivalAt'                => $ad['arrival_at'] ?? null,
+                        'departureAt'              => $ad['departure_at'] ?? null,
+                        'travelMode'               => $ad['travel_mode'] ?? null,
+                        'lodgingNeeded'            => !empty($ad['lodging_needed']),
+                        'accessibleRoomNeeded'     => $canReadAccomm ? !empty($ad['accessible_room_needed']) : null,
+                        'accompanyingCount'        => isset($ad['accompanying_count']) ? (int)$ad['accompanying_count'] : null,
+                        'foodPreference'           => $ad['food_preference'] ?? null,
+                        'dietaryRequirements'      => $dietary,
+                    ];
+                }
+            }
+
             $stVol = $pdo->prepare('SELECT * FROM volunteer_applications WHERE registration_id = :rid LIMIT 1');
             $stVol->execute([':rid' => $singleId]);
             $volRow = pfgFormatVolunteerRow($stVol->fetch(PDO::FETCH_ASSOC) ?: null);
 
-            // SLI details
             $stSli = $pdo->prepare('SELECT * FROM sli_applications WHERE registration_id = :rid LIMIT 1');
             $stSli->execute([':rid' => $singleId]);
             $sliRow = pfgFormatSliRow($stSli->fetch(PDO::FETCH_ASSOC) ?: null);
 
             // Credentials (historical read-only; no raw QR token reconstruction per D-01)
-            $stCred = $pdo->prepare('SELECT * FROM qr_credentials WHERE registration_id = :rid ORDER BY issued_at DESC');
-            $stCred->execute([':rid' => $singleId]);
-            $credRows = $stCred->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            $credentials = array_map(static function (array $cr): array {
-                $formatted = pfgFormatCredentialRow($cr);
-                unset($formatted['token_hash'], $formatted['tokenHash']);
-                return $formatted;
-            }, $credRows);
+            $credentials = [];
+            $checkins = [];
+            if (pfgAdminTableExists($pdo, 'qr_credentials')) {
+                $stCred = $pdo->prepare('SELECT * FROM qr_credentials WHERE registration_id = :rid ORDER BY issued_at DESC');
+                $stCred->execute([':rid' => $singleId]);
+                $credentials = array_map(static function (array $cr): array {
+                    $formatted = pfgFormatCredentialRow($cr);
+                    unset($formatted['token_hash'], $formatted['tokenHash']);
+                    return $formatted;
+                }, $stCred->fetchAll(PDO::FETCH_ASSOC) ?: []);
+            }
+            if (pfgAdminTableExists($pdo, 'checkins')) {
+                $stChk = $pdo->prepare('SELECT * FROM checkins WHERE registration_id = :rid ORDER BY checked_in_at DESC');
+                $stChk->execute([':rid' => $singleId]);
+                $checkins = array_map(static function (array $c): array {
+                    return [
+                        'id'               => (string)$c['id'],
+                        'credentialId'     => (string)$c['credential_id'],
+                        'registrationId'   => (string)$c['registration_id'],
+                        'venueLabel'       => (string)($c['venue_label'] ?? 'Main Gate'),
+                        'entitlementScope' => (string)($c['entitlement_scope'] ?? ''),
+                        'checkinDateIst'   => (string)($c['checkin_date_ist'] ?? ''),
+                        'method'           => (string)($c['method'] ?? 'QR_CAMERA'),
+                        'result'           => (string)($c['result'] ?? 'CHECKED_IN'),
+                        'checkedInAt'      => (string)($c['checked_in_at'] ?? ''),
+                    ];
+                }, $stChk->fetchAll(PDO::FETCH_ASSOC) ?: []);
+            }
 
-            // Check-ins
-            $stChk = $pdo->prepare('SELECT * FROM checkins WHERE registration_id = :rid ORDER BY checked_in_at DESC');
-            $stChk->execute([':rid' => $singleId]);
-            $chkRows = $stChk->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            $checkins = array_map(static function (array $c): array {
-                return [
-                    'id'               => (string)$c['id'],
-                    'credentialId'     => (string)$c['credential_id'],
-                    'registrationId'   => (string)$c['registration_id'],
-                    'venueLabel'       => (string)($c['venue_label'] ?? 'Main Gate'),
-                    'entitlementScope' => (string)($c['entitlement_scope'] ?? ''),
-                    'checkinDateIst'   => (string)($c['checkin_date_ist'] ?? ''),
-                    'method'           => (string)($c['method'] ?? 'QR_CAMERA'),
-                    'result'           => (string)($c['result'] ?? 'CHECKED_IN'),
-                    'checkedInAt'      => (string)($c['checked_in_at'] ?? ''),
-                ];
-            }, $chkRows);
+            // Manual-desk attendance (canonical, D-01) — status + day only; never review notes or disability data
+            $attendanceRecords = [];
+            if (pfgAdminTableExists($pdo, 'attendance_records')) {
+                $stAr = $pdo->prepare('SELECT id, attendance_date_ist, attendance_scope, status, marked_at, venue_label, corrected_at FROM attendance_records WHERE registration_id = :rid ORDER BY attendance_date_ist ASC, marked_at ASC');
+                $stAr->execute([':rid' => $singleId]);
+                foreach (($stAr->fetchAll(PDO::FETCH_ASSOC) ?: []) as $a) {
+                    $attendanceRecords[] = [
+                        'id'          => (string)$a['id'],
+                        'date'        => (string)$a['attendance_date_ist'],
+                        'scope'       => (string)$a['attendance_scope'],
+                        'status'      => (string)$a['status'],
+                        'markedAt'    => (string)$a['marked_at'],
+                        'venueLabel'  => $a['venue_label'] ?? null,
+                        'correctedAt' => $a['corrected_at'] ?? null,
+                    ];
+                }
+            }
+
+            // Duty assignments (Phase 12)
+            $dutyAssignments = [];
+            if (pfgAdminTableExists($pdo, 'duty_assignments')) {
+                $stDa = $pdo->prepare('
+                    SELECT d.*, s.title AS session_title, v.name AS venue_name
+                    FROM duty_assignments d
+                    LEFT JOIN festival_sessions s ON s.id = d.session_id
+                    LEFT JOIN venues v ON v.id = d.venue_id
+                    WHERE d.registration_id = :rid ORDER BY d.duty_date_ist ASC, d.start_time ASC
+                ');
+                $stDa->execute([':rid' => $singleId]);
+                foreach (($stDa->fetchAll(PDO::FETCH_ASSOC) ?: []) as $d) {
+                    $dutyAssignments[] = [
+                        'id'                    => (string)$d['id'],
+                        'registrationId'        => (string)$d['registration_id'],
+                        'participantCategory'   => strtoupper((string)$d['participant_category']),
+                        'sessionId'             => $d['session_id'] ?? null,
+                        'sessionTitle'          => $d['session_title'] ?? null,
+                        'venueId'               => $d['venue_id'] ?? null,
+                        'venueName'             => $d['venue_name'] ?? null,
+                        'roleTitle'             => (string)$d['role_title'],
+                        'department'            => $d['department'] ?? null,
+                        'dutyDateIst'           => (string)$d['duty_date_ist'],
+                        'shiftCode'             => (string)$d['shift_code'],
+                        'startTime'             => (string)$d['start_time'],
+                        'endTime'               => (string)$d['end_time'],
+                        'reportingSupervisor'   => $d['reporting_supervisor'] ?? null,
+                        'reportingTime'         => $d['reporting_time'] ?? null,
+                        'reportingInstructions' => $d['reporting_instructions'] ?? null,
+                        'pairingGroupId'        => $d['pairing_group_id'] ?? null,
+                        'status'                => strtoupper((string)$d['status']),
+                        'overrideReason'        => $d['override_reason'] ?? null,
+                    ];
+                }
+            }
+
+            // Lifecycle history (append-only) + admin-legal next states
+            $statusHistory = [];
+            if (pfgAdminTableExists($pdo, 'registration_status_history')) {
+                $stH = $pdo->prepare('
+                    SELECT h.previous_status, h.new_status, h.actor_role, h.reason, h.public_message, h.created_at, u.full_name AS actor_name
+                    FROM registration_status_history h LEFT JOIN users u ON u.id = h.actor_user_id
+                    WHERE h.registration_id = :rid ORDER BY h.created_at ASC, h.id ASC
+                ');
+                $stH->execute([':rid' => $singleId]);
+                foreach (($stH->fetchAll(PDO::FETCH_ASSOC) ?: []) as $h) {
+                    $statusHistory[] = [
+                        'previousStatus' => $h['previous_status'] ?? null,
+                        'newStatus'      => (string)$h['new_status'],
+                        'actorRole'      => $h['actor_role'] ?? null,
+                        'actorName'      => $h['actor_name'] ?? null,
+                        'reason'         => $h['reason'] ?? null,
+                        'publicMessage'  => $h['public_message'] ?? null,
+                        'createdAt'      => (string)$h['created_at'],
+                    ];
+                }
+            }
+            $allowedTransitions = pfgAdminAllowedTransitions((string)$reg['category_code'], (string)$reg['status']);
 
             // Payments (canonical `payment_orders` ONLY)
             $paymentOrders = [];
             if ($canReadPayments) {
                 $stPay = $pdo->prepare('SELECT * FROM payment_orders WHERE registration_id = :rid ORDER BY created_at DESC');
                 $stPay->execute([':rid' => $singleId]);
-                $pRows = $stPay->fetchAll(PDO::FETCH_ASSOC) ?: [];
-                foreach ($pRows as $pr) {
+                foreach (($stPay->fetchAll(PDO::FETCH_ASSOC) ?: []) as $pr) {
                     $paymentOrders[] = [
                         'id'              => (string)$pr['id'],
                         'registrationId'  => (string)$pr['registration_id'],
@@ -346,22 +631,28 @@ try {
                 }
                 $disabilityDisclosures = $disclosures;
 
-                if (count($accommodations) > 0 || count($disabilityDisclosures) > 0) {
+                if (count($accommodations) > 0 || count($disabilityDisclosures) > 0 || $dietaryRead) {
                     pfgAdminRecordAudit($pdo, (string)$user['id'], 'SENSITIVE_DATA_READ', 'registration', $singleId, [
                         'registrationCode'   => $reg['registration_code'],
                         'accommodationCount' => count($accommodations),
                         'disclosureCount'    => count($disabilityDisclosures),
+                        'dietaryRead'        => $dietaryRead,
                     ]);
                 }
             }
 
             jsonResponse([
-                'registration'             => pfgFormatRegistrationRow($reg, $canReadAccomm),
+                'registration'             => pfgFormatRegistrationRow($reg, $canReadAccomm, true),
                 'delegateDetails'          => $delegateRow,
+                'attendeeDetails'          => $attendeeRow,
                 'volunteerDetails'         => $volRow,
                 'sliDetails'               => $sliRow,
                 'credentials'              => $credentials,
                 'checkins'                 => $checkins,
+                'attendanceRecords'        => $attendanceRecords,
+                'dutyAssignments'          => $dutyAssignments,
+                'statusHistory'            => $statusHistory,
+                'allowedTransitions'       => $allowedTransitions,
                 'paymentOrders'            => $paymentOrders,
                 'accommodationsRestricted' => !$canReadAccomm,
                 'accommodations'           => $accommodations,
@@ -369,10 +660,11 @@ try {
             ]);
         }
 
-        // LIST / FILTER / EXPORT
+        // LIST / FILTER / EXPORT (SQL-level filtering, ordering and pagination — no row cap)
         $search = trim((string)($_GET['search'] ?? $_GET['q'] ?? ''));
         $category = strtoupper(trim((string)($_GET['category'] ?? '')));
         $statusParam = strtoupper(trim((string)($_GET['status'] ?? '')));
+        $assignmentStatus = strtoupper(trim((string)($_GET['assignmentStatus'] ?? '')));
         $paymentStatus = strtoupper(trim((string)($_GET['paymentStatus'] ?? '')));
         $country = trim((string)($_GET['country'] ?? ''));
         $checkinStatus = strtoupper(trim((string)($_GET['checkinStatus'] ?? '')));
@@ -383,8 +675,7 @@ try {
         $exportFormat = strtolower(trim((string)($_GET['export'] ?? $_GET['format'] ?? '')));
         $includeAccommodations = ($_GET['includeAccommodations'] ?? '') === 'true' || ($_GET['includeAccommodations'] ?? '') === '1';
 
-        $page = max(1, (int)($_GET['page'] ?? 1));
-        $pageSize = min(200, max(1, (int)($_GET['pageSize'] ?? 25)));
+        [$page, $pageSize, $offset] = pfgAdminPageParams(25, 200);
 
         if ($hasAccommodations !== '' && !$canReadAccomm) {
             jsonResponse(['error' => 'Accommodations read permission required to filter by accommodation status.'], 403);
@@ -403,203 +694,131 @@ try {
             }
         }
 
-        $where = ['deleted_at IS NULL'];
+        $where = ['r.deleted_at IS NULL'];
         $params = [];
 
         if ($search !== '') {
-            $where[] = '(LOWER(full_name) LIKE :q OR LOWER(email) LIKE :q OR LOWER(registration_code) LIKE :q OR LOWER(phone) LIKE :q OR LOWER(COALESCE(organization_name, \'\')) LIKE :q)';
-            $params[':q'] = '%' . strtolower($search) . '%';
+            $where[] = "(LOWER(r.full_name) LIKE :q OR LOWER(r.email) LIKE :q OR LOWER(r.registration_code) LIKE :q OR LOWER(r.phone) LIKE :q OR LOWER(COALESCE(r.organization_name, '')) LIKE :q)";
+            $params[':q'] = pfgRegLike($search);
         }
 
         if ($category !== '') {
-            $where[] = 'UPPER(category_code) = :category';
-            $params[':category'] = $category;
+            if ($category === 'ATTENDEE') {
+                // Attendee tab = the ATTENDEE category plus historical LEGACY attendee-like categories.
+                $where[] = "UPPER(r.category_code) NOT IN ('VOLUNTEER', 'SLI')";
+            } else {
+                $where[] = 'UPPER(r.category_code) = :category';
+                $params[':category'] = $category;
+            }
         }
 
         if ($statusParam !== '') {
             $statuses = array_values(array_filter(array_map('trim', explode(',', $statusParam))));
-            if (count($statuses) === 1) {
-                $where[] = 'UPPER(status) = :status0';
-                $params[':status0'] = $statuses[0];
-            } elseif (count($statuses) > 1) {
-                $ph = [];
-                foreach ($statuses as $idx => $stVal) {
-                    $key = ':status' . $idx;
-                    $ph[] = $key;
-                    $params[$key] = $stVal;
-                }
-                $where[] = 'UPPER(status) IN (' . implode(', ', $ph) . ')';
+            $ph = [];
+            foreach ($statuses as $idx => $stVal) {
+                $key = ':status' . $idx;
+                $ph[] = $key;
+                $params[$key] = $stVal;
+            }
+            if ($ph) {
+                $where[] = 'UPPER(r.status) IN (' . implode(', ', $ph) . ')';
             }
         }
 
+        if ($assignmentStatus !== '' && pfgAdminColumnExists($pdo, 'registrations', 'assignment_status')) {
+            $where[] = 'UPPER(r.assignment_status) = :assign_status';
+            $params[':assign_status'] = $assignmentStatus;
+        }
+
         if ($paymentStatus !== '') {
-            $where[] = 'UPPER(payment_status) = :pay_status';
+            $where[] = 'UPPER(r.payment_status) = :pay_status';
             $params[':pay_status'] = $paymentStatus;
         }
 
         if ($country !== '') {
-            $where[] = 'LOWER(country) LIKE :country';
-            $params[':country'] = '%' . strtolower($country) . '%';
+            $where[] = 'LOWER(r.country) LIKE :country';
+            $params[':country'] = pfgRegLike($country);
+        }
+
+        if ($checkinStatus !== '' && pfgAdminTableExists($pdo, 'attendance_records')) {
+            $exists = "EXISTS (SELECT 1 FROM attendance_records ar WHERE ar.registration_id = r.id AND ar.status = 'PRESENT')";
+            if ($checkinStatus === 'CHECKED_IN') {
+                $where[] = $exists;
+            } elseif ($checkinStatus === 'NOT_CHECKED_IN') {
+                $where[] = 'NOT ' . $exists;
+            }
+        }
+
+        if ($hasAccommodations === 'true') {
+            $where[] = 'EXISTS (SELECT 1 FROM accommodation_requests acr WHERE acr.registration_id = r.id)';
+        } elseif ($hasAccommodations === 'false') {
+            $where[] = 'NOT EXISTS (SELECT 1 FROM accommodation_requests acr WHERE acr.registration_id = r.id)';
         }
 
         $orderCol = match ($sortBy) {
-            'fullName'         => 'full_name',
-            'registrationCode' => 'registration_code',
-            'status'           => 'status',
-            'categoryCode'     => 'category_code',
-            default            => 'created_at',
+            'fullName'         => 'r.full_name',
+            'registrationCode' => 'r.registration_code',
+            'status'           => 'r.status',
+            'categoryCode'     => 'r.category_code',
+            default            => 'r.created_at',
         };
-
-        $sql = 'SELECT * FROM registrations WHERE ' . implode(' AND ', $where) . " ORDER BY {$orderCol} {$sortOrder}";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
-        // Bulk load related checkins, credentials, accommodations, volunteer & SLI records
-        $checkinsByReg = [];
-        $credByReg = [];
-        $accommByReg = [];
-        $volByReg = [];
-        $sliByReg = [];
-
-        if (count($rows) > 0) {
-            $stmtChk = $pdo->query('SELECT registration_id, checked_in_at, venue_label FROM checkins ORDER BY checked_in_at DESC');
-            foreach (($stmtChk ? $stmtChk->fetchAll(PDO::FETCH_ASSOC) : []) as $c) {
-                $rid = (string)$c['registration_id'];
-                if (!isset($checkinsByReg[$rid])) {
-                    $checkinsByReg[$rid] = [
-                        'count'     => 1,
-                        'lastAt'    => (string)$c['checked_in_at'],
-                        'lastVenue' => (string)($c['venue_label'] ?? 'Main Gate'),
-                    ];
-                } else {
-                    $checkinsByReg[$rid]['count']++;
-                }
-            }
-
-            $stmtCr = $pdo->query('SELECT registration_id, status, credential_code, issued_at FROM qr_credentials ORDER BY issued_at DESC');
-            foreach (($stmtCr ? $stmtCr->fetchAll(PDO::FETCH_ASSOC) : []) as $cr) {
-                $rid = (string)$cr['registration_id'];
-                if (!isset($credByReg[$rid])) {
-                    $credByReg[$rid] = [
-                        'status' => (string)$cr['status'],
-                        'code'   => (string)$cr['credential_code'],
-                    ];
-                }
-            }
-
-            if ($canReadAccomm) {
-                $stmtAc = $pdo->query('SELECT registration_id, status, selected_types, accommodation_code, free_text_details, notes FROM accommodation_requests');
-                foreach (($stmtAc ? $stmtAc->fetchAll(PDO::FETCH_ASSOC) : []) as $ac) {
-                    $rid = (string)$ac['registration_id'];
-                    $types = jsonDecode($ac['selected_types'] ?? '[]', []);
-                    if (empty($types) && !empty($ac['accommodation_code'])) {
-                        $types = [(string)$ac['accommodation_code']];
-                    }
-                    $decryptedFreeText = pfgDecryptValue($ac['free_text_details'] ?? $ac['notes'] ?? null, 'data');
-                    if (!isset($accommByReg[$rid])) {
-                        $accommByReg[$rid] = [
-                            'status'          => (string)($ac['status'] ?? 'REQUESTED'),
-                            'selectedTypes'   => is_array($types) ? $types : [],
-                            'freeTextDetails' => $decryptedFreeText,
-                        ];
-                    } else {
-                        $accommByReg[$rid]['selectedTypes'] = array_values(array_unique(array_merge(
-                            $accommByReg[$rid]['selectedTypes'],
-                            is_array($types) ? $types : []
-                        )));
-                    }
-                }
-            }
-
-            $stmtVol = $pdo->query('SELECT * FROM volunteer_applications');
-            foreach (($stmtVol ? $stmtVol->fetchAll(PDO::FETCH_ASSOC) : []) as $v) {
-                $volByReg[(string)$v['registration_id']] = pfgFormatVolunteerRow($v);
-            }
-
-            $stmtSli = $pdo->query('SELECT * FROM sli_applications');
-            foreach (($stmtSli ? $stmtSli->fetchAll(PDO::FETCH_ASSOC) : []) as $s) {
-                $sliByReg[(string)$s['registration_id']] = pfgFormatSliRow($s);
-            }
-        }
-
-        $enriched = [];
-        foreach ($rows as $r) {
-            $rid = (string)$r['id'];
-            $ck = $checkinsByReg[$rid] ?? null;
-            $cred = $credByReg[$rid] ?? null;
-            $accomm = $accommByReg[$rid] ?? null;
-
-            $item = pfgFormatRegistrationRow($r, $canReadAccomm);
-            $item['checkedIn'] = $ck !== null;
-            $item['checkinCount'] = $ck['count'] ?? 0;
-            $item['lastCheckinAt'] = $ck['lastAt'] ?? null;
-            $item['lastCheckinVenue'] = $ck['lastVenue'] ?? null;
-            $item['credentialStatus'] = $cred['status'] ?? null;
-            $item['credentialCode'] = $cred['code'] ?? null;
-            if ($canReadAccomm) {
-                $item['hasAccommodationRequest'] = $accomm !== null;
-                $item['accommodationStatus'] = $accomm['status'] ?? null;
-                $item['accommodationTypes'] = $accomm['selectedTypes'] ?? [];
-                $item['accommodationFreeText'] = $accomm['freeTextDetails'] ?? null;
-            }
-            $item['volunteerDetails'] = $volByReg[$rid] ?? null;
-            $item['sliDetails'] = $sliByReg[$rid] ?? null;
-
-            if ($checkinStatus === 'CHECKED_IN' && !$item['checkedIn']) {
-                continue;
-            }
-            if ($checkinStatus === 'NOT_CHECKED_IN' && $item['checkedIn']) {
-                continue;
-            }
-            if ($canReadAccomm && $hasAccommodations === 'true' && !$item['hasAccommodationRequest']) {
-                continue;
-            }
-            if ($canReadAccomm && $hasAccommodations === 'false' && $item['hasAccommodationRequest']) {
-                continue;
-            }
-
-            $enriched[] = $item;
-        }
+        $whereSql = implode(' AND ', $where);
+        $orderSql = "ORDER BY {$orderCol} {$sortOrder}, r.id ASC";
 
         // CSV Export Mode (strictly RFC-4180 CSV with formula neutralization; XLSX rejected above)
         if ($exportFormat === 'csv') {
+            $batch = 500;
             $exportRows = [];
-            foreach ($enriched as $r) {
-                $base = [
-                    'Registration Code'  => $r['registrationCode'],
-                    'Full Name'          => $r['fullName'],
-                    'Email'              => $r['email'],
-                    'Phone'              => $r['phone'],
-                    'Country'            => $r['country'],
-                    'Category'           => $r['categoryCode'],
-                    'Status'             => $r['status'],
-                    'Payment Status'     => $r['paymentStatus'],
-                    'Occupation'         => $r['occupation'] ?? '',
-                    'Organization'       => $r['organizationName'] ?? '',
-                    'Designation'        => $r['designation'] ?? '',
-                    'Attending Days'     => implode(', ', is_array($r['attendingDays']) ? $r['attendingDays'] : []),
-                    'Credential Code'    => $r['credentialCode'] ?? '',
-                    'Credential Status'  => $r['credentialStatus'] ?? '',
-                    'Checked In'         => $r['checkedIn'] ? 'Yes' : 'No',
-                    'Check-in Count'     => $r['checkinCount'],
-                    'Last Check-in Venue'=> $r['lastCheckinVenue'] ?? '',
-                    'Submitted At'       => $r['submittedAt'] ?? '',
-                ];
-                if ($includeAccommodations && $canReadAccomm) {
-                    $base['Accommodation Requested'] = $r['hasAccommodationRequest'] ? 'Yes' : 'No';
-                    $base['Accommodation Status'] = $r['accommodationStatus'] ?? '';
-                    $base['Accommodation Types'] = implode('; ', $r['accommodationTypes'] ?? []);
-                    $base['Accommodation Details'] = $r['accommodationFreeText'] ?? '';
+            $exportOffset = 0;
+            do {
+                $st = $pdo->prepare("SELECT r.* FROM registrations r WHERE {$whereSql} {$orderSql} LIMIT {$batch} OFFSET {$exportOffset}");
+                $st->execute($params);
+                $chunk = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+                foreach (pfgRegEnrichRows($pdo, $chunk, $canReadAccomm && $includeAccommodations) as $r) {
+                    $base = [
+                        'Registration Code'  => $r['registrationCode'],
+                        'Full Name'          => $r['fullName'],
+                        'Email'              => $r['email'],
+                        'Phone'              => $r['phone'],
+                        'Country'            => $r['country'],
+                        'Category'           => $r['categoryCode'],
+                        'Status'             => $r['status'],
+                        'Assignment Status'  => $r['assignmentStatus'],
+                        'Payment Status'     => $r['paymentStatus'],
+                        'Occupation'         => $r['occupation'] ?? '',
+                        'Organization'       => $r['organizationName'] ?? '',
+                        'Designation'        => $r['designation'] ?? '',
+                        'Attending Days'     => implode(', ', is_array($r['attendingDays']) ? $r['attendingDays'] : []),
+                        'Credential Code'    => $r['credentialCode'] ?? '',
+                        'Credential Status'  => $r['credentialStatus'] ?? '',
+                        'Checked In'         => $r['checkedIn'] ? 'Yes' : 'No',
+                        'Check-in Count'     => $r['checkinCount'],
+                        'Last Check-in Venue' => $r['lastCheckinVenue'] ?? '',
+                        'Submitted At'       => $r['submittedAt'] ?? '',
+                    ];
+                    if ($includeAccommodations && $canReadAccomm) {
+                        $base['Accommodation Requested'] = !empty($r['hasAccommodationRequest']) ? 'Yes' : 'No';
+                        $base['Accommodation Status'] = $r['accommodationStatus'] ?? '';
+                        $base['Accommodation Types'] = implode('; ', $r['accommodationTypes'] ?? []);
+                        $base['Accommodation Details'] = $r['accommodationFreeText'] ?? '';
+                    }
+                    $exportRows[] = $base;
                 }
-                $exportRows[] = $base;
-            }
+                $exportOffset += $batch;
+            } while (count($chunk) === $batch && $exportOffset < 200000);
 
             pfgAdminRecordAudit($pdo, (string)$user['id'], 'REGISTRATIONS_EXPORTED', 'registration', null, [
                 'format'                => $exportFormat,
                 'rowCount'              => count($exportRows),
                 'includeAccommodations' => $includeAccommodations && $canReadAccomm,
             ]);
+            if ($includeAccommodations && $canReadAccomm) {
+                pfgAdminRecordAudit($pdo, (string)$user['id'], 'SENSITIVE_DATA_READ', 'registration', null, [
+                    'endpoint'    => '/api/admin/registrations?export=csv',
+                    'recordCount' => count($exportRows),
+                    'export'      => true,
+                ]);
+            }
 
             $dateSlug = date('Y-m-d');
             $headers = count($exportRows) > 0
@@ -623,24 +842,35 @@ try {
             exit;
         }
 
-        $total = count($enriched);
-        $totalPages = max(1, (int)ceil($total / $pageSize));
-        $offset = ($page - 1) * $pageSize;
-        $pagedItems = array_slice($enriched, $offset, $pageSize);
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM registrations r WHERE {$whereSql}");
+        $cnt->execute($params);
+        $total = (int)$cnt->fetchColumn();
+
+        $st = $pdo->prepare("SELECT r.* FROM registrations r WHERE {$whereSql} {$orderSql} LIMIT {$pageSize} OFFSET {$offset}");
+        $st->execute($params);
+        $pageRows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $items = pfgRegEnrichRows($pdo, $pageRows, $canReadAccomm);
+
+        // The list embeds accommodation text for authorized coordinators — that is a sensitive read and is audited.
+        if ($canReadAccomm) {
+            $withAccomm = count(array_filter($items, static fn(array $i): bool => !empty($i['hasAccommodationRequest'])));
+            if ($withAccomm > 0) {
+                pfgAdminRecordAudit($pdo, (string)$user['id'], 'SENSITIVE_DATA_READ', 'registration', null, [
+                    'endpoint'    => '/api/admin/registrations',
+                    'recordCount' => $withAccomm,
+                    'page'        => $page,
+                ]);
+            }
+        }
 
         jsonResponse([
-            'items'      => $pagedItems,
-            'pagination' => [
-                'page'       => $page,
-                'pageSize'   => $pageSize,
-                'total'      => $total,
-                'totalPages' => $totalPages,
-            ],
+            'items'      => $items,
+            'pagination' => pfgAdminPaginationMeta($page, $pageSize, $total),
         ]);
     }
 
     // =========================================================================
-    // PATCH / POST: Update Registration Status, Volunteer/SLI Duty, or Legacy Credential Revocation
+    // PATCH / POST: Lifecycle status, review notes, legacy duty fields, legacy credential revocation
     // =========================================================================
     if ($method === 'PATCH' || $method === 'POST') {
         requireCsrfToken($user);
@@ -664,12 +894,46 @@ try {
             ], 410);
         }
 
-        // Enforce granular write permissions BEFORE any database mutation
-        $hasStatusOrNotesChange = isset($input['status']) || array_key_exists('reviewNotes', $input);
+        $hasStatusChange = isset($input['status']) && is_string($input['status']) && trim($input['status']) !== '';
+        $hasNotesChange = array_key_exists('reviewNotes', $input) || array_key_exists('publicMessage', $input);
         $hasVolunteerAssign = !empty($input['volunteerAssignment']) && is_array($input['volunteerAssignment']);
         $hasSliAssign = !empty($input['sliAssignment']) && is_array($input['sliAssignment']);
 
-        if ($hasStatusOrNotesChange && !hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE'])) {
+        $stmt = $pdo->prepare('SELECT * FROM registrations WHERE id = :id AND deleted_at IS NULL LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$existing) {
+            jsonResponse(['error' => 'Registration not found.'], 404);
+        }
+        $catUpper = strtoupper((string)$existing['category_code']);
+
+        // §5.3 Staff Self-Approval / Self-Modification Prevention
+        if (!empty($existing['user_id']) && (string)$existing['user_id'] === (string)$user['id']) {
+            pfgAdminRecordAudit($pdo, (string)$user['id'], 'SELF_APPROVAL_BLOCKED', 'registration', $id, [
+                'registrationCode' => (string)($existing['registration_code'] ?? ''),
+                'categoryCode'     => $catUpper,
+                'currentStatus'    => (string)($existing['status'] ?? ''),
+                'requestedStatus'  => $hasStatusChange ? strtoupper(trim((string)$input['status'])) : null,
+                'attemptedActions' => array_values(array_filter([
+                    $hasStatusChange ? 'status_change' : null,
+                    $hasNotesChange ? 'review_notes' : null,
+                    $hasVolunteerAssign ? 'volunteer_assignment' : null,
+                    $hasSliAssign ? 'sli_assignment' : null,
+                    $credentialAction !== '' ? 'credential_' . strtolower($credentialAction) : null,
+                ])),
+            ]);
+            jsonResponse([
+                'error' => 'Staff members cannot review, approve, or modify their own personal registration.',
+                'code'  => 'SELF_APPROVAL_BLOCKED',
+            ], 403);
+        }
+
+        // Granular write permissions BEFORE any database mutation.
+        // Volunteer / SLI coordinators may review their own category through volunteers.review / sli.review.
+        $canReviewCategory = ($catUpper === 'VOLUNTEER' && hasPermission($user, PERMISSIONS['VOLUNTEERS_REVIEW']))
+            || ($catUpper === 'SLI' && hasPermission($user, PERMISSIONS['SLI_REVIEW']));
+        if (($hasStatusChange || $hasNotesChange) && !hasPermission($user, PERMISSIONS['REGISTRATIONS_WRITE']) && !$canReviewCategory) {
             requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
         }
         if ($hasVolunteerAssign && !hasPermission($user, PERMISSIONS['VOLUNTEERS_REVIEW'])) {
@@ -681,41 +945,113 @@ try {
         if ($credentialAction === 'REVOKE' && !hasPermission($user, PERMISSIONS['CREDENTIALS_REVOKE'])) {
             requirePermission(PERMISSIONS['CREDENTIALS_REVOKE'], $user);
         }
-        if (!$hasStatusOrNotesChange && !$hasVolunteerAssign && !$hasSliAssign && $credentialAction === '') {
+        if (!$hasStatusChange && !$hasNotesChange && !$hasVolunteerAssign && !$hasSliAssign && $credentialAction === '') {
             requirePermission(PERMISSIONS['REGISTRATIONS_WRITE'], $user);
         }
 
-        $stmt = $pdo->prepare('SELECT * FROM registrations WHERE id = :id AND deleted_at IS NULL LIMIT 1');
-        $stmt->execute([':id' => $id]);
-        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$existing) {
-            jsonResponse(['error' => 'Registration not found.'], 404);
-        }
-
-        $allowedStatuses = [
-            'DRAFT',
-            'SUBMITTED',
-            'UNDER_REVIEW',
-            'ADDITIONAL_INFO_REQUIRED',
-            'CONFIRMED',
-            'APPROVED',
-            'WAITLISTED',
-            'REJECTED',
-            'WITHDRAWN',
-            'CANCELLED',
-        ];
-
-        $newStatus = isset($input['status']) && is_string($input['status'])
-            ? strtoupper(trim($input['status']))
-            : null;
-        if ($newStatus !== null && $newStatus !== '' && !in_array($newStatus, $allowedStatuses, true)) {
+        // ---- Canonical lifecycle validation ----
+        $prevStatus = (string)$existing['status'];
+        $prevNormalized = pfgAdminNormalizeStatus($prevStatus);
+        $newStatus = $hasStatusChange ? pfgAdminNormalizeStatus((string)$input['status']) : null;
+        $knownStatuses = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'ADDITIONAL_INFO_REQUIRED', 'RESUBMITTED', 'CONFIRMED', 'APPROVED', 'WAITLISTED', 'REJECTED', 'WITHDRAWN', 'CANCELLED'];
+        if ($newStatus !== null && !in_array($newStatus, $knownStatuses, true)) {
             jsonResponse(['error' => "Invalid status value: {$newStatus}"], 400);
         }
+        $statusChanged = $newStatus !== null && $newStatus !== $prevNormalized;
+        $allowedTransitions = pfgAdminAllowedTransitions($catUpper, $prevStatus);
+        if ($statusChanged && !in_array($newStatus, $allowedTransitions, true)) {
+            jsonResponse([
+                'error'              => "Illegal status transition {$prevNormalized} → {$newStatus} for a {$catUpper} registration.",
+                'currentStatus'      => $prevNormalized,
+                'allowedTransitions' => $allowedTransitions,
+            ], 409);
+        }
 
-        $reviewNotes = array_key_exists('reviewNotes', $input)
-            ? (string)$input['reviewNotes']
-            : null;
+        // Duty fields may only be set for approved applicants (or in the same request that approves them)
+        $willBeApproved = $statusChanged ? pfgAdminIsApprovedStatus($newStatus) : pfgAdminIsApprovedStatus($prevStatus);
+        if (($hasVolunteerAssign || $hasSliAssign) && !$willBeApproved) {
+            jsonResponse(['error' => 'Only APPROVED applicants can be assigned duties.'], 400);
+        }
+
+        $reviewNotes = array_key_exists('reviewNotes', $input) ? (string)$input['reviewNotes'] : null;
+        $publicMessage = array_key_exists('publicMessage', $input) ? trim((string)$input['publicMessage']) : null;
+        if ($reviewNotes !== null && strlen($reviewNotes) > 4000) {
+            jsonResponse(['error' => 'reviewNotes is limited to 4000 characters.'], 400);
+        }
+        if ($publicMessage !== null && strlen($publicMessage) > 1000) {
+            jsonResponse(['error' => 'publicMessage is limited to 1000 characters.'], 400);
+        }
+
+        // Legacy duty assignment string/array bounds validation (MED-04) BEFORE any DB write
+        $validateLegacyString = static function ($raw, string $fieldLabel, int $maxLen): ?string {
+            if ($raw === null) {
+                return null;
+            }
+            if (!is_string($raw)) {
+                jsonResponse(['error' => "{$fieldLabel} must be a string."], 400);
+            }
+            $trimmed = trim($raw);
+            if (mb_strlen($trimmed, 'UTF-8') > $maxLen) {
+                jsonResponse(['error' => "{$fieldLabel} must not exceed {$maxLen} characters."], 400);
+            }
+            return $trimmed;
+        };
+
+        $validatedVolAssign = [];
+        if ($hasVolunteerAssign) {
+            $va = $input['volunteerAssignment'];
+            $volBounds = [
+                'assignedDepartment'     => ['assignedDepartment', 120],
+                'assignedResponsibility' => ['assignedResponsibility', 2000],
+                'assignedSupervisor'     => ['assignedSupervisor', 150],
+                'assignedVenue'          => ['assignedVenue', 200],
+                'assignedShift'          => ['assignedShift', 100],
+                'reportingTime'          => ['reportingTime', 80],
+                'assignmentNotes'        => ['assignmentNotes', 2000],
+            ];
+            foreach ($volBounds as $k => [$label, $maxLen]) {
+                if (array_key_exists($k, $va)) {
+                    $validatedVolAssign[$k] = $validateLegacyString($va[$k], $label, $maxLen);
+                }
+            }
+        }
+
+        $validatedSliAssign = [];
+        if ($hasSliAssign) {
+            $sa = $input['sliAssignment'];
+            $sliBounds = [
+                'assignedVenue'   => ['assignedVenue', 200],
+                'dutyTimes'       => ['dutyTimes', 150],
+                'assignmentNotes' => ['assignmentNotes', 2000],
+            ];
+            foreach ($sliBounds as $k => [$label, $maxLen]) {
+                if (array_key_exists($k, $sa)) {
+                    $validatedSliAssign[$k] = $validateLegacyString($sa[$k], $label, $maxLen);
+                }
+            }
+            if (array_key_exists('assignedSessions', $sa) && $sa['assignedSessions'] !== null) {
+                if (!is_array($sa['assignedSessions'])) {
+                    jsonResponse(['error' => 'assignedSessions must be an array of strings.'], 400);
+                }
+                if (count($sa['assignedSessions']) > 50) {
+                    jsonResponse(['error' => 'assignedSessions cannot exceed 50 items.'], 400);
+                }
+                $cleanSessions = [];
+                foreach ($sa['assignedSessions'] as $item) {
+                    if (!is_string($item)) {
+                        jsonResponse(['error' => 'Every assignedSessions entry must be a string.'], 400);
+                    }
+                    $t = trim($item);
+                    if (mb_strlen($t, 'UTF-8') > 200) {
+                        jsonResponse(['error' => 'Each assignedSessions entry must not exceed 200 characters.'], 400);
+                    }
+                    if ($t !== '') {
+                        $cleanSessions[] = $t;
+                    }
+                }
+                $validatedSliAssign['assignedSessions'] = $cleanSessions;
+            }
+        }
 
         $beforeState = [
             'status'      => $existing['status'],
@@ -723,37 +1059,77 @@ try {
         ];
 
         $now = nowSql();
-        $nextStatus = ($newStatus !== null && $newStatus !== '') ? $newStatus : (string)$existing['status'];
+        $nextStatus = $statusChanged ? $newStatus : $prevStatus;
         $nextNotes = $reviewNotes !== null ? $reviewNotes : $existing['review_notes'];
-        $reviewerId = ($newStatus !== null || $reviewNotes !== null) ? (string)$user['id'] : $existing['reviewer_id'];
-        $reviewedAt = ($newStatus !== null || $reviewNotes !== null) ? $now : $existing['reviewed_at'];
+        $touchedReview = $statusChanged || $reviewNotes !== null;
+        $reviewerId = $touchedReview ? (string)$user['id'] : $existing['reviewer_id'];
+        $reviewedAt = $touchedReview ? $now : $existing['reviewed_at'];
+        $hasPublicNoteCol = pfgAdminColumnExists($pdo, 'registrations', 'public_review_note');
+        $actorRole = pfgAdminPrimaryRole($user);
 
-        $upStmt = $pdo->prepare("
-            UPDATE registrations
-            SET status = :status,
-                review_notes = :review_notes,
-                reviewer_id = :reviewer_id,
-                reviewed_at = :reviewed_at,
-                updated_at = :updated_at
-            WHERE id = :id
-        ");
-        $upStmt->execute([
-            ':status'       => $nextStatus,
-            ':review_notes' => $nextNotes,
-            ':reviewer_id'  => $reviewerId,
-            ':reviewed_at'  => $reviewedAt,
-            ':updated_at'   => $now,
-            ':id'           => $id,
-        ]);
+        $dutiesCancelled = 0;
+        $pdo->beginTransaction();
+        try {
+            $sets = 'status = :status, review_notes = :review_notes, reviewer_id = :reviewer_id, reviewed_at = :reviewed_at, updated_at = :updated_at';
+            $upParams = [
+                ':status'       => $nextStatus,
+                ':review_notes' => $nextNotes,
+                ':reviewer_id'  => $reviewerId,
+                ':reviewed_at'  => $reviewedAt,
+                ':updated_at'   => $now,
+                ':id'           => $id,
+            ];
+            if ($hasPublicNoteCol && $publicMessage !== null) {
+                $sets .= ', public_review_note = :pub';
+                $upParams[':pub'] = $publicMessage !== '' ? $publicMessage : null;
+            }
+            $pdo->prepare("UPDATE registrations SET {$sets} WHERE id = :id")->execute($upParams);
+
+            if ($statusChanged) {
+                // Fast-track decision straight from SUBMITTED / RESUBMITTED: record the implicit review step first.
+                $fastTracked = pfgAdminRegistrationTrack($catUpper) === 'REVIEW'
+                    && in_array($prevNormalized, ['SUBMITTED', 'RESUBMITTED'], true)
+                    && in_array($newStatus, ['APPROVED', 'REJECTED', 'WAITLISTED', 'ADDITIONAL_INFO_REQUIRED'], true);
+                if ($fastTracked) {
+                    pfgAdminRecordStatusHistory($pdo, $id, $prevNormalized, 'UNDER_REVIEW', (string)$user['id'], $actorRole, 'Implicit review step (decision recorded directly from ' . $prevNormalized . ').', null, nowSql(time() - 1));
+                }
+                pfgAdminRecordStatusHistory(
+                    $pdo,
+                    $id,
+                    $fastTracked ? 'UNDER_REVIEW' : $prevNormalized,
+                    $newStatus,
+                    (string)$user['id'],
+                    $actorRole,
+                    $reviewNotes !== null && trim($reviewNotes) !== '' ? $reviewNotes : null,
+                    $publicMessage !== null && $publicMessage !== '' ? $publicMessage : null
+                );
+
+                // A registration that is no longer active cannot keep live duties.
+                if (in_array($newStatus, ['REJECTED', 'CANCELLED', 'WITHDRAWN'], true) && pfgAdminTableExists($pdo, 'duty_assignments')) {
+                    $cd = $pdo->prepare("UPDATE duty_assignments SET status = 'CANCELLED', updated_at = :now WHERE registration_id = :rid AND status = 'ASSIGNED'");
+                    $cd->execute([':now' => $now, ':rid' => $id]);
+                    $dutiesCancelled = $cd->rowCount();
+                    if ($dutiesCancelled > 0 && pfgAdminColumnExists($pdo, 'registrations', 'assignment_status')) {
+                        $pdo->prepare("UPDATE registrations SET assignment_status = 'UNASSIGNED' WHERE id = :id")->execute([':id' => $id]);
+                    }
+                }
+            }
+            $pdo->commit();
+        } catch (Throwable $txe) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $txe;
+        }
 
         // Refresh registration row
         $stmt->execute([':id' => $id]);
         $updatedReg = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        // Volunteer assignment update
+        // Volunteer assignment update (legacy free-text duty fields; structured rosters live in /api/admin/assignments)
         $updatedVolunteer = null;
-        if (!empty($input['volunteerAssignment']) && is_array($input['volunteerAssignment'])) {
-            $va = $input['volunteerAssignment'];
+        $existingVol = null;
+        if ($hasVolunteerAssign) {
             $stVol = $pdo->prepare('SELECT * FROM volunteer_applications WHERE registration_id = :rid LIMIT 1');
             $stVol->execute([':rid' => $id]);
             $existingVol = $stVol->fetch(PDO::FETCH_ASSOC);
@@ -772,13 +1148,13 @@ try {
                     WHERE id = :id
                 ");
                 $upVol->execute([
-                    ':dept'  => $va['assignedDepartment'] ?? $existingVol['assigned_department'],
-                    ':resp'  => $va['assignedResponsibility'] ?? $existingVol['assigned_responsibility'],
-                    ':sup'   => $va['assignedSupervisor'] ?? $existingVol['assigned_supervisor'],
-                    ':venue' => $va['assignedVenue'] ?? $existingVol['assigned_venue'],
-                    ':shift' => $va['assignedShift'] ?? $existingVol['assigned_shift'],
-                    ':rtime' => $va['reportingTime'] ?? $existingVol['reporting_time'],
-                    ':notes' => $va['assignmentNotes'] ?? $existingVol['assignment_notes'],
+                    ':dept'  => array_key_exists('assignedDepartment', $validatedVolAssign) ? $validatedVolAssign['assignedDepartment'] : $existingVol['assigned_department'],
+                    ':resp'  => array_key_exists('assignedResponsibility', $validatedVolAssign) ? $validatedVolAssign['assignedResponsibility'] : $existingVol['assigned_responsibility'],
+                    ':sup'   => array_key_exists('assignedSupervisor', $validatedVolAssign) ? $validatedVolAssign['assignedSupervisor'] : $existingVol['assigned_supervisor'],
+                    ':venue' => array_key_exists('assignedVenue', $validatedVolAssign) ? $validatedVolAssign['assignedVenue'] : $existingVol['assigned_venue'],
+                    ':shift' => array_key_exists('assignedShift', $validatedVolAssign) ? $validatedVolAssign['assignedShift'] : $existingVol['assigned_shift'],
+                    ':rtime' => array_key_exists('reportingTime', $validatedVolAssign) ? $validatedVolAssign['reportingTime'] : $existingVol['reporting_time'],
+                    ':notes' => array_key_exists('assignmentNotes', $validatedVolAssign) ? $validatedVolAssign['assignmentNotes'] : $existingVol['assignment_notes'],
                     ':now'   => $now,
                     ':id'    => $existingVol['id'],
                 ]);
@@ -795,13 +1171,13 @@ try {
                 $insVol->execute([
                     ':id'    => uuid4(),
                     ':rid'   => $id,
-                    ':dept'  => $va['assignedDepartment'] ?? null,
-                    ':resp'  => $va['assignedResponsibility'] ?? null,
-                    ':sup'   => $va['assignedSupervisor'] ?? null,
-                    ':venue' => $va['assignedVenue'] ?? null,
-                    ':shift' => $va['assignedShift'] ?? null,
-                    ':rtime' => $va['reportingTime'] ?? null,
-                    ':notes' => $va['assignmentNotes'] ?? null,
+                    ':dept'  => $validatedVolAssign['assignedDepartment'] ?? null,
+                    ':resp'  => $validatedVolAssign['assignedResponsibility'] ?? null,
+                    ':sup'   => $validatedVolAssign['assignedSupervisor'] ?? null,
+                    ':venue' => $validatedVolAssign['assignedVenue'] ?? null,
+                    ':shift' => $validatedVolAssign['assignedShift'] ?? null,
+                    ':rtime' => $validatedVolAssign['reportingTime'] ?? null,
+                    ':notes' => $validatedVolAssign['assignmentNotes'] ?? null,
                     ':now'   => $now,
                 ]);
             }
@@ -811,14 +1187,14 @@ try {
 
         // SLI assignment update
         $updatedSli = null;
-        if (!empty($input['sliAssignment']) && is_array($input['sliAssignment'])) {
-            $sa = $input['sliAssignment'];
+        $existingSli = null;
+        if ($hasSliAssign) {
             $stSli = $pdo->prepare('SELECT * FROM sli_applications WHERE registration_id = :rid LIMIT 1');
             $stSli->execute([':rid' => $id]);
             $existingSli = $stSli->fetch(PDO::FETCH_ASSOC);
 
-            $sessionsJson = isset($sa['assignedSessions']) && is_array($sa['assignedSessions'])
-                ? jsonEncode($sa['assignedSessions'])
+            $sessionsJson = array_key_exists('assignedSessions', $validatedSliAssign)
+                ? jsonEncode($validatedSliAssign['assignedSessions'])
                 : ($existingSli['assigned_sessions'] ?? '[]');
 
             if ($existingSli) {
@@ -833,9 +1209,9 @@ try {
                 ");
                 $upSli->execute([
                     ':sessions' => $sessionsJson,
-                    ':venue'    => $sa['assignedVenue'] ?? $existingSli['assigned_venue'],
-                    ':duty'     => $sa['dutyTimes'] ?? $existingSli['duty_times'],
-                    ':notes'    => $sa['assignmentNotes'] ?? $existingSli['assignment_notes'],
+                    ':venue'    => array_key_exists('assignedVenue', $validatedSliAssign) ? $validatedSliAssign['assignedVenue'] : $existingSli['assigned_venue'],
+                    ':duty'     => array_key_exists('dutyTimes', $validatedSliAssign) ? $validatedSliAssign['dutyTimes'] : $existingSli['duty_times'],
+                    ':notes'    => array_key_exists('assignmentNotes', $validatedSliAssign) ? $validatedSliAssign['assignmentNotes'] : $existingSli['assignment_notes'],
                     ':now'      => $now,
                     ':id'       => $existingSli['id'],
                 ]);
@@ -852,9 +1228,9 @@ try {
                     ':id'       => uuid4(),
                     ':rid'      => $id,
                     ':sessions' => $sessionsJson,
-                    ':venue'    => $sa['assignedVenue'] ?? null,
-                    ':duty'     => $sa['dutyTimes'] ?? null,
-                    ':notes'    => $sa['assignmentNotes'] ?? null,
+                    ':venue'    => $validatedSliAssign['assignedVenue'] ?? null,
+                    ':duty'     => $validatedSliAssign['dutyTimes'] ?? null,
+                    ':notes'    => $validatedSliAssign['assignmentNotes'] ?? null,
                     ':now'      => $now,
                 ]);
             }
@@ -868,10 +1244,6 @@ try {
             $revocationReason = 'Revoked by festival administrator';
         }
         $credentialResult = null;
-
-        $transitionedToApproved = in_array($nextStatus, ['APPROVED', 'CONFIRMED'], true)
-            && !in_array((string)$existing['status'], ['APPROVED', 'CONFIRMED'], true);
-
         $emailDeliveryResult = null;
 
         if ($credentialAction === 'REVOKE') {
@@ -883,36 +1255,91 @@ try {
             $credentialResult = ['action' => 'REVOKED'];
         }
 
-        // Send clean confirmation / approval email (with Registration ID & duty details, ZERO QR pass per D-01)
-        if ($transitionedToApproved) {
-            try {
-                $dutyDetails = null;
-                if ($updatedVolunteer) {
-                    $dutyDetails = [
-                        'Department' => $updatedVolunteer['assignedDepartment'] ?? null,
-                        'Venue'      => $updatedVolunteer['assignedVenue'] ?? null,
-                        'Shift'      => $updatedVolunteer['assignedShift'] ?? null,
-                        'Reporting'  => $updatedVolunteer['reportingTime'] ?? null,
-                    ];
-                } elseif ($updatedSli) {
-                    $dutyDetails = [
-                        'Assigned Venue'    => $updatedSli['assignedVenue'] ?? null,
-                        'Duty Times'        => $updatedSli['dutyTimes'] ?? null,
-                        'Assigned Sessions' => $updatedSli['assignedSessions'] ?? null,
-                    ];
-                }
+        // Phase 4C/4M Transactional Outbox: persist admin review/assignment notification
+        // (Zero QR issuance per D-01; never exposes internal review notes in email)
+        $dutyDetails = null;
+        if ($updatedVolunteer) {
+            $dutyDetails = [
+                'Department' => $updatedVolunteer['assignedDepartment'] ?? null,
+                'Venue'      => $updatedVolunteer['assignedVenue'] ?? null,
+                'Shift'      => $updatedVolunteer['assignedShift'] ?? null,
+                'Reporting'  => $updatedVolunteer['reportingTime'] ?? null,
+            ];
+        } elseif ($updatedSli) {
+            $dutyDetails = [
+                'Assigned Venue'    => $updatedSli['assignedVenue'] ?? null,
+                'Duty Times'        => $updatedSli['dutyTimes'] ?? null,
+                'Assigned Sessions' => $updatedSli['assignedSessions'] ?? null,
+            ];
+        }
 
-                $emailDeliveryResult = sendRegistrationConfirmationEmail($pdo, [
-                    'to'               => (string)$updatedReg['email'],
-                    'fullName'         => (string)$updatedReg['full_name'],
-                    'registrationCode' => (string)$updatedReg['registration_code'],
-                    'categoryName'     => (string)$updatedReg['category_code'],
-                    'status'           => (string)$updatedReg['status'],
-                    'recipientUserId'  => $updatedReg['user_id'] ?? null,
-                    'dutyDetails'      => $dutyDetails,
+        $notificationTemplate = null;
+        $notificationKeySuffix = null;
+        if ($statusChanged) {
+            if ($catUpper === 'VOLUNTEER') {
+                $notificationTemplate = match ($newStatus) {
+                    'APPROVED', 'CONFIRMED'    => 'VOLUNTEER_APPLICATION_APPROVED',
+                    'REJECTED'                 => 'VOLUNTEER_APPLICATION_REJECTED',
+                    'WAITLISTED'               => 'VOLUNTEER_APPLICATION_WAITLISTED',
+                    'ADDITIONAL_INFO_REQUIRED' => 'VOLUNTEER_INFO_REQUESTED',
+                    default                    => null,
+                };
+            } elseif ($catUpper === 'SLI') {
+                $notificationTemplate = match ($newStatus) {
+                    'APPROVED', 'CONFIRMED'    => 'SLI_APPLICATION_APPROVED',
+                    'REJECTED'                 => 'SLI_APPLICATION_REJECTED',
+                    'WAITLISTED'               => 'SLI_APPLICATION_WAITLISTED',
+                    'ADDITIONAL_INFO_REQUIRED' => 'SLI_INFO_REQUESTED',
+                    default                    => null,
+                };
+            } else {
+                $notificationTemplate = match ($newStatus) {
+                    'APPROVED', 'CONFIRMED' => 'ATTENDEE_REGISTRATION_CONFIRMED',
+                    'CANCELLED'             => 'ATTENDEE_REGISTRATION_CANCELLED',
+                    default                 => null,
+                };
+            }
+            $notificationKeySuffix = 'status:' . $newStatus . ':' . substr(md5($now), 0, 8);
+        } elseif ($hasVolunteerAssign && $updatedVolunteer) {
+            $notificationTemplate = (!empty($existingVol['assigned_venue']) || !empty($existingVol['assigned_shift']))
+                ? 'VOLUNTEER_ASSIGNMENT_UPDATED'
+                : 'VOLUNTEER_ASSIGNMENT_CREATED';
+            $notificationKeySuffix = 'vol-assign:' . md5(jsonEncode($dutyDetails));
+        } elseif ($hasSliAssign && $updatedSli) {
+            $notificationTemplate = (!empty($existingSli['assigned_venue']) || !empty($existingSli['duty_times']))
+                ? 'SLI_ASSIGNMENT_UPDATED'
+                : 'SLI_ASSIGNMENT_CREATED';
+            $notificationKeySuffix = 'sli-assign:' . md5(jsonEncode($dutyDetails));
+        }
+
+        if ($notificationTemplate !== null && !empty($updatedReg['email'])) {
+            try {
+                $qInfo = pfgEnqueueNotification($pdo, [
+                    'to'              => (string)$updatedReg['email'],
+                    'templateCode'    => $notificationTemplate,
+                    'variables'       => [
+                        'fullName'         => (string)$updatedReg['full_name'],
+                        'registrationCode' => (string)$updatedReg['registration_code'],
+                        'categoryName'     => $catUpper,
+                        'status'           => (string)$updatedReg['status'],
+                        'dutyDetails'      => $dutyDetails,
+                    ],
+                    'recipientUserId' => $updatedReg['user_id'] ?? null,
+                    'entityType'      => 'registration',
+                    'entityId'        => (string)$updatedReg['id'],
+                    'idempotencyKey'  => 'admin-reg:' . $updatedReg['id'] . ':' . $notificationKeySuffix,
+                    'createInApp'     => true,
+                    'inAppTitle'      => "Registration Update ({$updatedReg['registration_code']})",
+                    'inAppMessage'    => "Your {$catUpper} registration ({$updatedReg['registration_code']}) has been updated to {$updatedReg['status']}.",
                 ]);
+                if (MAIL_DRIVER === 'file' && empty($qInfo['deduped'])) {
+                    pfgDispatchQueuedIdNow($pdo, (string)$qInfo['queueId']);
+                    $emailDeliveryResult = ['queueId' => $qInfo['queueId'], 'status' => 'CAPTURED_LOCAL'];
+                } else {
+                    $emailDeliveryResult = ['queueId' => $qInfo['queueId'], 'status' => (string)$qInfo['status']];
+                }
             } catch (Throwable $e) {
-                error_log('/api/admin/registrations.php email send error: ' . $e->getMessage());
+                error_log('/api/admin/registrations.php notification enqueue error: ' . $e->getMessage());
             }
         }
 
@@ -928,7 +1355,7 @@ try {
                 ':target_id'    => $updatedReg['user_id'] ?? null,
                 ':action_type'  => $credentialAction !== ''
                     ? "CREDENTIAL_{$credentialAction}"
-                    : ($newStatus ? "REGISTRATION_STATUS_{$nextStatus}" : 'REGISTRATION_UPDATED'),
+                    : ($statusChanged ? "REGISTRATION_STATUS_{$nextStatus}" : 'REGISTRATION_UPDATED'),
                 ':reason'       => $reviewNotes ?? ($input['revocationReason'] ?? null),
                 ':before_state' => jsonEncode($beforeState),
                 ':after_state'  => jsonEncode([
@@ -937,6 +1364,7 @@ try {
                     'volunteerAssignment' => $input['volunteerAssignment'] ?? null,
                     'sliAssignment'       => $input['sliAssignment'] ?? null,
                     'credentialResult'    => $credentialResult,
+                    'dutiesCancelled'     => $dutiesCancelled,
                 ]),
                 ':now'          => $now,
             ]);
@@ -946,7 +1374,7 @@ try {
         pfgAdminRecordAudit(
             $pdo,
             (string)$user['id'],
-            $newStatus ? "REGISTRATION_{$nextStatus}" : 'REGISTRATION_UPDATED',
+            $statusChanged ? "REGISTRATION_{$nextStatus}" : 'REGISTRATION_UPDATED',
             'registration',
             $id,
             [
@@ -954,15 +1382,18 @@ try {
                 'previousStatus'   => $existing['status'],
                 'newStatus'        => $updatedReg['status'],
                 'credentialAction' => $credentialAction ?: null,
+                'dutiesCancelled'  => $dutiesCancelled,
             ]
         );
 
         jsonResponse([
-            'registration'     => pfgFormatRegistrationRow($updatedReg, $canReadAccomm),
-            'volunteerDetails' => $updatedVolunteer,
-            'sliDetails'       => $updatedSli,
-            'credentialResult' => $credentialResult,
-            'emailDelivery'    => $emailDeliveryResult,
+            'registration'       => pfgFormatRegistrationRow($updatedReg, $canReadAccomm),
+            'allowedTransitions' => pfgAdminAllowedTransitions($catUpper, (string)$updatedReg['status']),
+            'dutiesCancelled'    => $dutiesCancelled,
+            'volunteerDetails'   => $updatedVolunteer,
+            'sliDetails'         => $updatedSli,
+            'credentialResult'   => $credentialResult,
+            'emailDelivery'      => $emailDeliveryResult,
         ]);
     }
 

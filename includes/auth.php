@@ -635,40 +635,28 @@ if (!function_exists('countRemainingRecoveryCodes')) {
 
 if (!function_exists('isMfaRequiredForRoles')) {
     /**
-     * D-20 Approved MFA Policy:
-     * - SUPERADMIN: Mandatory TOTP MFA
-     * - ADMIN: Mandatory TOTP MFA
-     * - RGST: Optional MFA initially
-     * - PARTICIPANT: Optional MFA
+     * Owner-Directed Authentication Policy Revision (supersedes D-20):
+     * TOTP/authenticator MFA is discontinued for all roles.
+     * Staff authenticate via username + password; participants via verified email + password.
+     * Enforced alongside 5-attempt atomic lockout (3 hours / 10,800s) with automatic unlock.
      */
     function isMfaRequiredForRoles(array $roles): bool
     {
-        return in_array('SUPERADMIN', $roles, true) || in_array('ADMIN', $roles, true);
+        return false;
     }
 }
 
 if (!function_exists('userRequiresMfaEnrollment')) {
     function userRequiresMfaEnrollment(?array $user): bool
     {
-        if (!$user) {
-            return false;
-        }
-        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
-        return isMfaRequiredForRoles($roles) && empty($user['mfaEnabled']);
+        return false;
     }
 }
 
 if (!function_exists('userHasCompletedRequiredMfa')) {
     function userHasCompletedRequiredMfa(?array $user): bool
     {
-        if (!$user) {
-            return false;
-        }
-        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
-        if (!isMfaRequiredForRoles($roles)) {
-            return true;
-        }
-        return !empty($user['mfaEnabled']) && !empty($user['mfaVerified']);
+        return $user !== null;
     }
 }
 
@@ -867,15 +855,43 @@ if (!function_exists('getUserRolesAndPermissions')) {
                 if (!in_array($rCode, $roles, true)) {
                     $roles[] = $rCode;
                 }
-                $basePerms = DEFAULT_ROLE_PERMISSIONS[$rCode] ?? [];
-                foreach ($basePerms as $p) {
-                    $permMap[$p] = true;
+            }
+        } else {
+            $roles = ['PARTICIPANT'];
+        }
+
+        // Phase 8 / CRIT-01: reusable operational permission profile (ADMIN tier ONLY — never RGST / PARTICIPANT / SUPERADMIN).
+        // When an ADMIN (without SUPERADMIN) has an active permission profile, enforce strict least privilege:
+        // grant ONLY account.read.own + profile permissions (filtered against forbidden perms) + explicit user_roles.custom_permissions,
+        // and do NOT merge the broad 17 DEFAULT_ROLE_PERMISSIONS['ADMIN'].
+        // Legacy/unprofiled ADMINs (permission_profile_id IS NULL) preserve DEFAULT_ROLE_PERMISSIONS['ADMIN'].
+        $profileId = null;
+        $profileSlug = null;
+        $activeAdminProfile = null;
+        if (in_array('ADMIN', $roles, true) && !in_array('SUPERADMIN', $roles, true)) {
+            $activeAdminProfile = pfgResolvePermissionProfile($userId, $pdo);
+            if ($activeAdminProfile !== null) {
+                $profileId = $activeAdminProfile['id'];
+                $profileSlug = $activeAdminProfile['slug'];
+            }
+        }
+
+        if (!empty($assigned)) {
+            $validPerms = array_values(PERMISSIONS);
+            foreach ($assigned as $row) {
+                $rCode = (string)$row['role_code'];
+                if ($rCode === 'ADMIN' && $activeAdminProfile !== null) {
+                    $permMap[PERMISSIONS['ACCOUNT_READ_OWN']] = true;
+                } else {
+                    $basePerms = DEFAULT_ROLE_PERMISSIONS[$rCode] ?? [];
+                    foreach ($basePerms as $p) {
+                        $permMap[$p] = true;
+                    }
                 }
-                // Only ADMIN/SUPERADMIN may receive custom administrative permissions
+                // Only ADMIN/SUPERADMIN may receive explicit custom administrative permissions
                 if (in_array($rCode, ['ADMIN', 'SUPERADMIN'], true)) {
                     $custom = jsonDecode($row['custom_permissions'] ?? null, []);
                     if (is_array($custom)) {
-                        $validPerms = array_values(PERMISSIONS);
                         foreach ($custom as $cp) {
                             if (is_string($cp) && in_array($cp, $validPerms, true)) {
                                 $permMap[$cp] = true;
@@ -885,15 +901,100 @@ if (!function_exists('getUserRolesAndPermissions')) {
                 }
             }
         } else {
-            $roles = ['PARTICIPANT'];
             foreach (DEFAULT_ROLE_PERMISSIONS['PARTICIPANT'] as $p) {
                 $permMap[$p] = true;
             }
         }
 
+        if ($activeAdminProfile !== null) {
+            $permMap[PERMISSIONS['ACCOUNT_READ_OWN']] = true;
+            $forbidden = pfgProfileForbiddenPermissions();
+            foreach ($activeAdminProfile['permissions'] as $pp) {
+                if (is_string($pp) && !in_array($pp, $forbidden, true)) {
+                    $permMap[$pp] = true;
+                }
+            }
+        }
+
         return [
-            'roles'       => $roles,
-            'permissions' => array_keys($permMap),
+            'roles'                 => $roles,
+            'permissions'           => array_keys($permMap),
+            'permissionProfileId'   => $profileId,
+            'permissionProfileSlug' => $profileSlug,
+        ];
+    }
+}
+
+if (!function_exists('pfgProfileForbiddenPermissions')) {
+    /**
+     * Permission codes that can NEVER be conferred through an operational permission profile (CAD-04 / MED-05 / §5.1).
+     */
+    function pfgProfileForbiddenPermissions(): array
+    {
+        return [
+            PERMISSIONS['ADMIN_ACCOUNTS_MANAGE'],
+            PERMISSIONS['SETTINGS_MANAGE'],
+            PERMISSIONS['AUDIT_LOGS_READ'],
+            PERMISSIONS['NOTIFICATIONS_AUTH_MANAGE'],
+        ];
+    }
+}
+
+if (!function_exists('pfgIsLegacyUnprofiledAdmin')) {
+    /**
+     * §5.2 Returns true when a staff account holds the ADMIN role (not SUPERADMIN)
+     * without an assigned operational permission profile (`permission_profile_id IS NULL`).
+     */
+    function pfgIsLegacyUnprofiledAdmin(array $user): bool
+    {
+        $roles = is_array($user['roles'] ?? null) ? $user['roles'] : [];
+        if (!in_array('ADMIN', $roles, true) || in_array('SUPERADMIN', $roles, true)) {
+            return false;
+        }
+        $profileId = $user['permissionProfileId'] ?? $user['permission_profile_id'] ?? null;
+        return $profileId === null || (is_string($profileId) && trim($profileId) === '');
+    }
+}
+
+if (!function_exists('pfgResolvePermissionProfile')) {
+    /**
+     * Resolves the active operational permission profile assigned to an ADMIN user.
+     * Returns ['id','slug','permissions'=>[valid, non-forbidden codes]] or null when none / table not migrated.
+     * Fails closed (null => no extra permissions) on any database error.
+     */
+    function pfgResolvePermissionProfile(string $userId, PDO $pdo): ?array
+    {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT p.id, p.slug, p.permissions_json
+                FROM users u
+                INNER JOIN admin_permission_profiles p ON p.id = u.permission_profile_id
+                WHERE u.id = :uid AND p.is_active = 1
+                LIMIT 1
+            ");
+            $stmt->execute([':uid' => $userId]);
+            $row = $stmt->fetch();
+        } catch (Throwable $e) {
+            return null;
+        }
+        if (!$row) {
+            return null;
+        }
+        $decoded = jsonDecode($row['permissions_json'] ?? '[]', []);
+        $valid = array_values(PERMISSIONS);
+        $forbidden = pfgProfileForbiddenPermissions();
+        $perms = [];
+        if (is_array($decoded)) {
+            foreach ($decoded as $code) {
+                if (is_string($code) && in_array($code, $valid, true) && !in_array($code, $forbidden, true) && !in_array($code, $perms, true)) {
+                    $perms[] = $code;
+                }
+            }
+        }
+        return [
+            'id'          => (string)$row['id'],
+            'slug'        => (string)$row['slug'],
+            'permissions' => $perms,
         ];
     }
 }
@@ -944,11 +1045,9 @@ if (!function_exists('getCurrentUser')) {
         }
 
         $rp = getUserRolesAndPermissions((string)$row['user_id'], $pdo);
-        $mfaRequired = isMfaRequiredForRoles($rp['roles']);
-        $mfaEnabled = (bool)$row['mfa_enabled'];
-        $mfaVerified = (bool)$row['mfa_verified'];
 
-        return [
+        // Historical MFA columns remain intact in DB but are inactive under the revised auth policy.
+        $currentUserPayload = [
             'id'                    => (string)$row['user_id'],
             'email'                 => (string)$row['email'],
             'fullName'              => (string)$row['full_name'],
@@ -957,15 +1056,19 @@ if (!function_exists('getCurrentUser')) {
             'country'               => (string)($row['country'] ?? 'India'),
             'roles'                 => $rp['roles'],
             'permissions'           => $rp['permissions'],
-            'mfaEnabled'            => $mfaEnabled,
-            'mfa_enabled'           => $mfaEnabled,
-            'mfaVerified'           => $mfaVerified,
-            'mfa_verified'          => $mfaVerified,
-            'mfaRequiredForRole'    => $mfaRequired,
-            'mfaEnrollmentRequired' => $mfaRequired && !$mfaEnabled,
+            'permissionProfileId'   => $rp['permissionProfileId'] ?? null,
+            'permissionProfileSlug' => $rp['permissionProfileSlug'] ?? null,
+            'mfaEnabled'            => false,
+            'mfa_enabled'           => false,
+            'mfaVerified'           => false,
+            'mfa_verified'          => false,
+            'mfaRequiredForRole'    => false,
+            'mfaEnrollmentRequired' => false,
             'sessionId'             => (string)$row['session_id'],
             'session_id'            => (string)$row['session_id'],
         ];
+        $currentUserPayload['isLegacyUnprofiledAdmin'] = pfgIsLegacyUnprofiledAdmin($currentUserPayload);
+        return $currentUserPayload;
     }
 }
 
@@ -1049,35 +1152,12 @@ if (!function_exists('isApiRequest')) {
 
 if (!function_exists('enforceStaffMfaGate')) {
     /**
-     * Enforces D-20 mandatory MFA policy for SUPERADMIN and ADMIN accounts on protected resources.
+     * Retained as a no-op compatibility helper after owner-directed discontinuation of TOTP MFA.
+     * No protected route or API requires TOTP MFA enrollment or verification.
      */
     function enforceStaffMfaGate(array $user): void
     {
-        if (userHasCompletedRequiredMfa($user)) {
-            return;
-        }
-        $enrollmentNeeded = userRequiresMfaEnrollment($user);
-        logAudit([
-            'actorUserId'  => $user['id'] ?? null,
-            'action'       => 'ACCESS_DENIED',
-            'resourceType' => 'security',
-            'resourceId'   => parse_url((string)($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH),
-            'metadata'     => [
-                'reason' => $enrollmentNeeded ? 'MFA_ENROLLMENT_REQUIRED' : 'MFA_VERIFICATION_REQUIRED',
-                'roles'  => $user['roles'] ?? [],
-            ],
-        ]);
-        if (isApiRequest()) {
-            jsonResponse([
-                'error'                 => $enrollmentNeeded
-                    ? 'Multi-factor authentication enrollment is mandatory for your role before accessing administrative operations.'
-                    : 'Multi-factor authentication verification is required for this session.',
-                'mfaEnrollmentRequired' => $enrollmentNeeded,
-                'mfaRequired'           => !$enrollmentNeeded,
-            ], 403);
-        }
-        header('Location: /admin?mfa_setup=1');
-        exit;
+        return;
     }
 }
 

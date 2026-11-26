@@ -1,0 +1,5 @@
+# Enforce LF line endings for Linux/Bluehost shell scripts and deployment configs
+*.sh text eol=lf
+.cpanel.yml text eol=lf
+.htaccess text eol=lf
+.user.ini text eol=lf

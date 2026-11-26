@@ -201,13 +201,19 @@ pfgTest('T3-03', 'Legacy pre-Phase-3 DB upgrade: duplicate consolidation, sequen
         pfgAssert(!str_contains($rrAnswers, 'plaintextpass') && !str_contains($rrAnswers, 'secret health note'), 'Sensitive data still present in registration_responses.answers');
         pfgAssert(str_contains($rrAnswers, 'Legacy User'), 'Non-sensitive answer lost during scrubbing');
 
+        $tableCount = count($lpdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
         $fkCount = (int)$lpdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'")->fetchColumn();
-        return ['applied' => count($migRes['appliedNow']), 'nextCode' => $nextCode, 'fks' => $fkCount, 'reRunEncrypted' => $reRun004['encryptedFields']['accommodation_requests']];
+        $migCount = (int)$lpdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
+        pfgAssert($tableCount === 70, "Expected 70 tables after full legacy upgrade, got {$tableCount}");
+        pfgAssert($fkCount >= 79, "Expected >= 79 FKs after full legacy upgrade, got {$fkCount}");
+        pfgAssert($migCount === 13, "Expected 13 applied migrations after full legacy upgrade, got {$migCount}");
+        return ['applied' => $migCount, 'tables' => $tableCount, 'nextCode' => $nextCode, 'fks' => $fkCount, 'reRunEncrypted' => $reRun004['encryptedFields']['accommodation_requests']];
     });
 
     return sprintf(
-        'Legacy upgrade applied %d migrations (%d FKs), 6 duplicate pairs consolidated (0 legacy dropped), legacy 99->%s, historical encryption/MFA/redaction verified (rerun re-encrypted=%d)',
+        'Legacy upgrade applied %d migrations (%d tables, %d FKs), 6 duplicate pairs consolidated (0 legacy dropped), legacy 99->%s, historical encryption/MFA/redaction verified (rerun re-encrypted=%d)',
         $summary['applied'],
+        $summary['tables'],
         $summary['fks'],
         $summary['nextCode'],
         $summary['reRunEncrypted']
@@ -461,31 +467,55 @@ pfgTest('T3-08', 'Single-transaction registration atomicity, zero legacy dual-wr
 
     try {
         $email = 'idem.canonical.' . bin2hex(random_bytes(3)) . '@example.test';
+        $idemUid = uuid4();
+        $nowSqlStr = nowSql();
+        $pdo->prepare("
+            INSERT INTO users (id, email, email_verified_at, password_hash, full_name, phone, country, is_active, account_status, created_at, updated_at)
+            VALUES (:id, :em, :now, :pw, 'Canonical Tester', '+91 98250 55555', 'India', 1, 'ACTIVE', :now, :now)
+        ")->execute([':id' => $idemUid, ':em' => $email, ':now' => $nowSqlStr, ':pw' => hashPassword('Canonical#2027')]);
+        $partRoleId = (string)$pdo->query("SELECT id FROM roles WHERE code = 'PARTICIPANT' LIMIT 1")->fetchColumn();
+        $pdo->prepare('INSERT INTO user_roles (id, user_id, role_id, custom_permissions, assigned_at) VALUES (:id, :uid, :rid, NULL, :now)')
+            ->execute([':id' => uuid4(), ':uid' => $idemUid, ':rid' => $partRoleId, ':now' => $nowSqlStr]);
+
+        $rawSess = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+        $pdo->prepare('INSERT INTO sessions (id, user_id, token_hash, mfa_verified, expires_at, created_at) VALUES (:id, :uid, :th, 0, :exp, :now)')
+            ->execute([':id' => uuid4(), ':uid' => $idemUid, ':th' => hashToken($rawSess), ':exp' => nowSql(time() + 3600), ':now' => $nowSqlStr]);
+        $csrfTok = pfgComputeSessionBoundCsrfToken($rawSess);
+
         $idemKey = 'pfg-idem-' . bin2hex(random_bytes(6));
         $payload = json_encode([
-            'fullName'                  => 'Canonical Tester',
-            'email'                     => $email,
             'phone'                     => '+91 98250 55555',
             'country'                   => 'India',
+            'cityDistrict'              => 'Vadodara',
+            'state'                     => 'Gujarat',
             'categoryCode'              => 'ATTENDEE',
-            'occupation'                => 'Student',
             'isPersonWithDisability'    => 'YES',
             'disabilityCategoryCodes'   => ['LOW_VISION'],
             'disabilitySelfDescription' => 'Large print preferred',
             'accommodationTypes'        => ['LARGE_PRINT'],
             'accommodationFreeText'     => 'Front row seating please',
-            'attendingDays'             => ['Day 1 (21 Jan)'],
+            'attendingDays'             => ['DAY_1'],
+            'attendeeDetails'           => [
+                'ageGroup'               => '18_35',
+                'selfIdentificationTags' => ['Student'],
+            ],
             'consentZeroTolerance'      => true,
             'consentDataProcessing'     => true,
+            'consentAccuracy'           => true,
             'idempotencyKey'            => $idemKey,
         ]);
 
-        $doPost = static function () use ($payload, $idemKey): array {
+        $doPost = static function () use ($payload, $idemKey, $rawSess, $csrfTok): array {
             $ch = curl_init('http://127.0.0.1:8087/api/registrations');
             curl_setopt_array($ch, [
                 CURLOPT_POST           => true,
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Idempotency-Key: ' . $idemKey],
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/json',
+                    'Cookie: ' . SESSION_COOKIE_NAME . '=' . $rawSess,
+                    'X-CSRF-Token: ' . $csrfTok,
+                    'Idempotency-Key: ' . $idemKey,
+                ],
                 CURLOPT_POSTFIELDS     => $payload,
                 CURLOPT_TIMEOUT        => 8,
             ]);
@@ -794,8 +824,10 @@ pfgTest('T3-13', 'Real mysqldump backup, full database restore, decryption & seq
             $rpdo = pfgCreateDirectPdo('pfg27_backup_test');
             $postTables = count($rpdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
             $postFks = (int)$rpdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'")->fetchColumn();
-            pfgAssert($postTables === $preTables, "Table count mismatch after restore: {$preTables} vs {$postTables}");
-            pfgAssert($postFks === $preFks, "FK count mismatch after restore: {$preFks} vs {$postFks}");
+            $postMigs = (int)$rpdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
+            pfgAssert($postTables === $preTables && $postTables === 70, "Table count mismatch after restore: pre={$preTables}, post={$postTables}, expected=70");
+            pfgAssert($postFks === $preFks && $postFks >= 79, "FK count mismatch after restore: pre={$preFks}, post={$postFks}, expected>=79");
+            pfgAssert($postMigs === 13, "Migration count mismatch after restore: {$postMigs}, expected=13");
 
             // Verify encrypted accommodation decrypts cleanly after restore (incl. Gujarati UTF-8)
             $restoredEnc = (string)$rpdo->query('SELECT free_text_details FROM accommodation_requests LIMIT 1')->fetchColumn();
