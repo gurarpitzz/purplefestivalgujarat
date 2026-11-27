@@ -1,66 +1,210 @@
 /* ==========================================================================
-   Purple Festival Gujarat 2027 — Flowing Wave-Node 3-Step Registration Stepper
+   Purple Festival Gujarat 2027 — Approved 4-Step Branded Registration Card
    Shared across /apply/attendee, /apply/sli, and /apply/volunteer.
-   WCAG 2.2 AA+ compliant (44px targets, keyboard focus, High Contrast,
-   Yellow-on-Black, Reduced Motion, 0px overflow down to 320px / 400% zoom).
+   Visual reference: "PurpleFest registration: contact and about you" mockup.
+   WCAG 2.2 AA+ compliant (44px targets, inline field errors, keyboard focus,
+   High Contrast, Yellow-on-Black, Reduced Motion, 0px overflow to 320px).
    ========================================================================== */
 
-.pfg-wave-stepper {
-  margin-bottom: 1.75rem;
-  padding: 1.25rem 1.25rem 1.1rem;
-  border-radius: 1rem;
-  border: 2px solid rgba(43, 10, 61, 0.14);
-  background-color: #ffffff;
-  box-shadow: 0 2px 10px rgba(43, 10, 61, 0.05);
+.pfg-reg-shell {
+  position: relative;
+  min-height: calc(100vh - 76px);
+  background: linear-gradient(160deg, #ede5fa 0%, #f4effd 48%, #ebe0fa 100%);
+  color: #18224a;
   overflow-x: clip;
-  scroll-margin-top: 6rem;
+  isolation: isolate;
 }
 
-.pfg-wave-stepper *,
-.pfg-wave-stepper *::before,
-.pfg-wave-stepper *::after {
+.pfg-reg-shell *,
+.pfg-reg-shell *::before,
+.pfg-reg-shell *::after {
   box-sizing: border-box;
   min-width: 0;
 }
 
-.pfg-wave-stepper__top {
+/* Subtle translucent ribbon flourishes at viewport edges (desktop) */
+.pfg-reg-ribbon {
+  position: fixed;
+  top: 76px;
+  bottom: 0;
+  width: clamp(90px, 12vw, 190px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.72;
+}
+
+.pfg-reg-ribbon--left {
+  left: 0;
+}
+
+.pfg-reg-ribbon--right {
+  right: 0;
+}
+
+/* Centered narrower column matching mockup proportions */
+.pfg-reg-wrap {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 740px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3.5rem;
+}
+
+@media (min-width: 640px) {
+  .pfg-reg-wrap {
+    padding: 2rem 1.5rem 4rem;
+  }
+}
+
+/* Quiet top utility row above card */
+.pfg-reg-topbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.35rem 1rem;
+  gap: 0.45rem 1rem;
   margin-bottom: 0.9rem;
+  font-size: 0.85rem;
 }
 
-.pfg-wave-stepper__counter {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #5b2a86;
-}
-
-.pfg-wave-stepper__current-name {
-  margin: 0;
-  font-size: 0.92rem;
+.pfg-reg-back-hub {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 36px;
   font-weight: 700;
-  color: #202d59;
+  color: #4f1d82;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-/* Wave track + positioned 3-node overlay */
+.pfg-reg-back-hub:hover {
+  color: #18224a;
+}
+
+.pfg-reg-back-hub:focus-visible {
+  outline: 3px solid #6e22d4;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.pfg-reg-meta-pill {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4f3b6e;
+}
+
+/* Main elevated white registration card */
+.pfg-reg-card {
+  border-radius: 1.15rem;
+  background-color: #ffffff;
+  border: 1px solid rgba(91, 42, 134, 0.16);
+  box-shadow: 0 20px 50px rgba(45, 16, 77, 0.13), 0 4px 12px rgba(45, 16, 77, 0.06);
+  overflow: hidden;
+  scroll-margin-top: 5.5rem;
+}
+
+/* Deep-purple PurpleFest header banner with layered silk ribbon waves */
+.pfg-reg-banner {
+  position: relative;
+  background: linear-gradient(125deg, #32095e 0%, #521393 52%, #7625d6 100%);
+  color: #ffffff;
+  padding: 1.35rem 1.5rem 1.8rem;
+  overflow: hidden;
+}
+
+.pfg-reg-banner__waves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pfg-reg-banner__inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem 0.9rem;
+  text-align: center;
+}
+
+.pfg-reg-banner__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pfg-reg-banner__emblem {
+  height: 1.85rem;
+  width: auto;
+  color: #ffffff;
+}
+
+.pfg-reg-banner__divider {
+  display: inline-block;
+  width: 1.5px;
+  height: 1.35rem;
+  background-color: rgba(255, 255, 255, 0.45);
+  border-radius: 1px;
+}
+
+.pfg-reg-banner__title {
+  margin: 0;
+  font-size: clamp(1.12rem, 2.2vw, 1.38rem);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+/* White card body overlapping slightly under banner wave */
+.pfg-reg-card__body {
+  position: relative;
+  z-index: 3;
+  margin-top: -0.75rem;
+  border-radius: 1rem 1rem 0 0;
+  background-color: #ffffff;
+  padding: 1.45rem 1.35rem 1.85rem;
+}
+
+@media (min-width: 640px) {
+  .pfg-reg-card__body {
+    padding: 1.7rem 2.25rem 2.15rem;
+  }
+}
+
+/* ==========================================================================
+   Integrated 4-Step Progress Indicator (Wave/Line Track + 4 Nodes)
+   ========================================================================== */
+.pfg-wave-stepper {
+  margin: 0 0 1.65rem;
+  padding: 0 0 1.25rem;
+  border-bottom: 1px solid rgba(43, 10, 61, 0.1);
+  scroll-margin-top: 6rem;
+}
+
 .pfg-wave-stepper__stage {
   position: relative;
   width: 100%;
-  padding-top: 0.2rem;
 }
 
 .pfg-wave-stepper__svg {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 52px;
+  top: 4px;
+  left: 10%;
+  width: 80%;
+  height: 36px;
   pointer-events: none;
   z-index: 1;
   overflow: visible;
@@ -68,25 +212,25 @@
 
 .pfg-wave-stepper__track {
   fill: none;
-  stroke: #dfd2f3;
-  stroke-width: 4.5;
+  stroke: #dfd3f2;
+  stroke-width: 3.2;
   stroke-linecap: round;
 }
 
 .pfg-wave-stepper__fill {
   fill: none;
-  stroke: #7c2ae8;
-  stroke-width: 5;
+  stroke: #7625d6;
+  stroke-width: 3.6;
   stroke-linecap: round;
-  transition: stroke-dashoffset 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: stroke-dashoffset 360ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .pfg-wave-stepper__nodes {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -99,65 +243,66 @@
   text-align: center;
 }
 
-.pfg-wave-stepper__item:first-child {
-  align-items: flex-start;
-  text-align: left;
-}
-
-.pfg-wave-stepper__item:last-child {
-  align-items: flex-end;
-  text-align: right;
-}
-
 .pfg-wave-stepper__node {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 9999px;
-  border: 3px solid #cbb7e8;
-  background-color: #fbf8f1;
-  color: #5b2a86;
-  font-size: 1rem;
-  font-weight: 800;
-  line-height: 1;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  box-shadow: 0 0 0 4px #ffffff;
-  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
-}
-
-.pfg-wave-stepper__node:hover {
-  border-color: #7c2ae8;
-  color: #2b0a3d;
 }
 
 .pfg-wave-stepper__node:focus-visible {
-  outline: 3px solid #2b0a3d;
-  outline-offset: 4px;
+  outline: 3px solid #6e22d4;
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
+
+.pfg-wave-stepper__circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: 2px solid #c3b2de;
+  background-color: #ffffff;
+  color: #18224a;
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 3px #ffffff;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.pfg-wave-stepper__node:hover .pfg-wave-stepper__circle {
+  border-color: #6e22d4;
+  color: #6e22d4;
 }
 
 .pfg-wave-stepper__node-check {
   display: none;
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
 }
 
 /* Active node */
-.pfg-wave-stepper__item.is-active .pfg-wave-stepper__node {
+.pfg-wave-stepper__item.is-active .pfg-wave-stepper__circle {
   border-color: #6e22d4;
   background-color: #6e22d4;
   color: #ffffff;
-  box-shadow: 0 0 0 4px #ffffff, 0 0 0 7px rgba(110, 34, 212, 0.24);
-  transform: scale(1.06);
+  box-shadow: 0 0 0 3px #ffffff, 0 0 0 6px rgba(110, 34, 212, 0.22);
 }
 
 /* Completed node */
-.pfg-wave-stepper__item.is-complete .pfg-wave-stepper__node {
-  border-color: #2b0a3d;
-  background-color: #2b0a3d;
+.pfg-wave-stepper__item.is-complete .pfg-wave-stepper__circle {
+  border-color: #6e22d4;
+  background-color: #6e22d4;
   color: #ffffff;
-  box-shadow: 0 0 0 4px #ffffff;
+  box-shadow: 0 0 0 3px #ffffff;
 }
 
 .pfg-wave-stepper__item.is-complete .pfg-wave-stepper__node-num {
@@ -168,51 +313,214 @@
   display: block;
 }
 
-.pfg-wave-stepper__meta {
-  margin-top: 0.65rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  max-width: 100%;
-}
-
-.pfg-wave-stepper__step-num {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #5b2a86;
-}
-
 .pfg-wave-stepper__label {
-  font-size: 0.88rem;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
   font-weight: 700;
   line-height: 1.25;
-  color: #46537c;
+  color: #18224a;
   overflow-wrap: break-word;
 }
 
-.pfg-wave-stepper__item.is-active .pfg-wave-stepper__label,
-.pfg-wave-stepper__item.is-complete .pfg-wave-stepper__label {
-  color: #202d59;
+.pfg-wave-stepper__item.is-active .pfg-wave-stepper__label {
+  color: #6e22d4;
   font-weight: 800;
 }
 
-/* Wizard Step Containers & Navigation Bar */
+/* ==========================================================================
+   Step Heading, Inputs, Selectable Choice Tiles & Inline Field Errors
+   ========================================================================== */
 .pfg-wizard-step[hidden] {
   display: none !important;
 }
 
+.pfg-step-heading {
+  margin: 0 0 1.25rem;
+  font-size: clamp(1.5rem, 2.8vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+  color: #18224a;
+}
+
+.pfg-step-heading:focus {
+  outline: none;
+}
+
+.pfg-step-heading:focus-visible {
+  outline: 3px solid #6e22d4;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.pfg-step-divider {
+  margin: 1.65rem 0 1.35rem;
+  border: 0;
+  border-top: 1px solid rgba(43, 10, 61, 0.12);
+}
+
+.pfg-sub-heading {
+  margin: 0 0 0.85rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #18224a;
+}
+
+/* Crisp form fields matching mockup border visibility & height */
+.pfg-reg-card .pfg-field-label {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #18224a;
+  line-height: 1.35;
+}
+
+.pfg-reg-card .pfg-field-opt {
+  font-weight: 500;
+  color: #525d82;
+}
+
+.pfg-reg-card .pfg-field-req {
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+.pfg-reg-card .pfg-input,
+.pfg-reg-card .pfg-select,
+.pfg-reg-card .pfg-textarea {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 0.35rem;
+  padding: 0.58rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1.5px solid #4d587c;
+  background-color: #ffffff;
+  color: #18224a;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pfg-reg-card .pfg-input::placeholder,
+.pfg-reg-card .pfg-textarea::placeholder {
+  color: #6b7494;
+}
+
+.pfg-reg-card .pfg-input:focus-visible,
+.pfg-reg-card .pfg-select:focus-visible,
+.pfg-reg-card .pfg-textarea:focus-visible {
+  outline: none;
+  border-color: #6e22d4;
+  box-shadow: 0 0 0 3px rgba(110, 34, 212, 0.24);
+}
+
+.pfg-reg-card .pfg-hint {
+  margin: 0.32rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #4b5578;
+}
+
+/* Clickable radio / checkbox choice boxes with visible selected & focus states */
+.pfg-reg-card .pfg-choice-box {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1.5px solid #c3c8db;
+  background-color: #ffffff;
+  color: #18224a;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.32;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.pfg-reg-card .pfg-choice-box:hover {
+  border-color: #7c2ae8;
+  background-color: #faf7ff;
+}
+
+.pfg-reg-card .pfg-choice-box:has(input:checked) {
+  border-color: #6e22d4;
+  background-color: #f3ebff;
+  box-shadow: inset 0 0 0 1px #6e22d4;
+}
+
+.pfg-reg-card .pfg-choice-box:has(input:focus-visible) {
+  outline: 3px solid #6e22d4;
+  outline-offset: 2px;
+}
+
+.pfg-reg-card .pfg-choice-box input[type="radio"],
+.pfg-reg-card .pfg-choice-box input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex-shrink: 0;
+  accent-color: #6e22d4;
+  margin: 0;
+}
+
+.pfg-reg-card .pfg-choice-box span {
+  overflow-wrap: break-word;
+}
+
+/* Inline field-level error state & message */
+.pfg-reg-card [aria-invalid="true"],
+.pfg-reg-card .pfg-has-error .pfg-input,
+.pfg-reg-card .pfg-has-error .pfg-select,
+.pfg-reg-card .pfg-has-error .pfg-textarea {
+  border-color: #b91c1c !important;
+  box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.16);
+}
+
+.pfg-reg-card fieldset.pfg-has-error {
+  padding: 0.65rem;
+  border: 1.5px solid #b91c1c;
+  border-radius: 0.6rem;
+  background-color: #fef2f2;
+}
+
+.pfg-field-error {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #b91c1c;
+}
+
+/* Inside-card cleaner sections for Steps 3 & 4 (avoid heavy double boxes) */
+.pfg-reg-card .pfg-wizard-step > section {
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.pfg-reg-card .pfg-wizard-step > section + section {
+  margin-top: 1.75rem;
+  padding-top: 1.65rem !important;
+  border-top: 1px solid rgba(43, 10, 61, 0.14) !important;
+}
+
+/* ==========================================================================
+   Bottom Wizard Navigation Bar (Back + Primary Next / Review / Submit)
+   ========================================================================== */
 .pfg-wizard-nav {
+  margin-top: 1.85rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(43, 10, 61, 0.12);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem 1rem;
-  border-radius: 1rem;
-  border: 2px solid rgba(32, 45, 89, 0.15);
-  background-color: #ffffff;
-  padding: 1.15rem 1.25rem;
 }
 
 .pfg-wizard-nav__left,
@@ -227,43 +535,44 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  min-height: 46px;
-  padding: 0.65rem 1.25rem;
-  border-radius: 0.5rem;
-  border: 2px solid #202d59;
-  background-color: #ffffff;
-  color: #202d59;
-  font-size: 0.92rem;
-  font-weight: 700;
+  min-height: 44px;
+  padding: 0.45rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: #5b2a86;
+  font-size: 0.94rem;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 2px;
   cursor: pointer;
-  transition: background-color 150ms ease, color 150ms ease;
 }
 
 .pfg-wizard-btn-prev:hover {
-  background-color: #ddddf9;
+  color: #18224a;
 }
 
 .pfg-wizard-btn-prev:focus-visible {
   outline: 3px solid #6e22d4;
-  outline-offset: 2px;
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .pfg-wizard-btn-next {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
+  gap: 0.5rem;
   min-height: 46px;
-  padding: 0.7rem 1.5rem;
-  border-radius: 0.5rem;
+  padding: 0.72rem 1.5rem;
+  border-radius: 0.55rem;
   border: 2px solid transparent;
   background-color: #6e22d4;
   color: #ffffff;
-  font-size: 0.95rem;
+  font-size: 0.96rem;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(110, 34, 212, 0.22);
+  box-shadow: 0 4px 14px rgba(110, 34, 212, 0.25);
   transition: background-color 150ms ease, transform 150ms ease;
 }
 
@@ -272,7 +581,7 @@
 }
 
 .pfg-wizard-btn-next:focus-visible {
-  outline: 3px solid #2b0a3d;
+  outline: 3px solid #18224a;
   outline-offset: 3px;
 }
 
@@ -281,49 +590,75 @@
 }
 
 /* ==========================================================================
-   Responsive Mobile & 400% Zoom (<= 540px & 320px)
+   Responsive Mobile & 400% Zoom (<= 640px, 390px, 320px)
    ========================================================================== */
+@media (max-width: 720px) {
+  .pfg-reg-ribbon {
+    display: none;
+  }
+}
+
 @media (max-width: 540px) {
-  .pfg-wave-stepper {
-    padding: 1rem 0.85rem 0.95rem;
+  .pfg-reg-wrap {
+    padding: 1rem 0.65rem 2.75rem;
   }
 
-  .pfg-wave-stepper__node {
-    width: 44px;
-    height: 44px;
-    font-size: 0.92rem;
+  .pfg-reg-banner {
+    padding: 1.1rem 1rem 1.55rem;
+  }
+
+  .pfg-reg-banner__divider {
+    display: none;
+  }
+
+  .pfg-reg-card__body {
+    padding: 1.2rem 1rem 1.5rem;
   }
 
   .pfg-wave-stepper__svg {
-    height: 46px;
+    left: 11%;
+    width: 78%;
+    top: 2px;
+  }
+
+  .pfg-wave-stepper__circle {
+    width: 32px;
+    height: 32px;
+    font-size: 0.82rem;
   }
 
   .pfg-wave-stepper__label {
-    font-size: 0.76rem;
-  }
-
-  .pfg-wave-stepper__step-num {
-    font-size: 0.65rem;
-  }
-
-  .pfg-wizard-nav {
-    padding: 1rem;
+    font-size: 0.7rem;
+    line-height: 1.2;
   }
 
   .pfg-wizard-nav__right {
     width: 100%;
     justify-content: flex-end;
   }
+
+  .pfg-wizard-btn-next {
+    width: 100%;
+  }
 }
 
 @media (max-width: 360px) {
-  .pfg-wave-stepper__label {
-    font-size: 0.7rem;
+  .pfg-wave-stepper__nodes {
+    gap: 0.15rem;
   }
 
-  .pfg-wizard-btn-next,
-  .pfg-wizard-btn-prev {
-    width: 100%;
+  .pfg-wave-stepper__circle {
+    width: 28px;
+    height: 28px;
+    font-size: 0.76rem;
+  }
+
+  .pfg-wave-stepper__label {
+    font-size: 0.64rem;
+  }
+
+  .pfg-reg-banner__divider {
+    display: none;
   }
 
   .pfg-wizard-nav__left,
@@ -337,18 +672,18 @@
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
   .pfg-wave-stepper__fill,
-  .pfg-wave-stepper__node,
-  .pfg-wizard-btn-prev,
-  .pfg-wizard-btn-next {
+  .pfg-wave-stepper__circle,
+  .pfg-wizard-btn-next,
+  .pfg-reg-card .pfg-choice-box {
     transition: none !important;
     transform: none !important;
   }
 }
 
 html[data-reduced-motion="true"] .pfg-wave-stepper__fill,
-html[data-reduced-motion="true"] .pfg-wave-stepper__node,
-html[data-reduced-motion="true"] .pfg-wizard-btn-prev,
-html[data-reduced-motion="true"] .pfg-wizard-btn-next {
+html[data-reduced-motion="true"] .pfg-wave-stepper__circle,
+html[data-reduced-motion="true"] .pfg-wizard-btn-next,
+html[data-reduced-motion="true"] .pfg-reg-card .pfg-choice-box {
   transition: none !important;
   transform: none !important;
 }
@@ -356,11 +691,20 @@ html[data-reduced-motion="true"] .pfg-wizard-btn-next {
 /* ==========================================================================
    WCAG AAA High Contrast & Yellow-on-Black Overrides
    ========================================================================== */
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wizard-nav {
-  background-color: #000000 !important;
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-card,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-card__body,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-banner,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-card .pfg-choice-box {
+  background: #000000 !important;
+  color: #ffffff !important;
   border-color: #ffffff !important;
   box-shadow: none !important;
+}
+
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-ribbon,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-banner__waves {
+  display: none !important;
 }
 
 :is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__track {
@@ -371,68 +715,80 @@ html[data-reduced-motion="true"] .pfg-wizard-btn-next {
   stroke: #ffffff !important;
 }
 
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__node {
+:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__circle {
   background-color: #000000 !important;
   color: #ffffff !important;
   border-color: #ffffff !important;
   box-shadow: 0 0 0 3px #000000 !important;
 }
 
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__item.is-active .pfg-wave-stepper__node,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__item.is-complete .pfg-wave-stepper__node,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__item.is-active .pfg-wave-stepper__circle,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__item.is-complete .pfg-wave-stepper__circle,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-wizard-btn-next {
   background-color: #ffffff !important;
   color: #000000 !important;
   border-color: #ffffff !important;
 }
 
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__counter,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__current-name,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__step-num,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wave-stepper__label,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-wizard-btn-prev {
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell h1,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell h2,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell h3,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell p,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell label,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell legend,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell .pfg-wave-stepper__label,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell .pfg-wizard-btn-prev,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-reg-shell .pfg-field-error {
   color: #ffffff !important;
-  border-color: #ffffff !important;
-  background-color: #000000 !important;
 }
 
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wizard-nav {
-  background-color: #000000 !important;
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-card,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-card__body,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-banner,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-card .pfg-choice-box {
+  background: #000000 !important;
+  color: #ffea00 !important;
   border-color: #ffea00 !important;
   box-shadow: none !important;
 }
 
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-ribbon,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-banner__waves {
+  display: none !important;
+}
+
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__track {
-  stroke: rgba(255, 234, 0, 0.42) !important;
+  stroke: rgba(255, 234, 0, 0.45) !important;
 }
 
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__fill {
   stroke: #ffea00 !important;
 }
 
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__node {
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__circle {
   background-color: #000000 !important;
   color: #ffea00 !important;
   border-color: #ffea00 !important;
   box-shadow: 0 0 0 3px #000000 !important;
 }
 
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__item.is-active .pfg-wave-stepper__node,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__item.is-complete .pfg-wave-stepper__node,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__item.is-active .pfg-wave-stepper__circle,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__item.is-complete .pfg-wave-stepper__circle,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wizard-btn-next {
   background-color: #ffea00 !important;
   color: #000000 !important;
   border-color: #ffea00 !important;
 }
 
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__counter,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__current-name,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__step-num,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wave-stepper__label,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-wizard-btn-prev {
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell h1,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell h2,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell h3,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell p,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell label,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell legend,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell .pfg-wave-stepper__label,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell .pfg-wizard-btn-prev,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-reg-shell .pfg-field-error {
   color: #ffea00 !important;
-  border-color: #ffea00 !important;
-  background-color: #000000 !important;
 }
-

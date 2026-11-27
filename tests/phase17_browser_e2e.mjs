@@ -333,19 +333,21 @@ try {
     assert(!applyHtml.includes('data-primary-category="DELEGATE"') && !applyHtml.includes('data-primary-category="ACCESSIBLE"'), 'Legacy or ACCESSIBLE card found on /apply');
     await saveShot(partPage, 'apply_hub_desktop.png');
 
-    // 2. Open /apply/attendee directly without login, step through 3-step wave wizard (Step 1 -> Step 2 -> Step 3)
+    // 2. Open /apply/attendee directly without login, step through 4-step branded wizard (Contact -> About you -> Festival & travel -> Accessibility & confirm)
     await partPage.goto(`${BASE_URL}/apply/attendee`, { waitUntil: 'networkidle' });
     await partPage.waitForSelector('#pfg-wave-stepper', { timeout: 8000 });
     await partPage.fill('#pfg-full-name', partName);
     await partPage.fill('#pfg-email', partEmail);
     await partPage.fill('#pfg-phone', '+91 98250 44556');
+    await partPage.click('#pfg-btn-next');
+    await partPage.waitForSelector('[data-wizard-step="2"]:not([hidden])', { timeout: 5000 });
     await partPage.check('#pfg-age-group-18_35');
     await partPage.check('#pfg-self-tag-1');
     await partPage.click('#pfg-btn-next');
-    await partPage.waitForSelector('[data-wizard-step="2"]:not([hidden])', { timeout: 5000 });
+    await partPage.waitForSelector('[data-wizard-step="3"]:not([hidden])', { timeout: 5000 });
     await partPage.check('#pfg-day-day_1');
     await partPage.click('#pfg-btn-next');
-    await partPage.waitForSelector('[data-wizard-step="3"]:not([hidden])', { timeout: 5000 });
+    await partPage.waitForSelector('[data-wizard-step="4"]:not([hidden])', { timeout: 5000 });
     await partPage.check('#pfg-consent-zero-tolerance');
     await partPage.check('#pfg-consent-dpdp');
     await partPage.check('#pfg-consent-accuracy');
@@ -456,7 +458,7 @@ try {
   await runCheck('E2E-03', 'Accountless Volunteer & SLI browser forms (Review step, 0 accounts), Admin approve/assign (email 0 /dashboard) & RGST mark for both', async () => {
     clearMailSink();
 
-    // 1. Submit accountless Volunteer form in browser (3-step wave wizard)
+    // 1. Submit accountless Volunteer form in browser (4-step branded wizard)
     await partPage.goto(`${BASE_URL}/apply/volunteer`, { waitUntil: 'networkidle' });
     await partPage.waitForSelector('#pfg-wave-stepper', { timeout: 8000 });
     const volShifts = await partPage.locator('input[name="availabilityShifts[]"]').count();
@@ -466,15 +468,17 @@ try {
     await partPage.fill('#pfg-full-name', `${partName} Volunteer`);
     await partPage.fill('#pfg-email', partEmail);
     await partPage.fill('#pfg-phone', '+91 98250 44557');
+    await partPage.click('#pfg-btn-next');
+    await partPage.waitForSelector('[data-wizard-step="2"]:not([hidden])', { timeout: 5000 });
     await partPage.fill('#pfg-vol-age', '23');
     await partPage.check('#pfg-msu-external');
     await partPage.click('#pfg-btn-next');
-    await partPage.waitForSelector('[data-wizard-step="2"]:not([hidden])', { timeout: 5000 });
+    await partPage.waitForSelector('[data-wizard-step="3"]:not([hidden])', { timeout: 5000 });
     await partPage.check('#pfg-primary-role-1');
     await partPage.check('#pfg-lang-0');
     await partPage.check('#pfg-shift-day_1_shift_1');
     await partPage.click('#pfg-btn-next');
-    await partPage.waitForSelector('[data-wizard-step="3"]:not([hidden])', { timeout: 5000 });
+    await partPage.waitForSelector('[data-wizard-step="4"]:not([hidden])', { timeout: 5000 });
     await partPage.fill('#pfg-ec-name', 'Suresh Desai');
     await partPage.selectOption('#pfg-ec-relationship', 'Parent');
     await partPage.fill('#pfg-ec-phone', '+91 98250 77700');
@@ -491,7 +495,7 @@ try {
     assert(String(volConfText || '').includes('Pending Coordinator Review'), 'Volunteer confirmation must state Pending Coordinator Review');
     volunteerCode = volMatch[0];
 
-    // 2. Submit accountless SLI form in browser (3-step wave wizard)
+    // 2. Submit accountless SLI form in browser (4-step branded wizard)
     await partPage.goto(`${BASE_URL}/apply/sli`, { waitUntil: 'networkidle' });
     await partPage.waitForSelector('#pfg-wave-stepper', { timeout: 8000 });
     const sliShifts = await partPage.locator('input[name="availabilityShifts[]"]').count();
@@ -501,18 +505,20 @@ try {
     await partPage.fill('#pfg-full-name', `${partName} SLI`);
     await partPage.fill('#pfg-email', partEmail);
     await partPage.fill('#pfg-phone', '+91 98250 44558');
+    await partPage.click('#pfg-btn-next');
+    await partPage.waitForSelector('[data-wizard-step="2"]:not([hidden])', { timeout: 5000 });
     await partPage.fill('#pfg-sli-age', '30');
     await partPage.fill('#pfg-sli-city', 'Vadodara');
     await partPage.selectOption('#pfg-sli-state', 'Gujarat');
     await partPage.check('#pfg-sli-guj-yes');
     await partPage.click('#pfg-btn-next');
-    await partPage.waitForSelector('[data-wizard-step="2"]:not([hidden])', { timeout: 5000 });
+    await partPage.waitForSelector('[data-wizard-step="3"]:not([hidden])', { timeout: 5000 });
     await partPage.check('#pfg-sli-qual-certified_isl');
     await partPage.check('#pfg-sli-exp-3_to_5');
     await partPage.check('#pfg-sli-stage-yes');
     await partPage.check('#pfg-shift-day_2_shift_1');
     await partPage.click('#pfg-btn-next');
-    await partPage.waitForSelector('[data-wizard-step="3"]:not([hidden])', { timeout: 5000 });
+    await partPage.waitForSelector('[data-wizard-step="4"]:not([hidden])', { timeout: 5000 });
     await partPage.fill('#pfg-ec-name', 'Suresh Desai');
     await partPage.selectOption('#pfg-ec-relationship', 'Parent');
     await partPage.fill('#pfg-ec-phone', '+91 98250 77700');

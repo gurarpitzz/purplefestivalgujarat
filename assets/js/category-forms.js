@@ -86,58 +86,116 @@
       return panel ? (panel.getAttribute('data-step-title') || ('Step ' + stepNum)) : ('Step ' + stepNum);
     }
 
+    function clearFieldWrapError(wrap) {
+      if (!wrap) return;
+      wrap.classList.remove('pfg-has-error');
+      wrap.querySelectorAll('[aria-invalid="true"]').forEach(function (ctrl) {
+        ctrl.removeAttribute('aria-invalid');
+      });
+      wrap.querySelectorAll('.pfg-field-error').forEach(function (msg) {
+        if (msg.parentNode) msg.parentNode.removeChild(msg);
+      });
+    }
+
+    function clearInlineFieldErrors() {
+      form.querySelectorAll('[data-field-wrap]').forEach(clearFieldWrapError);
+    }
+
+    function renderInlineFieldErrors(errs) {
+      clearInlineFieldErrors();
+      var firstControl = null;
+      Object.keys(errs || {}).forEach(function (fieldKey) {
+        var wrap = form.querySelector('[data-field-wrap="' + fieldKey + '"]');
+        if (!wrap) return;
+        wrap.classList.add('pfg-has-error');
+        var errId = 'pfg-inline-err-' + fieldKey;
+        var p = document.createElement('p');
+        p.id = errId;
+        p.className = 'pfg-field-error';
+        p.setAttribute('role', 'alert');
+        p.textContent = errs[fieldKey];
+        wrap.appendChild(p);
+
+        var ctrl = wrap.querySelector('input:not([type="hidden"]), select, textarea');
+        if (ctrl) {
+          ctrl.setAttribute('aria-invalid', 'true');
+          var existingDesc = (ctrl.getAttribute('aria-describedby') || '').trim();
+          if (existingDesc.indexOf(errId) === -1) {
+            ctrl.setAttribute('aria-describedby', (existingDesc ? existingDesc + ' ' : '') + errId);
+          }
+          if (!firstControl) firstControl = ctrl;
+        }
+      });
+      return firstControl;
+    }
+
+    form.addEventListener('input', function (ev) {
+      var wrap = ev.target && ev.target.closest ? ev.target.closest('[data-field-wrap]') : null;
+      if (wrap && wrap.classList.contains('pfg-has-error')) {
+        clearFieldWrapError(wrap);
+      }
+    });
+    form.addEventListener('change', function (ev) {
+      var wrap = ev.target && ev.target.closest ? ev.target.closest('[data-field-wrap]') : null;
+      if (wrap && wrap.classList.contains('pfg-has-error')) {
+        clearFieldWrapError(wrap);
+      }
+    });
+
     function validateStep(stepNum) {
       var errs = {};
       if (stepNum === 1) {
-        if (!getFieldValue(form, 'fullName')) errs.fullName = 'Please enter your Full Name.';
+        var fn = getFieldValue(form, 'fullName');
+        if (!fn || fn.length < 2) errs.fullName = 'Please enter the participant’s full name.';
         var em = getFieldValue(form, 'email');
-        if (!em || em.indexOf('@') === -1 || em.indexOf('.') === -1) {
-          errs.email = 'Please enter a valid Email Address.';
+        if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+          errs.email = 'Please enter a valid email address.';
         }
         var ph = getFieldValue(form, 'phone');
         var digits = ph.replace(/\D/g, '');
         if (!ph || digits.length < 7) {
-          errs.phone = 'Please enter a valid Mobile / WhatsApp Number.';
+          errs.phone = 'Please enter a valid mobile or WhatsApp number.';
         }
-        if (!getFieldValue(form, 'country')) {
-          errs.country = 'Please enter your Country.';
+        var ctry = getFieldValue(form, 'country');
+        if (!ctry || ctry.length < 2) {
+          errs.country = 'Please enter your country.';
         }
-
+      } else if (stepNum === 2) {
         if (categoryCode === 'ATTENDEE') {
           var ag = getRadioValue(form, 'ageGroup');
-          if (!ag) errs.ageGroup = 'Please select your Age Group.';
+          if (!ag) errs.ageGroup = 'Please select an age group.';
           var behalf = !!(document.getElementById('pfg-registering-behalf') && document.getElementById('pfg-registering-behalf').checked);
           if (ag === 'UNDER_18' || behalf) {
-            if (!getFieldValue(form, 'guardianName')) errs.guardianName = 'Please enter the Parent / Legal Guardian Full Name.';
-            if (!getFieldValue(form, 'guardianRelationship')) errs.guardianRelationship = 'Please select the Guardian Relationship.';
+            if (!getFieldValue(form, 'guardianName')) errs.guardianName = 'Please enter the guardian or representative’s full name.';
+            if (!getFieldValue(form, 'guardianRelationship')) errs.guardianRelationship = 'Please select a relationship.';
           }
           if (getCheckedValues(form, 'selfIdentificationTags[]').length === 0) {
-            errs.selfIdentificationTags = 'Please select at least one option under "I am attending as".';
+            errs.selfIdentificationTags = 'Please select at least one option.';
           }
         } else if (categoryCode === 'SLI') {
           var sliAge = Number(getFieldValue(form, 'age'));
           if (!sliAge || isNaN(sliAge) || sliAge < 18 || sliAge > 85) {
-            errs.age = 'Please enter a valid Age (minimum 18 years for SLI).';
+            errs.age = 'Please enter a valid age (minimum 18 years).';
           }
-          if (!getFieldValue(form, 'cityDistrict')) errs.cityDistrict = 'Please enter your City / District.';
-          if (!getFieldValue(form, 'state')) errs.state = 'Please select your State / Union Territory.';
+          if (!getFieldValue(form, 'cityDistrict')) errs.cityDistrict = 'Please enter your city or district.';
+          if (!getFieldValue(form, 'state')) errs.state = 'Please select your state or union territory.';
           if (!getRadioValue(form, 'basedInGujarat')) errs.basedInGujarat = 'Please indicate whether you are currently based in Gujarat.';
         } else if (categoryCode === 'VOLUNTEER') {
           var volAge = Number(getFieldValue(form, 'age'));
           if (!volAge || isNaN(volAge) || volAge < 16 || volAge > 85) {
-            errs.age = 'Please enter a valid Age (minimum 16 years for Volunteers).';
+            errs.age = 'Please enter a valid age (minimum 16 years).';
           }
           var msuAff = getRadioValue(form, 'msuAffiliation');
           if (!msuAff) {
             errs.msuAffiliation = 'Please select your MSU Baroda affiliation status.';
           } else if ((msuAff === 'CURRENT_STUDENT' || msuAff === 'ALUMNI') && !getFieldValue(form, 'msuFacultyDepartment')) {
-            errs.msuFacultyDepartment = 'Please enter your MSU Faculty / Department Name.';
+            errs.msuFacultyDepartment = 'Please enter your MSU faculty or department name.';
           }
         }
-      } else if (stepNum === 2) {
+      } else if (stepNum === 3) {
         if (categoryCode === 'ATTENDEE') {
           if (getCheckedValues(form, 'attendingDays[]').length === 0) {
-            errs.attendingDays = 'Please select at least one Festival Day you plan to attend.';
+            errs.attendingDays = 'Please select at least one festival day you will attend.';
           }
         } else if (categoryCode === 'SLI') {
           var qCat = getRadioValue(form, 'qualificationCategory');
@@ -145,10 +203,10 @@
           if (qCat === 'OTHER' && !getFieldValue(form, 'qualifications')) {
             errs.qualifications = 'Please specify your qualification or interpreting background.';
           }
-          if (!getRadioValue(form, 'experienceBand')) errs.experienceBand = 'Please select your Years of Interpretation Experience.';
+          if (!getRadioValue(form, 'experienceBand')) errs.experienceBand = 'Please select your years of interpretation experience.';
           var vUrl = getFieldValue(form, 'videoDemoUrl');
           if (vUrl && !/^https?:\/\//i.test(vUrl)) {
-            errs.videoDemoUrl = 'Video Demonstration Link must start with http:// or https://.';
+            errs.videoDemoUrl = 'Video demonstration link must start with http:// or https://.';
           }
           if (!getRadioValue(form, 'comfortablePublicStage')) errs.comfortablePublicStage = 'Please indicate whether you are comfortable interpreting on public stages.';
           if (getCheckedValues(form, 'availabilityShifts[]').length === 0) {
@@ -156,7 +214,7 @@
           }
         } else if (categoryCode === 'VOLUNTEER') {
           var pRole = getRadioValue(form, 'primaryRole');
-          if (!pRole) errs.primaryRole = 'Please select a Primary Role you are interested in.';
+          if (!pRole) errs.primaryRole = 'Please select a primary role.';
           if (pRole === 'Stage Anchoring / Hosting' && getFieldValue(form, 'anchoringExperience').length < 10) {
             errs.anchoringExperience = 'Please describe your public speaking or stage hosting experience (at least 10 characters).';
           }
@@ -201,7 +259,7 @@
       }
 
       if (waveStepCounter) {
-        waveStepCounter.textContent = 'Step ' + currentStep + ' of ' + totalSteps;
+        waveStepCounter.textContent = 'Step ' + currentStep + ' of ' + totalSteps + ': ' + getStepTitle(currentStep);
       }
       if (waveStepTitle) {
         waveStepTitle.textContent = getStepTitle(currentStep);
@@ -220,10 +278,11 @@
 
       if (!opts.keepErrors) {
         clearErrors();
+        clearInlineFieldErrors();
       }
 
       if (opts.scroll !== false) {
-        var scrollTarget = waveStepper || form;
+        var scrollTarget = form.closest('.pfg-reg-card') || waveStepper || form;
         var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         scrollTarget.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
       }
@@ -252,7 +311,11 @@
           if (s !== currentStep) {
             goToStep(s, { keepErrors: true, scroll: false });
           }
-          showErrors('Please complete the required fields in Step ' + s + ' (' + getStepTitle(s) + ') before continuing.', errs);
+          var firstInvalid = renderInlineFieldErrors(errs);
+          showErrors('Please check the highlighted fields in ' + getStepTitle(s) + ' before continuing.', errs);
+          if (firstInvalid && typeof firstInvalid.focus === 'function') {
+            firstInvalid.focus({ preventScroll: false });
+          }
           return;
         }
       }
