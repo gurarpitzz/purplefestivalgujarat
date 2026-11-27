@@ -330,6 +330,77 @@ if ($footerNavState === 'ADMIN') {
       </p>
 
       <div class="flex-1 space-y-6 px-6 py-5">
+        <!-- Screen Reader / TalkBack -->
+        <section aria-labelledby="a11y-sr-heading" class="space-y-3">
+          <h3
+            id="a11y-sr-heading"
+            class="flex items-center gap-2 text-sm font-semibold tracking-wide uppercase text-[#E8DFF0]"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#D5B77B]" aria-hidden="true">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+            Screen Reader / TalkBack
+          </h3>
+
+          <div class="space-y-3.5 rounded-xl border border-[#383242] bg-[#25212B] p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-1">
+                <div class="text-sm font-semibold text-[#F9F7FC]">
+                  <span id="a11y-label-screenReader">Screen Reader / TalkBack</span>
+                </div>
+                <p class="text-xs text-[#D7CCE2]">Speaks focused, clicked, or hovered content and reads the entire page aloud.</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                data-a11y-toggle="screenReader"
+                aria-checked="false"
+                aria-labelledby="a11y-label-screenReader"
+                class="relative mt-0.5 inline-flex h-7 w-12 shrink-0 items-center rounded-full border border-[#4D445C] bg-[#17151C] transition-colors"
+              >
+                <span data-a11y-knob="true" aria-hidden="true" class="inline-block h-5 w-5 translate-x-1 rounded-full bg-[#F9F7FC] transition-transform"></span>
+              </button>
+            </div>
+
+            <div class="pfg-drawer-sr-controls">
+              <button type="button" data-sr-action="read-page" class="pfg-drawer-sr-btn pfg-drawer-sr-btn--primary">Read Entire Page</button>
+              <button type="button" data-sr-action="stop" class="pfg-drawer-sr-btn">Stop</button>
+            </div>
+
+            <div class="space-y-1.5">
+              <p class="text-xs font-medium text-[#D7CCE2]">Speech Speed</p>
+              <div class="pfg-drawer-sr-rates" role="group" aria-label="Speech reading speed">
+                <button type="button" data-sr-rate="0.8" aria-pressed="false" class="pfg-drawer-sr-rate">0.8×</button>
+                <button type="button" data-sr-rate="1" aria-pressed="true" class="pfg-drawer-sr-rate is-active">1×</button>
+                <button type="button" data-sr-rate="1.25" aria-pressed="false" class="pfg-drawer-sr-rate">1.25×</button>
+                <button type="button" data-sr-rate="1.5" aria-pressed="false" class="pfg-drawer-sr-rate">1.5×</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Website Language -->
+        <section aria-labelledby="a11y-lang-heading" class="space-y-3">
+          <h3
+            id="a11y-lang-heading"
+            class="flex items-center gap-2 text-sm font-semibold tracking-wide uppercase text-[#E8DFF0]"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#D5B77B]" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+              <path d="M2 12h20" />
+            </svg>
+            Website Language
+          </h3>
+          <div class="pfg-drawer-lang" role="group" aria-label="Website language" data-no-translate="true">
+            <button type="button" data-lang-switch="en" aria-pressed="true" lang="en" class="pfg-drawer-lang__btn is-active">English</button>
+            <button type="button" data-lang-switch="hi" aria-pressed="false" lang="hi" class="pfg-drawer-lang__btn">हिन्दी</button>
+            <button type="button" data-lang-switch="gu" aria-pressed="false" lang="gu" class="pfg-drawer-lang__btn">ગુજરાતી</button>
+          </div>
+        </section>
+
         <!-- Text Size -->
         <section aria-labelledby="a11y-text-size-heading">
           <div class="mb-3 flex items-center justify-between">
@@ -578,9 +649,37 @@ if ($footerNavState === 'ADMIN') {
     </div>
   </div>
 
+  <!-- Floating TalkBack Screen Reader Control Bar (visible when TalkBack is active) -->
+  <div
+    id="pfg-sr-bar"
+    role="region"
+    aria-label="TalkBack Screen Reader Controls"
+    class="pfg-sr-bar hidden"
+    data-surface="dark"
+  >
+    <div class="pfg-sr-bar__status-row">
+      <span class="pfg-sr-bar__badge" aria-hidden="true">TalkBack</span>
+      <span id="pfg-sr-bar-status" class="pfg-sr-bar__status" aria-live="off">Ready — tap, hover, or Tab any item</span>
+    </div>
+    <div class="pfg-sr-bar__controls">
+      <button type="button" data-sr-action="prev" aria-label="Previous block" class="pfg-sr-bar__btn">Prev</button>
+      <button type="button" data-sr-action="toggle-play" aria-label="Read page aloud or pause" class="pfg-sr-bar__btn pfg-sr-bar__btn--primary">
+        <span data-sr-play-label="true">Read Page</span>
+      </button>
+      <button type="button" data-sr-action="next" aria-label="Next block" class="pfg-sr-bar__btn">Next</button>
+      <button type="button" data-sr-action="stop" aria-label="Stop reading" class="pfg-sr-bar__btn">Stop</button>
+      <button type="button" data-sr-action="cycle-rate" aria-label="Change reading speed" class="pfg-sr-bar__btn">
+        <span data-sr-rate-badge="true">1×</span>
+      </button>
+      <button type="button" data-sr-action="disable" aria-label="Turn off TalkBack" class="pfg-sr-bar__btn pfg-sr-bar__btn--close">Off</button>
+    </div>
+  </div>
+
   <!-- Core Scripts -->
   <script src="/assets/js/gsap.min.js"></script>
-  <script src="/assets/js/accessibility.js"></script>
+  <script src="/assets/js/accessibility.js?v=2"></script>
+  <script src="/assets/js/screen-reader.js?v=1"></script>
+  <script src="/assets/js/i18n.js?v=1"></script>
   <script src="/assets/js/preloader.js"></script>
   <script src="/assets/js/crowd-footer.js"></script>
   <script>

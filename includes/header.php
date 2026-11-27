@@ -246,7 +246,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
     ) ?: '{}');
 ?>
 <!DOCTYPE html>
-<html lang="en-IN" data-text-scale="100" data-contrast="default" data-reduced-motion="false" data-spacing="normal" data-highlight-links="false">
+<html lang="en-IN" data-lang="en" data-text-scale="100" data-contrast="default" data-reduced-motion="false" data-spacing="normal" data-highlight-links="false">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -309,11 +309,12 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
 
   <!-- Early Accessibility Preferences Init (prevents FOUC before first paint — FND-46) -->
   <script>
-  (function(){try{var r=document.documentElement,raw=localStorage.getItem('pfg27_a11y_prefs')||localStorage.getItem('pfg27_a11y_prefs_v1'),osRM=false;try{osRM=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}var p=raw?JSON.parse(raw):{};var scales=[90,100,115,130,150,175,200],sc=Number(p&&p.textScale);if(scales.indexOf(sc)===-1)sc=100;var ct=(p&&(p.contrast==='high'||p.contrast==='yellow-black'))?p.contrast:'default';var rm=(p&&typeof p.reducedMotion==='boolean')?p.reducedMotion:osRM;var sp=Boolean(p&&p.wideSpacing);var hl=Boolean(p&&p.highlightLinks);r.setAttribute('data-text-scale',String(sc));r.setAttribute('data-contrast',ct);r.setAttribute('data-reduced-motion',rm?'true':'false');r.setAttribute('data-spacing',sp?'wide':'normal');r.setAttribute('data-highlight-links',hl?'true':'false');r.style.fontSize=sc+'%';}catch(e){}})();
+  (function(){try{var r=document.documentElement,raw=localStorage.getItem('pfg27_a11y_prefs')||localStorage.getItem('pfg27_a11y_prefs_v1'),osRM=false;try{osRM=window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){}var p=raw?JSON.parse(raw):{};var scales=[90,100,115,130,150,175,200],sc=Number(p&&p.textScale);if(scales.indexOf(sc)===-1)sc=100;var ct=(p&&(p.contrast==='high'||p.contrast==='yellow-black'))?p.contrast:'default';var rm=(p&&typeof p.reducedMotion==='boolean')?p.reducedMotion:osRM;var sp=Boolean(p&&p.wideSpacing);var hl=Boolean(p&&p.highlightLinks);r.setAttribute('data-text-scale',String(sc));r.setAttribute('data-contrast',ct);r.setAttribute('data-reduced-motion',rm?'true':'false');r.setAttribute('data-spacing',sp?'wide':'normal');r.setAttribute('data-highlight-links',hl?'true':'false');r.style.fontSize=sc+'%';try{var lm=(window.location.search||'').match(/[?&]lang=(en|hi|gu)(?:&|$)/i);var lg=lm?lm[1].toLowerCase():localStorage.getItem('pfg27_lang');if(lg==='hi'||lg==='gu'){r.setAttribute('data-lang',lg);r.lang=lg==='hi'?'hi-IN':'gu-IN';}else{r.setAttribute('data-lang','en');}}catch(e){}}catch(e){}})();
   </script>
 
   <!-- Compiled Tailwind & Design System CSS -->
   <link rel="stylesheet" href="/assets/css/app.css?v=2" />
+  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=2" />
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json"><?= $schemaJsonOutput ?></script>
@@ -328,7 +329,35 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
 
   <?php if (empty($hideSiteHeader)): ?>
   <header class="sticky top-0 z-50 bg-[#F2E9FE]/95 text-[#202D59] backdrop-blur-md">
-    <div class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-6 px-6 py-4 sm:px-10">
+    <!-- Top Utility Bar: Quick TalkBack Screen Reader & Language Switcher (EN / हिन्दी / ગુજરાતી) -->
+    <div class="pfg-util-bar" data-surface="dark">
+      <div class="pfg-util-bar__inner">
+        <button
+          id="pfg-topbar-sr-toggle"
+          type="button"
+          data-sr-quick-toggle="true"
+          aria-pressed="false"
+          aria-label="Toggle TalkBack Screen Reader"
+          class="pfg-util-bar__sr-btn"
+        >
+          <span class="pfg-util-bar__sr-dot" data-sr-status-dot="true" aria-hidden="true"></span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+          </svg>
+          <span data-sr-quick-label="true">TalkBack: Off</span>
+        </button>
+
+        <div class="pfg-lang-bar" role="group" aria-label="Change website language" data-no-translate="true">
+          <button type="button" data-lang-switch="en" aria-pressed="true" lang="en" class="pfg-lang-bar__btn is-active">English</button>
+          <button type="button" data-lang-switch="hi" aria-pressed="false" lang="hi" class="pfg-lang-bar__btn">हिन्दी</button>
+          <button type="button" data-lang-switch="gu" aria-pressed="false" lang="gu" class="pfg-lang-bar__btn">ગુજરાતી</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pfg-header-main-row mx-auto flex w-full max-w-[1440px] items-center justify-between gap-6 px-6 py-4 sm:px-10">
       <!-- Flat Crisp PurpleFest Logo (#header-logo docking target for Preloader) -->
       <a
         id="header-logo"
@@ -338,7 +367,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
         class="group flex shrink-0 items-center gap-2.5 text-[#202D59] transition-opacity"
       >
         <?= renderPurpleFestEmblemSvg('h-9 w-auto text-[#202D59]') ?>
-        <span class="text-[23px] font-bold tracking-[-0.02em] text-[#202D59]">
+        <span class="pfg-header-logo-text text-[23px] font-bold tracking-[-0.02em] text-[#202D59]">
           PurpleFest
         </span>
       </a>
@@ -359,7 +388,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
       </nav>
 
       <!-- Right Controls: Auth-Aware Portal Controls, Apply Now, Circular Accessibility -->
-      <div class="flex items-center gap-3">
+      <div class="pfg-header-right-controls flex items-center gap-3">
         <?php if ($pfgNavState === 'ADMIN'): ?>
           <a
             href="/admin"
@@ -415,7 +444,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
           </a>
           <a
             href="/apply"
-            class="btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-6 py-2 text-[16px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
+            class="pfg-header-apply-cta btn-primary-pfg touch-target inline-flex items-center justify-center bg-[#A459FF] px-6 py-2 text-[16px] font-semibold text-white transition-colors hover:bg-[#8D3BF2]"
           >
             Apply Now
           </a>

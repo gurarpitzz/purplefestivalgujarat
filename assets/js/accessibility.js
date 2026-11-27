@@ -8,6 +8,7 @@
   var STORAGE_KEY = "pfg27_a11y_prefs";
   var LEGACY_STORAGE_KEY = "pfg27_a11y_prefs_v1";
   var TEXT_SCALES = [90, 100, 115, 130, 150, 175, 200];
+  var SPEECH_RATES = [0.8, 1, 1.25, 1.5];
 
   var DEFAULT_PREFS = {
     textScale: 100,
@@ -17,6 +18,8 @@
     highlightLinks: false,
     readingGuide: false,
     dyslexiaFont: false,
+    screenReader: false,
+    speechRate: 1,
   };
 
   var prefs = {
@@ -27,6 +30,8 @@
     highlightLinks: false,
     readingGuide: false,
     dyslexiaFont: false,
+    screenReader: false,
+    speechRate: 1,
   };
 
   var panelOpen = false;
@@ -69,6 +74,10 @@
       rawObj && typeof rawObj.reducedMotion === "boolean"
         ? rawObj.reducedMotion
         : Boolean(osReduced);
+    var speechRate = Number(rawObj && rawObj.speechRate);
+    if (SPEECH_RATES.indexOf(speechRate) === -1) {
+      speechRate = 1;
+    }
 
     return {
       textScale: scale,
@@ -78,6 +87,8 @@
       highlightLinks: Boolean(rawObj && rawObj.highlightLinks),
       readingGuide: Boolean(rawObj && rawObj.readingGuide),
       dyslexiaFont: Boolean(rawObj && rawObj.dyslexiaFont),
+      screenReader: Boolean(rawObj && rawObj.screenReader),
+      speechRate: speechRate,
     };
   }
 
@@ -118,6 +129,7 @@
     root.setAttribute("data-spacing", prefs.wideSpacing ? "wide" : "normal");
     root.setAttribute("data-highlight-links", prefs.highlightLinks ? "true" : "false");
     root.setAttribute("data-dyslexia-font", prefs.dyslexiaFont ? "true" : "false");
+    root.setAttribute("data-screen-reader", prefs.screenReader ? "true" : "false");
     root.style.fontSize = String(prefs.textScale) + "%";
 
     // Sync semantic utility classes alongside data attributes
@@ -240,6 +252,14 @@
         ? "Dyslexia-friendly font enabled."
         : "Dyslexia-friendly font disabled.";
     }
+    if (Object.prototype.hasOwnProperty.call(patch, "screenReader")) {
+      return prefs.screenReader
+        ? "Screen reader TalkBack enabled."
+        : "Screen reader TalkBack disabled.";
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, "speechRate")) {
+      return "Speech speed set to " + String(prefs.speechRate) + "x.";
+    }
     return "Accessibility preferences updated.";
   }
 
@@ -311,6 +331,16 @@
       }
     }
 
+    // TalkBack speech rate buttons
+    var srRateBtns = document.querySelectorAll("[data-sr-rate]");
+    for (var r = 0; r < srRateBtns.length; r++) {
+      var rateBtn = srRateBtns[r];
+      var rateVal = Number(rateBtn.getAttribute("data-sr-rate"));
+      var isRateActive = rateVal === prefs.speechRate;
+      rateBtn.setAttribute("aria-pressed", isRateActive ? "true" : "false");
+      rateBtn.classList.toggle("is-active", isRateActive);
+    }
+
     // Reading Guide Band
     var guideEl = document.getElementById("a11y-reading-guide");
     if (guideEl) {
@@ -341,6 +371,9 @@
 
   function resetPrefs() {
     prefs = Object.assign({}, DEFAULT_PREFS);
+    if (window.PFG27_SR && typeof window.PFG27_SR.stop === "function") {
+      window.PFG27_SR.stop();
+    }
     applyPrefsToDocument();
     try {
       window.localStorage.removeItem(STORAGE_KEY);
