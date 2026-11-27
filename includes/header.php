@@ -314,7 +314,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
 
   <!-- Compiled Tailwind & Design System CSS -->
   <link rel="stylesheet" href="/assets/css/app.css?v=2" />
-  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=4" />
+  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=5" />
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json"><?= $schemaJsonOutput ?></script>
