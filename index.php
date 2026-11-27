@@ -785,7 +785,7 @@ $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-whats-on.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-programme-highlights.css?v=1" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=3" />';
+    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=4" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1063,9 +1063,11 @@ function renderHighlightIconSvg(string $iconName): string
   <section
     id="about"
     aria-labelledby="about-heading"
-    class="border-b border-[#202D59]/10 pfg-ivory-surface py-20 sm:py-24"
+    class="pfg-bordered-section border-b border-[#202D59]/10 pfg-ivory-surface py-20 sm:py-24"
   >
-    <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <div class="pfg-ed-grounds__ornament pfg-ed-grounds__ornament--left" aria-hidden="true"></div>
+    <div class="pfg-ed-grounds__ornament pfg-ed-grounds__ornament--right" aria-hidden="true"></div>
+    <div class="pfg-bordered-section__inner mx-auto max-w-7xl">
       <div class="grid gap-12 lg:grid-cols-12 lg:items-start">
         <div class="space-y-6 lg:col-span-7">
           <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">

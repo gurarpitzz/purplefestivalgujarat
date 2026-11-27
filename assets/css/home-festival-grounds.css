@@ -54,12 +54,26 @@
   padding-inline: clamp(5.5rem, 8.2vw, 8.25rem);
 }
 
+/* Shared twin-bordered section helper (used on #about as well as #gallery) */
+.pfg-bordered-section {
+  position: relative;
+  overflow-x: clip;
+  isolation: isolate;
+}
+
+.pfg-bordered-section__inner {
+  position: relative;
+  z-index: 2;
+  padding-inline: clamp(5.5rem, 8.2vw, 8.25rem);
+}
+
 @media (max-width: 1024px) {
   .pfg-ed-grounds__ornament {
     width: clamp(38px, 5vw, 54px);
   }
 
-  .pfg-ed-grounds__inner {
+  .pfg-ed-grounds__inner,
+  .pfg-bordered-section__inner {
     padding-inline: clamp(3.5rem, 7vw, 5.25rem);
   }
 }
@@ -302,7 +316,8 @@
     display: none;
   }
 
-  .pfg-ed-grounds__inner {
+  .pfg-ed-grounds__inner,
+  .pfg-bordered-section__inner {
     padding-inline: 1.15rem;
   }
 
