@@ -1,0 +1,437 @@
+/* ==========================================================================
+   Homepage Section 9 — Frequently Asked Questions & Call the Festival Team
+   Warm Editorial Ivory (#FBF8F1) + Deep Royal Plum (#2B0A3D) + Festival Gold (#F5B731)
+   ========================================================================== */
+
+.pfg-ed-faq-section,
+.pfg-ed-faq-section *,
+.pfg-ed-faq-section *::before,
+.pfg-ed-faq-section *::after {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}
+
+.pfg-ed-faq-section {
+  position: relative;
+  background-color: #FBF8F1;
+  color: #2B0A3D;
+  padding: clamp(3rem, 5.5vw, 5rem) 0 clamp(3.25rem, 6vw, 5.25rem);
+  overflow-x: clip;
+  font-family: var(--font-dm-sans, "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif);
+}
+
+.pfg-ed-faq-section__inner {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(1.1rem, 3.2vw, 2.25rem);
+}
+
+/* 2-Column Editorial Split: Wide FAQ Accordion + Sleek Compact Plum Card */
+.pfg-ed-faq-section__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.48fr) minmax(300px, 376px);
+  gap: clamp(2rem, 4.4vw, 4.25rem);
+  align-items: start;
+}
+
+/* --------------------------------------------------------------------------
+   Left Column: Editorial Divider Accordion
+   -------------------------------------------------------------------------- */
+.pfg-ed-faq__col {
+  width: 100%;
+}
+
+.pfg-ed-faq__heading {
+  margin: 0 0 clamp(1.35rem, 2.4vw, 1.95rem);
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif);
+  font-weight: 800;
+  font-size: clamp(2rem, 3.6vw, 2.75rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: #2B0A3D;
+}
+
+.pfg-ed-faq__list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.pfg-ed-faq__item {
+  border-bottom: 1px solid rgba(43, 10, 61, 0.34);
+}
+
+.pfg-ed-faq__item-title {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+}
+
+.pfg-ed-faq__trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 1.15rem 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: #2B0A3D;
+  cursor: pointer;
+  transition: color 180ms ease, padding-bottom 180ms ease;
+}
+
+.pfg-ed-faq__item:first-child .pfg-ed-faq__trigger {
+  padding-top: 0.2rem;
+}
+
+.pfg-ed-faq__trigger[aria-expanded="true"] {
+  padding-bottom: 0.55rem;
+}
+
+.pfg-ed-faq__trigger:hover {
+  color: #5B2A86;
+}
+
+.pfg-ed-faq__trigger:focus-visible {
+  outline: 3px solid #7C2AE8;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.pfg-ed-faq__question {
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif);
+  font-weight: 700;
+  font-size: clamp(1.04rem, 1.38vw, 1.22rem);
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  color: inherit;
+}
+
+.pfg-ed-faq__chevron {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #2B0A3D;
+  transition: transform 200ms ease, color 180ms ease;
+}
+
+.pfg-ed-faq__trigger:hover .pfg-ed-faq__chevron {
+  color: #5B2A86;
+}
+
+.pfg-ed-faq__chevron.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.pfg-ed-faq__panel {
+  padding: 0 2.25rem 1.25rem 0;
+  font-size: 0.97rem;
+  font-weight: 400;
+  line-height: 1.62;
+  color: #3D244B;
+}
+
+.pfg-ed-faq__panel.hidden {
+  display: none;
+}
+
+.pfg-ed-faq__panel p {
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Right Column: "Call the festival team" Deep Plum Card (Compact & Refined)
+   -------------------------------------------------------------------------- */
+.pfg-ed-contact-card {
+  width: 100%;
+  border-radius: 16px;
+  background-color: #2B0A3D;
+  color: #FFFFFF;
+  padding: 1.6rem 1.5rem 1.4rem;
+  box-shadow: 0 12px 32px rgba(43, 10, 61, 0.14), 0 2px 6px rgba(43, 10, 61, 0.08);
+}
+
+.pfg-ed-contact-card__title {
+  margin: 0;
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif);
+  font-weight: 800;
+  font-size: clamp(1.32rem, 1.85vw, 1.55rem);
+  line-height: 1.18;
+  letter-spacing: -0.02em;
+  color: #FFFFFF;
+}
+
+.pfg-ed-contact-card__subtitle {
+  margin: 0.28rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.pfg-ed-contact-card__phones {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1.15rem;
+}
+
+.pfg-ed-contact-card__phone {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  column-gap: 0.8rem;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.62rem 0.95rem;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.72);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: #FFFFFF;
+  text-decoration: none;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.pfg-ed-contact-card__phone:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: #FFFFFF;
+}
+
+.pfg-ed-contact-card__phone:focus-visible {
+  outline: 3px solid #F5B731;
+  outline-offset: 2px;
+  border-color: #F5B731;
+}
+
+.pfg-ed-contact-card__phone-icon {
+  width: 19px;
+  height: 19px;
+  color: #F5B731;
+  flex-shrink: 0;
+}
+
+.pfg-ed-contact-card__phone-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+}
+
+.pfg-ed-contact-card__phone-name {
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.pfg-ed-contact-card__phone-num {
+  font-family: var(--font-display, "Plus Jakarta Sans", var(--font-dm-sans, "DM Sans"), system-ui, -apple-system, sans-serif);
+  font-size: 1.04rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: #FFFFFF;
+  white-space: nowrap;
+}
+
+.pfg-ed-contact-card__phone-arrow {
+  width: 16px;
+  height: 16px;
+  color: rgba(255, 255, 255, 0.92);
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.pfg-ed-contact-card__phone:hover .pfg-ed-contact-card__phone-arrow {
+  transform: translateX(3px);
+  color: #F5B731;
+}
+
+.pfg-ed-contact-card__email {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 0.85rem;
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #FFFFFF;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(255, 255, 255, 0.78);
+  overflow-wrap: anywhere;
+  transition: color 180ms ease, text-decoration-color 180ms ease;
+}
+
+.pfg-ed-contact-card__email:hover {
+  color: #F5B731;
+  text-decoration-color: #F5B731;
+}
+
+.pfg-ed-contact-card__email:focus-visible {
+  outline: 3px solid #F5B731;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Stack Below 900px
+   -------------------------------------------------------------------------- */
+@media (max-width: 899.98px) {
+  .pfg-ed-faq-section__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.25rem;
+  }
+
+  .pfg-ed-contact-card {
+    max-width: 420px;
+  }
+}
+
+@media (max-width: 479.98px) {
+  .pfg-ed-faq__panel {
+    padding-right: 0.25rem;
+  }
+
+  .pfg-ed-contact-card {
+    padding: 1.35rem 1.2rem 1.2rem;
+  }
+
+  .pfg-ed-contact-card__phone-num {
+    font-size: 0.98rem;
+  }
+}
+
+/* ==========================================================================
+   Accessibility: High-Contrast Mode (WCAG AAA)
+   ========================================================================== */
+html[data-contrast="high"] .pfg-ed-faq-section,
+html.high-contrast .pfg-ed-faq-section {
+  background-color: #000000;
+  color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-faq__heading,
+html[data-contrast="high"] .pfg-ed-faq__trigger,
+html[data-contrast="high"] .pfg-ed-faq__question,
+html[data-contrast="high"] .pfg-ed-faq__chevron,
+html[data-contrast="high"] .pfg-ed-faq__panel,
+html[data-contrast="high"] .pfg-ed-contact-card,
+html[data-contrast="high"] .pfg-ed-contact-card__title,
+html[data-contrast="high"] .pfg-ed-contact-card__subtitle,
+html[data-contrast="high"] .pfg-ed-contact-card__phone,
+html[data-contrast="high"] .pfg-ed-contact-card__phone-icon,
+html[data-contrast="high"] .pfg-ed-contact-card__phone-name,
+html[data-contrast="high"] .pfg-ed-contact-card__phone-num,
+html[data-contrast="high"] .pfg-ed-contact-card__phone-arrow,
+html[data-contrast="high"] .pfg-ed-contact-card__email,
+html.high-contrast .pfg-ed-faq__heading,
+html.high-contrast .pfg-ed-faq__trigger,
+html.high-contrast .pfg-ed-faq__panel,
+html.high-contrast .pfg-ed-contact-card,
+html.high-contrast .pfg-ed-contact-card__phone,
+html.high-contrast .pfg-ed-contact-card__email {
+  color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-faq__item,
+html.high-contrast .pfg-ed-faq__item {
+  border-bottom-color: #FFFFFF;
+}
+
+html[data-contrast="high"] .pfg-ed-contact-card,
+html.high-contrast .pfg-ed-contact-card {
+  background-color: #000000;
+  border: 2px solid #FFFFFF;
+  box-shadow: none;
+}
+
+html[data-contrast="high"] .pfg-ed-contact-card__phone,
+html.high-contrast .pfg-ed-contact-card__phone {
+  background-color: #000000;
+  border: 2px solid #FFFFFF;
+}
+
+/* ==========================================================================
+   Accessibility: Yellow-on-Black Mode (WCAG AAA)
+   ========================================================================== */
+html[data-contrast="yellow-black"] .pfg-ed-faq-section,
+html.yellow-black .pfg-ed-faq-section {
+  background-color: #000000;
+  color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-faq__heading,
+html[data-contrast="yellow-black"] .pfg-ed-faq__trigger,
+html[data-contrast="yellow-black"] .pfg-ed-faq__question,
+html[data-contrast="yellow-black"] .pfg-ed-faq__chevron,
+html[data-contrast="yellow-black"] .pfg-ed-faq__panel,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__title,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__subtitle,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__phone,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__phone-icon,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__phone-name,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__phone-num,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__phone-arrow,
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__email,
+html.yellow-black .pfg-ed-faq__heading,
+html.yellow-black .pfg-ed-faq__trigger,
+html.yellow-black .pfg-ed-faq__panel,
+html.yellow-black .pfg-ed-contact-card,
+html.yellow-black .pfg-ed-contact-card__phone,
+html.yellow-black .pfg-ed-contact-card__email {
+  color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-faq__item,
+html.yellow-black .pfg-ed-faq__item {
+  border-bottom-color: #FFEA00;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-contact-card,
+html.yellow-black .pfg-ed-contact-card {
+  background-color: #000000;
+  border: 2px solid #FFEA00;
+  box-shadow: none;
+}
+
+html[data-contrast="yellow-black"] .pfg-ed-contact-card__phone,
+html.yellow-black .pfg-ed-contact-card__phone {
+  background-color: #000000;
+  border: 2px solid #FFEA00;
+}
+
+/* ==========================================================================
+   Accessibility: Reduced Motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .pfg-ed-faq-section,
+  .pfg-ed-faq-section * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .pfg-ed-contact-card__phone:hover .pfg-ed-contact-card__phone-arrow {
+    transform: none !important;
+  }
+}
+
+html[data-reduced-motion="true"] .pfg-ed-faq-section,
+html[data-reduced-motion="true"] .pfg-ed-faq-section * {
+  transition: none !important;
+  animation: none !important;
+}
+
+html[data-reduced-motion="true"] .pfg-ed-contact-card__phone:hover .pfg-ed-contact-card__phone-arrow {
+  transform: none !important;
+}

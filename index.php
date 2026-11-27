@@ -705,7 +705,10 @@ $stats = !empty($aboutData['stats']) && is_array($aboutData['stats'])
 
 $viksitData = is_array($viksitSection['data'] ?? null) ? $viksitSection['data'] : [];
 $contactData = is_array($contactSection['data'] ?? null) ? $contactSection['data'] : [];
-$contactEmail = !empty($contactData['email']) ? (string)$contactData['email'] : 'purplefestivalvadodara@gmail.com';
+$rawContactEmail = !empty($contactData['email']) ? trim((string)$contactData['email']) : '';
+$contactEmail = ($rawContactEmail !== '' && strcasecmp($rawContactEmail, 'purplefestivalvadodara@gmail.com') !== 0)
+    ? $rawContactEmail
+    : 'purplefestivalgujarat@gmail.com';
 $contactPhones = !empty($contactData['phones']) && is_array($contactData['phones'])
     ? $contactData['phones']
     : [
@@ -726,17 +729,46 @@ $structuredData = [
     '@context' => 'https://schema.org',
     '@graph' => [
         [
-            '@type' => 'Festival',
-            '@id' => $siteUrl . '/#festival',
+            '@type' => 'WebSite',
+            '@id' => $siteUrl . '/#website',
+            'url' => $siteUrl . '/',
             'name' => 'Purple Festival Gujarat 2027',
-            'alternateName' => 'PurpleFest Gujarat 2027',
-            'description' => "India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities under the RPwD Act 2016.",
+            'alternateName' => ['PurpleFest Gujarat 2027', 'PurpleFest Vadodara 2027'],
+            'description' => "Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) — India's landmark festival of inclusion, accessibility, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities.",
+            'inLanguage' => 'en-IN',
+            'publisher' => ['@id' => $siteUrl . '/#organization'],
+        ],
+        [
+            '@type' => 'Organization',
+            '@id' => $siteUrl . '/#organization',
+            'name' => 'Purple Festival Gujarat 2027 Secretariat',
+            'url' => $siteUrl . '/',
+            'logo' => [
+                '@type' => 'ImageObject',
+                'url' => $siteUrl . '/assets/logos/purple-festival.jpg',
+                'width' => 497,
+                'height' => 474,
+            ],
+            'email' => $contactEmail,
+            'areaServed' => [
+                '@type' => 'AdministrativeArea',
+                'name' => 'Gujarat, India',
+            ],
+        ],
+        [
+            '@type' => ['Festival', 'Event'],
+            '@id' => $siteUrl . '/#festival-2027',
+            'name' => 'Purple Festival Gujarat 2027',
+            'alternateName' => ['PurpleFest Gujarat 2027', 'PurpleFest Vadodara 2027'],
+            'description' => "Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) — India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities under the RPwD Act 2016.",
+            'url' => $siteUrl . '/',
             'startDate' => '2027-01-21T09:00:00+05:30',
             'endDate' => '2027-01-23T21:00:00+05:30',
             'eventStatus' => 'https://schema.org/EventScheduled',
             'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
             'isAccessibleForFree' => true,
             'inLanguage' => ['en-IN', 'gu', 'hi'],
+            'keywords' => 'Purple Festival Gujarat 2027, PurpleFest 2027, Vadodara, Disability Inclusion, RPwD Act 2016, Para Sports 2027, Assistive Technology Expo 2027',
             'image' => [$siteUrl . '/assets/logos/purple-festival.jpg'],
             'location' => [
                 '@type' => 'Place',
@@ -748,13 +780,19 @@ $structuredData = [
                     'postalCode' => '390002',
                     'addressCountry' => 'IN',
                 ],
+                'geo' => [
+                    '@type' => 'GeoCoordinates',
+                    'latitude' => 22.3326,
+                    'longitude' => 73.1982,
+                ],
             ],
             'organizer' => [
-                ['@type' => 'Organization', 'name' => 'Brotherhood', 'url' => $siteUrl],
-                ['@type' => 'Organization', 'name' => 'Global Inclusive Education Network (GIEN)', 'url' => $siteUrl],
+                ['@type' => 'Organization', 'name' => 'Brotherhood', 'url' => $siteUrl . '/'],
+                ['@type' => 'Organization', 'name' => 'Global Inclusive Education Network (GIEN)', 'url' => $siteUrl . '/'],
             ],
             'offers' => [
                 '@type' => 'Offer',
+                'name' => 'Free Registration — Purple Festival Gujarat 2027',
                 'url' => $siteUrl . '/apply',
                 'price' => '0',
                 'priceCurrency' => 'INR',
@@ -785,7 +823,8 @@ $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="/assets/css/partners-section.css?v=2" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-whats-on.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-programme-highlights.css?v=1" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=4" />';
+    . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=4" />' . "\n"
+    . '  <link rel="stylesheet" href="/assets/css/home-faq-contact.css?v=1" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1489,153 +1528,129 @@ function renderHighlightIconSvg(string $iconName): string
   <section
     id="contact"
     aria-labelledby="faq-contact-heading"
-    class="pfg-ivory-surface py-20 sm:py-24"
+    class="pfg-ed-faq-section"
   >
-    <div class="mx-auto grid max-w-7xl gap-12 px-5 sm:px-8 lg:grid-cols-12">
-      <div class="space-y-6 lg:col-span-7">
-        <p class="text-xs font-bold tracking-[0.2em] uppercase text-[#A459FF]">
-          Questions &amp; Guidance
-        </p>
-        <h2
-          id="faq-contact-heading"
-          class="text-3xl font-extrabold tracking-tight text-[#202D59] sm:text-4xl"
-        >
-          Frequently Asked Questions
-        </h2>
+    <div class="pfg-ed-faq-section__inner">
+      <div class="pfg-ed-faq-section__grid">
+        <div class="pfg-ed-faq__col">
+          <h2 id="faq-contact-heading" class="pfg-ed-faq__heading">
+            Frequently asked questions
+          </h2>
 
-        <!-- HomeFaqAccordion -->
-        <div class="space-y-3" data-faq-accordion="true">
-          <?php foreach ($faqList as $fIdx => $faq):
-              $isOpen = $fIdx === 0;
-              $faqPanelId = 'faq-panel-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', $faq['id']);
-          ?>
-            <div class="overflow-hidden rounded-xl border border-[#202D59]/15 bg-white">
-              <button
-                type="button"
-                data-faq-toggle="<?= htmlspecialchars($faqPanelId, ENT_QUOTES, 'UTF-8') ?>"
-                aria-expanded="<?= $isOpen ? 'true' : 'false' ?>"
-                aria-controls="<?= htmlspecialchars($faqPanelId, ENT_QUOTES, 'UTF-8') ?>"
-                class="touch-target flex w-full items-center justify-between gap-4 px-6 py-4 text-left"
-              >
-                <div>
-                  <span class="mb-1 block text-xs font-bold tracking-wider uppercase text-[#A459FF]">
-                    <?= htmlspecialchars($faq['category'], ENT_QUOTES, 'UTF-8') ?>
-                  </span>
-                  <span class="text-base font-bold text-[#202D59] sm:text-lg">
-                    <?= htmlspecialchars($faq['question'], ENT_QUOTES, 'UTF-8') ?>
-                  </span>
+          <!-- HomeFaqAccordion -->
+          <div class="pfg-ed-faq__list" data-faq-accordion="true">
+            <?php foreach ($faqList as $fIdx => $faq):
+                $isOpen = $fIdx === 0;
+                $faqSlug = preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$faq['id']);
+                $faqPanelId = 'faq-panel-' . $faqSlug;
+                $faqBtnId = 'faq-btn-' . $faqSlug;
+            ?>
+              <div class="pfg-ed-faq__item">
+                <h3 class="pfg-ed-faq__item-title">
+                  <button
+                    id="<?= htmlspecialchars($faqBtnId, ENT_QUOTES, 'UTF-8') ?>"
+                    type="button"
+                    data-faq-toggle="<?= htmlspecialchars($faqPanelId, ENT_QUOTES, 'UTF-8') ?>"
+                    aria-expanded="<?= $isOpen ? 'true' : 'false' ?>"
+                    aria-controls="<?= htmlspecialchars($faqPanelId, ENT_QUOTES, 'UTF-8') ?>"
+                    class="pfg-ed-faq__trigger"
+                  >
+                    <span class="pfg-ed-faq__question">
+                      <?= htmlspecialchars((string)$faq['question'], ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                    <svg
+                      data-faq-chevron="true"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="pfg-ed-faq__chevron <?= $isOpen ? 'rotate-180' : '' ?>"
+                      aria-hidden="true"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                </h3>
+                <div
+                  id="<?= htmlspecialchars($faqPanelId, ENT_QUOTES, 'UTF-8') ?>"
+                  role="region"
+                  aria-labelledby="<?= htmlspecialchars($faqBtnId, ENT_QUOTES, 'UTF-8') ?>"
+                  class="<?= $isOpen ? '' : 'hidden ' ?>pfg-ed-faq__panel"
+                >
+                  <p><?= htmlspecialchars((string)$faq['answer'], ENT_QUOTES, 'UTF-8') ?></p>
                 </div>
-                <svg data-faq-chevron="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5 shrink-0 text-[#202D59] transition-transform <?= $isOpen ? 'rotate-180' : '' ?>" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-              </button>
-              <div
-                id="<?= htmlspecialchars($faqPanelId, ENT_QUOTES, 'UTF-8') ?>"
-                class="<?= $isOpen ? '' : 'hidden ' ?>border-t border-[#202D59]/10 px-6 pb-5 pt-4 text-sm leading-relaxed text-[#46537C]"
-              >
-                <?= htmlspecialchars($faq['answer'], ENT_QUOTES, 'UTF-8') ?>
               </div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
-
-      <div class="lg:col-span-5">
-        <div class="rounded-2xl border border-[#202D59]/12 bg-[#DDDDF9] p-8 text-[#202D59]">
-          <div class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#202D59]">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#099F9F]" aria-hidden="true">
-              <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-              <path d="m9 12 2 2 4-4" />
-            </svg>
-            <span>Festival Secretariat</span>
+            <?php endforeach; ?>
           </div>
-          <h3 class="mt-4 text-2xl font-extrabold text-[#202D59]">
-            <?= htmlspecialchars(
-                !empty($contactSection['title'])
-                    ? (string)$contactSection['title']
-                    : 'Connect with the Secretariat',
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
-          </h3>
-          <p class="mt-2 text-sm text-[#202D59]/85">
-            <?= htmlspecialchars(
-                !empty($contactSection['body'])
-                    ? (string)$contactSection['body']
-                    : 'Reach our team for accessibility accommodations, institutional delegations, volunteer coordination, or media inquiries.',
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
-          </p>
+        </div>
 
-          <div class="mt-6 space-y-4 text-sm">
-            <a
-              href="mailto:<?= htmlspecialchars($contactEmail, ENT_QUOTES, 'UTF-8') ?>"
-              class="flex items-center gap-3 rounded-lg bg-white px-4 py-3 font-semibold text-[#202D59] hover:bg-[#202D59] hover:text-white"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-[#A459FF]" aria-hidden="true">
-                <rect width="20" height="16" x="2" y="4" rx="2" />
-                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-              </svg>
-              <span class="break-all"><?= htmlspecialchars($contactEmail, ENT_QUOTES, 'UTF-8') ?></span>
-            </a>
+        <aside
+          aria-labelledby="festival-team-heading"
+          class="pfg-ed-contact-card"
+          data-surface="dark"
+        >
+          <h3 id="festival-team-heading" class="pfg-ed-contact-card__title">
+            Call the festival team
+          </h3>
+          <p class="pfg-ed-contact-card__subtitle">Festival Secretariat</p>
+
+          <div class="pfg-ed-contact-card__phones">
             <?php foreach ($contactPhones as $p):
+                $phoneName = (string)($p['name'] ?? '');
                 $phoneNum = (string)($p['number'] ?? '');
                 $phoneClean = preg_replace('/\s+/', '', $phoneNum);
             ?>
               <a
                 href="tel:<?= htmlspecialchars($phoneClean, ENT_QUOTES, 'UTF-8') ?>"
-                class="flex items-center justify-between rounded-lg bg-white px-4 py-3 font-semibold text-[#202D59] hover:bg-[#202D59] hover:text-white"
+                class="pfg-ed-contact-card__phone"
               >
-                <span class="flex items-center gap-2.5">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-[#099F9F]" aria-hidden="true">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                  </svg>
-                  <span><?= htmlspecialchars((string)($p['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="pfg-ed-contact-card__phone-icon"
+                  aria-hidden="true"
+                >
+                  <path d="M6.62 10.79a15.053 15.053 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.46.57 3.58a1 1 0 0 1-.25 1.01l-2.2 2.2Z" />
+                </svg>
+                <span class="pfg-ed-contact-card__phone-meta">
+                  <span class="pfg-ed-contact-card__phone-name"><?= htmlspecialchars($phoneName, ENT_QUOTES, 'UTF-8') ?></span>
+                  <span class="pfg-ed-contact-card__phone-num"><?= htmlspecialchars($phoneNum, ENT_QUOTES, 'UTF-8') ?></span>
                 </span>
-                <span><?= htmlspecialchars($phoneNum, ENT_QUOTES, 'UTF-8') ?></span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="pfg-ed-contact-card__phone-arrow"
+                  aria-hidden="true"
+                >
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
               </a>
             <?php endforeach; ?>
           </div>
 
-          <div class="mt-6 flex flex-wrap gap-3">
-            <a
-              href="/apply"
-              class="btn-primary-pfg touch-target inline-flex flex-1 items-center justify-center bg-[#A459FF] px-5 py-3 text-sm font-bold text-white hover:bg-[#8D3BF2]"
-            >
-              Apply Now
-            </a>
-            <?php if (($pfgNavState ?? 'GUEST') === 'ADMIN'): ?>
-              <a
-                href="/admin"
-                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
-              >
-                Admin Portal
-              </a>
-            <?php elseif (($pfgNavState ?? 'GUEST') === 'RGST'): ?>
-              <a
-                href="/rgst"
-                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
-              >
-                Registration Desk
-              </a>
-            <?php elseif (($pfgNavState ?? 'GUEST') === 'PARTICIPANT'): ?>
-              <a
-                href="/dashboard"
-                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
-              >
-                Dashboard
-              </a>
-            <?php else: ?>
-              <a
-                href="/login"
-                class="touch-target inline-flex flex-1 items-center justify-center border-2 border-[#202D59] bg-transparent px-5 py-3 text-sm font-bold text-[#202D59] hover:bg-[#202D59] hover:text-white"
-              >
-                Login
-              </a>
-            <?php endif; ?>
-          </div>
-        </div>
+          <a
+            href="mailto:<?= htmlspecialchars($contactEmail, ENT_QUOTES, 'UTF-8') ?>"
+            class="pfg-ed-contact-card__email"
+          >
+            <?= htmlspecialchars($contactEmail, ENT_QUOTES, 'UTF-8') ?>
+          </a>
+        </aside>
       </div>
     </div>
   </section>

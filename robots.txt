@@ -1,0 +1,27 @@
+# Purple Festival Gujarat 2027 — Crawler Access Policy
+# https://purplefestivalgujarat.com
+
+User-agent: *
+Allow: /
+Allow: /programme
+Allow: /accessibility
+Allow: /apply
+Allow: /apply/attendee
+Allow: /apply/sli
+Allow: /apply/volunteer
+Allow: /legal/
+
+Disallow: /admin
+Disallow: /rgst
+Disallow: /staff/
+Disallow: /auth/
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /login
+Disallow: /register
+Disallow: /verify-email
+Disallow: /forgot-password
+Disallow: /reset-password
+
+Sitemap: https://purplefestivalgujarat.com/sitemap.xml
+

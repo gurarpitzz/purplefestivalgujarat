@@ -68,7 +68,7 @@ $whatsonItems = (isset($FESTIVAL_HIGHLIGHTS) && is_array($FESTIVAL_HIGHLIGHTS) &
             alt="Indian wheelchair para-athletes competing in an indoor boccia match at Purple Festival Gujarat 2027"
             width="1200"
             height="900"
-            loading="eager"
+            loading="lazy"
             decoding="async"
             class="pfg-ed-whatson__img"
           />

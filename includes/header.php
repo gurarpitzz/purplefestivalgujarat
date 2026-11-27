@@ -29,11 +29,51 @@ $resolvedDescription = isset($pageDescription) && trim((string)$pageDescription)
     : "Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara, Gujarat) — India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities (RPwD Act 2016).";
 
 $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$normalizedPath = rtrim($requestPath, '/') ?: '/';
+$isHomePage = ($normalizedPath === '/' || $normalizedPath === '/index.php');
+
 $resolvedCanonical = isset($pageCanonical) && trim((string)$pageCanonical) !== ''
     ? (string)$pageCanonical
-    : $siteUrl . $requestPath;
+    : $siteUrl . ($isHomePage ? '/' : $normalizedPath);
 
-$ogImage = $siteUrl . '/assets/logos/purple-festival.jpg';
+$noIndexPrefixes = [
+    '/admin',
+    '/rgst',
+    '/staff',
+    '/auth',
+    '/api',
+    '/dashboard',
+    '/login',
+    '/register',
+    '/verify-email',
+    '/forgot-password',
+    '/reset-password',
+];
+$isPrivateOrPortalRoute = false;
+foreach ($noIndexPrefixes as $prefix) {
+    if ($normalizedPath === $prefix || str_starts_with($normalizedPath, $prefix . '/')) {
+        $isPrivateOrPortalRoute = true;
+        break;
+    }
+}
+
+$resolvedRobots = isset($pageRobots) && trim((string)$pageRobots) !== ''
+    ? (string)$pageRobots
+    : ($isPrivateOrPortalRoute
+        ? 'noindex, nofollow, noarchive'
+        : 'index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1');
+
+$defaultKeywords = 'Purple Festival Gujarat 2027, PurpleFest Gujarat 2027, PurpleFest Vadodara 2027, Gujarat Disability Inclusion Festival 2027, 21–23 January 2027, Disability Inclusion India 2027, Accessibility India, RPwD Act 2016, 21 Benchmark Disabilities, Para Sports Championships Gujarat 2027, Assistive Technology Expo 2027, Inclusive Education NEP 2020, Viksit Bharat 2047, Indian Sign Language, Sama Indoor Stadium Vadodara, MSU Baroda';
+$resolvedKeywords = isset($pageKeywords) && trim((string)$pageKeywords) !== ''
+    ? trim((string)$pageKeywords) . ', ' . $defaultKeywords
+    : $defaultKeywords;
+
+$ogImage = isset($pageOgImage) && trim((string)$pageOgImage) !== ''
+    ? (string)$pageOgImage
+    : $siteUrl . '/assets/logos/purple-festival.jpg';
+$ogImageAlt = isset($pageOgImageAlt) && trim((string)$pageOgImageAlt) !== ''
+    ? (string)$pageOgImageAlt
+    : 'Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) — Inclusion, celebrated.';
 
 // Safely resolve authenticated state and session-bound CSRF token for header/footer navigation
 $pfgHeaderUser = null;
@@ -83,55 +123,116 @@ $navLinks = [
     ['label' => 'Contact', 'href' => '/#contact'],
 ];
 
-$defaultSchemaGraph = [
-    '@context' => 'https://schema.org',
-    '@graph' => [
-        [
-            '@type' => 'Festival',
-            '@id' => $siteUrl . '/#festival',
-            'name' => 'Purple Festival Gujarat 2027',
-            'alternateName' => 'PurpleFest Gujarat 2027',
-            'description' => "India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities under the RPwD Act 2016.",
-            'startDate' => '2027-01-21T09:00:00+05:30',
-            'endDate' => '2027-01-23T21:00:00+05:30',
-            'eventStatus' => 'https://schema.org/EventScheduled',
-            'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
-            'isAccessibleForFree' => true,
-            'inLanguage' => ['en-IN', 'gu', 'hi'],
-            'image' => [$ogImage],
-            'location' => [
-                '@type' => 'Place',
-                'name' => 'Sama Indoor Stadium & Participating Vadodara Venues',
-                'address' => [
-                    '@type' => 'PostalAddress',
-                    'addressLocality' => 'Vadodara',
-                    'addressRegion' => 'Gujarat',
-                    'postalCode' => '390002',
-                    'addressCountry' => 'IN',
-                ],
-            ],
-            'organizer' => [
-                [
-                    '@type' => 'Organization',
-                    'name' => 'Brotherhood',
-                    'url' => $siteUrl,
-                ],
-                [
-                    '@type' => 'Organization',
-                    'name' => 'Global Inclusive Education Network (GIEN)',
-                    'url' => $siteUrl,
-                ],
-            ],
-            'offers' => [
-                '@type' => 'Offer',
-                'url' => $siteUrl . '/apply',
-                'price' => '0',
-                'priceCurrency' => 'INR',
-                'availability' => 'https://schema.org/InStock',
-                'validFrom' => '2026-11-01T00:00:00+05:30',
-            ],
+$defaultSchemaGraphItems = [
+    [
+        '@type' => 'WebSite',
+        '@id' => $siteUrl . '/#website',
+        'url' => $siteUrl . '/',
+        'name' => 'Purple Festival Gujarat 2027',
+        'alternateName' => ['PurpleFest Gujarat 2027', 'PurpleFest Vadodara 2027'],
+        'description' => $resolvedDescription,
+        'inLanguage' => 'en-IN',
+        'publisher' => ['@id' => $siteUrl . '/#organization'],
+    ],
+    [
+        '@type' => 'Organization',
+        '@id' => $siteUrl . '/#organization',
+        'name' => 'Purple Festival Gujarat 2027 Secretariat',
+        'url' => $siteUrl . '/',
+        'logo' => [
+            '@type' => 'ImageObject',
+            'url' => $siteUrl . '/assets/logos/purple-festival.jpg',
+            'width' => 497,
+            'height' => 474,
+        ],
+        'email' => 'purplefestivalgujarat@gmail.com',
+        'areaServed' => [
+            '@type' => 'AdministrativeArea',
+            'name' => 'Gujarat, India',
         ],
     ],
+    [
+        '@type' => ['Festival', 'Event'],
+        '@id' => $siteUrl . '/#festival-2027',
+        'name' => 'Purple Festival Gujarat 2027',
+        'alternateName' => ['PurpleFest Gujarat 2027', 'PurpleFest Vadodara 2027'],
+        'description' => "Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) — India's landmark festival of inclusion, human dignity, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities under the RPwD Act 2016.",
+        'url' => $siteUrl . '/',
+        'startDate' => '2027-01-21T09:00:00+05:30',
+        'endDate' => '2027-01-23T21:00:00+05:30',
+        'eventStatus' => 'https://schema.org/EventScheduled',
+        'eventAttendanceMode' => 'https://schema.org/OfflineEventAttendanceMode',
+        'isAccessibleForFree' => true,
+        'inLanguage' => ['en-IN', 'gu', 'hi'],
+        'keywords' => 'Purple Festival Gujarat 2027, PurpleFest 2027, Vadodara, Disability Inclusion, RPwD Act 2016, Para Sports 2027, Assistive Technology Expo 2027',
+        'image' => [$ogImage],
+        'location' => [
+            '@type' => 'Place',
+            'name' => 'Sama Indoor Stadium & Participating Vadodara Venues',
+            'address' => [
+                '@type' => 'PostalAddress',
+                'addressLocality' => 'Vadodara',
+                'addressRegion' => 'Gujarat',
+                'postalCode' => '390002',
+                'addressCountry' => 'IN',
+            ],
+            'geo' => [
+                '@type' => 'GeoCoordinates',
+                'latitude' => 22.3326,
+                'longitude' => 73.1982,
+            ],
+        ],
+        'organizer' => [
+            [
+                '@type' => 'Organization',
+                'name' => 'Brotherhood',
+                'url' => $siteUrl . '/',
+            ],
+            [
+                '@type' => 'Organization',
+                'name' => 'Global Inclusive Education Network (GIEN)',
+                'url' => $siteUrl . '/',
+            ],
+        ],
+        'offers' => [
+            '@type' => 'Offer',
+            'name' => 'Free Registration — Purple Festival Gujarat 2027',
+            'url' => $siteUrl . '/apply',
+            'price' => '0',
+            'priceCurrency' => 'INR',
+            'availability' => 'https://schema.org/InStock',
+            'validFrom' => '2026-11-01T00:00:00+05:30',
+        ],
+    ],
+];
+
+if (!$isHomePage && !$isPrivateOrPortalRoute) {
+    $breadcrumbName = isset($pageTitle) && trim((string)$pageTitle) !== ''
+        ? trim(explode('|', (string)$pageTitle)[0])
+        : 'Purple Festival Gujarat 2027';
+    $defaultSchemaGraphItems[] = [
+        '@type' => 'BreadcrumbList',
+        '@id' => $resolvedCanonical . '#breadcrumb',
+        'itemListElement' => [
+            [
+                '@type' => 'ListItem',
+                'position' => 1,
+                'name' => 'Purple Festival Gujarat 2027',
+                'item' => $siteUrl . '/',
+            ],
+            [
+                '@type' => 'ListItem',
+                'position' => 2,
+                'name' => $breadcrumbName,
+                'item' => $resolvedCanonical,
+            ],
+        ],
+    ];
+}
+
+$defaultSchemaGraph = [
+    '@context' => 'https://schema.org',
+    '@graph' => $defaultSchemaGraphItems,
 ];
 
 $schemaPayload = isset($structuredData) && is_array($structuredData)
@@ -145,20 +246,35 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
     ) ?: '{}');
 ?>
 <!DOCTYPE html>
-<html lang="en" data-text-scale="100" data-contrast="default" data-reduced-motion="false" data-spacing="normal" data-highlight-links="false">
+<html lang="en-IN" data-text-scale="100" data-contrast="default" data-reduced-motion="false" data-spacing="normal" data-highlight-links="false">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#F2E9FE" />
+  <meta name="theme-color" content="#5B2A86" />
   <title><?= htmlspecialchars($resolvedTitle, ENT_QUOTES, 'UTF-8') ?></title>
   <meta name="description" content="<?= htmlspecialchars($resolvedDescription, ENT_QUOTES, 'UTF-8') ?>" />
   <meta name="application-name" content="Purple Festival Gujarat 2027" />
+  <meta name="apple-mobile-web-app-title" content="PurpleFest 2027" />
   <meta name="author" content="Brotherhood, Global Inclusive Education Network (GIEN)" />
-  <meta name="creator" content="Purple Festival Gujarat Secretariat" />
+  <meta name="creator" content="Purple Festival Gujarat 2027 Secretariat" />
   <meta name="publisher" content="Purple Festival Gujarat 2027" />
-  <meta name="keywords" content="Purple Festival Gujarat 2027, PurpleFest Vadodara, Disability Inclusion India, Accessibility India, RPwD Act 2016, 21 Benchmark Disabilities, Vadodara Festival 2027, Para Sports Championships, Assistive Technology Expo, Inclusive Education NEP 2020, Viksit Bharat 2047, Indian Sign Language" />
-  <meta name="robots" content="index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1" />
+  <meta name="keywords" content="<?= htmlspecialchars($resolvedKeywords, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="robots" content="<?= htmlspecialchars($resolvedRobots, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="googlebot" content="<?= htmlspecialchars($resolvedRobots, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="geo.region" content="IN-GJ" />
+  <meta name="geo.placename" content="Vadodara, Gujarat, India" />
+  <meta name="geo.position" content="22.3326;73.1982" />
+  <meta name="ICBM" content="22.3326, 73.1982" />
   <link rel="canonical" href="<?= htmlspecialchars($resolvedCanonical, ENT_QUOTES, 'UTF-8') ?>" />
+  <?php if (!$isPrivateOrPortalRoute): ?>
+  <link rel="alternate" hreflang="en-IN" href="<?= htmlspecialchars($resolvedCanonical, ENT_QUOTES, 'UTF-8') ?>" />
+  <link rel="alternate" hreflang="x-default" href="<?= htmlspecialchars($resolvedCanonical, ENT_QUOTES, 'UTF-8') ?>" />
+  <?php endif; ?>
+
+  <!-- Icons & Web App Manifest -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/logos/purple-festival.jpg" />
+  <link rel="manifest" href="/site.webmanifest" />
 
   <!-- OpenGraph -->
   <meta property="og:title" content="<?= htmlspecialchars($resolvedTitle, ENT_QUOTES, 'UTF-8') ?>" />
@@ -168,24 +284,28 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
   <meta property="og:locale" content="en_IN" />
   <meta property="og:site_name" content="Purple Festival Gujarat 2027" />
   <meta property="og:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="Purple Festival Gujarat 2027 — Inclusion, celebrated." />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="497" />
+  <meta property="og:image:height" content="474" />
+  <meta property="og:image:alt" content="<?= htmlspecialchars($ogImageAlt, ENT_QUOTES, 'UTF-8') ?>" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="<?= htmlspecialchars($resolvedTitle, ENT_QUOTES, 'UTF-8') ?>" />
   <meta name="twitter:description" content="<?= htmlspecialchars($resolvedDescription, ENT_QUOTES, 'UTF-8') ?>" />
   <meta name="twitter:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="twitter:image:alt" content="<?= htmlspecialchars($ogImageAlt, ENT_QUOTES, 'UTF-8') ?>" />
 
   <!-- Google Fonts: DM Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..800;1,9..40,400..800&display=swap" />
 
-  <!-- Hero Illustration Preloads -->
-  <link rel="preload" as="image" href="/assets/illustrations/statue-of-unity.png" />
-  <link rel="preload" as="image" href="/assets/illustrations/somnath-temple.png" />
+  <?php if ($isHomePage): ?>
+  <!-- Homepage Above-the-Fold Hero Illustration Preloads -->
+  <link rel="preload" as="image" href="/assets/illustrations/statue-of-unity.png" fetchpriority="high" />
+  <link rel="preload" as="image" href="/assets/illustrations/somnath-temple.png" fetchpriority="high" />
+  <?php endif; ?>
 
   <!-- Early Accessibility Preferences Init (prevents FOUC before first paint — FND-46) -->
   <script>

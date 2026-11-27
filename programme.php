@@ -8,8 +8,9 @@ if (is_file(__DIR__ . '/includes/database.php')) {
     require_once __DIR__ . '/includes/database.php';
 }
 
-$pageTitle = '3-Day Programme Schedule';
-$pageDescription = 'Explore the 3-day schedule for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) with ISL interpretation, live captioning, para-sports, and calendar downloads.';
+$pageTitle = '3-Day Programme Schedule (21–23 January 2027)';
+$pageDescription = 'Explore the official 3-day schedule for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) with ISL interpretation, live captioning, para-sports, assistive tech expo, and calendar downloads.';
+$pageKeywords = 'Purple Festival Gujarat 2027 Schedule, Vadodara 21-23 January 2027 Programme, Para Sports 2027 Schedule, Inclusive Cultural Programme 2027';
 
 $FALLBACK_PROGRAMME_FULL = [
     // Day 1 — 21 Jan 2027

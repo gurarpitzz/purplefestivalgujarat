@@ -89,14 +89,14 @@ if ($footerNavState === 'ADMIN') {
             </p>
             <div class="space-y-2 text-sm">
               <a
-                href="mailto:purplefestivalvadodara@gmail.com"
+                href="mailto:purplefestivalgujarat@gmail.com"
                 class="inline-flex min-h-[34px] items-center gap-1.5 font-medium text-[#F8F7F4] transition-colors hover:text-[#B6A1C8] hover:underline"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-[#B6A1C8]" aria-hidden="true">
                   <rect width="20" height="16" x="2" y="4" rx="2" />
                   <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
                 </svg>
-                <span class="break-all">purplefestivalvadodara@gmail.com</span>
+                <span class="break-all">purplefestivalgujarat@gmail.com</span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 shrink-0 text-[#B5B5B5]" aria-hidden="true">
                   <path d="M7 7h10v10" />
                   <path d="M7 17 17 7" />
@@ -247,7 +247,7 @@ if ($footerNavState === 'ADMIN') {
             alt=""
             width="680"
             height="480"
-            loading="eager"
+            loading="lazy"
             decoding="async"
             class="h-full w-auto max-w-none object-contain object-bottom drop-shadow-[0_3px_10px_rgba(166,154,216,0.22)]"
           />

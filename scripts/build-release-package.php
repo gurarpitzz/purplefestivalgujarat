@@ -109,12 +109,16 @@ $allowedRootFiles = [
     '.htaccess',
     '.user.ini',
     'accessibility.php',
+    'favicon.svg',
     'forgot-password.php',
     'index.php',
     'login.php',
     'programme.php',
     'register.php',
     'reset-password.php',
+    'robots.txt',
+    'site.webmanifest',
+    'sitemap.xml',
     'verify-email.php',
 ];
 

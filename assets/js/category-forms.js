@@ -696,7 +696,7 @@
           '</div>' +
           '<div class="mt-4 rounded-xl border border-[#DCE5F7] bg-white p-4 text-xs leading-relaxed text-[#46537C]">' +
             '<p class="font-bold text-[#202D59]">Festival Secretariat Contact</p>' +
-            '<p class="mt-1">Need a correction or have accessibility questions? Email <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalvadodara@gmail.com</a> (quote your Registration ID) or call Radha Tandon (+91 99743 83920) / Satish Kapoor (+91 92117 60202).</p>' +
+            '<p class="mt-1">Need a correction or have accessibility questions? Email <a href="mailto:purplefestivalgujarat@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalgujarat@gmail.com</a> (quote your Registration ID) or call Radha Tandon (+91 99743 83920) / Satish Kapoor (+91 92117 60202).</p>' +
           '</div>' +
           '<div class="mt-6 flex flex-wrap gap-3">' +
             '<a href="/" class="touch-target inline-flex items-center justify-center rounded-lg bg-[#202D59] px-6 py-3 text-sm font-bold text-white hover:bg-[#5B2A86]">Return to Homepage</a>' +

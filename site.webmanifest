@@ -1,0 +1,26 @@
+{
+  "name": "Purple Festival Gujarat 2027",
+  "short_name": "PurpleFest 2027",
+  "description": "Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara, Gujarat) — India's landmark festival of inclusion, accessibility, assistive technology, Paralympic sport, and universal design across all 21 Benchmark Disabilities.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "en-IN",
+  "theme_color": "#5B2A86",
+  "background_color": "#FBF8F1",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/logos/purple-festival.jpg",
+      "sizes": "497x474",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
+

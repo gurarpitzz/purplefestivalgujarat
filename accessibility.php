@@ -8,8 +8,9 @@ if (is_file(__DIR__ . '/includes/database.php')) {
     require_once __DIR__ . '/includes/database.php';
 }
 
-$pageTitle = 'Accessibility Guide & 21 RPwD Disabilities';
-$pageDescription = "Complete venue accessibility guide, available accommodation services, and all 21 specified disabilities under India's RPwD Act 2016 for Purple Festival Gujarat 2027.";
+$pageTitle = 'Accessibility Guide & 21 RPwD Disabilities (2027)';
+$pageDescription = "Complete venue accessibility guide, reasonable accommodation services, and all 21 specified disabilities under India's RPwD Act 2016 for Purple Festival Gujarat 2027 in Vadodara.";
+$pageKeywords = 'Purple Festival Gujarat 2027 Accessibility, 21 Specified Disabilities RPwD Act 2016, Vadodara Accessible Venues 2027, Reasonable Accommodations 2027, ISL Braille CART Gujarat 2027';
 
 $FALLBACK_DISABILITIES = defined('RPWD_21_DISABILITIES') && is_array(RPWD_21_DISABILITIES)
     ? RPWD_21_DISABILITIES
@@ -230,7 +231,7 @@ foreach ($disabilityList as $dItem) {
 $totalDisabilities = count($disabilityList);
 $officialEmail = defined('OFFICIAL_FESTIVAL_EMAIL') && is_string(OFFICIAL_FESTIVAL_EMAIL) && trim(OFFICIAL_FESTIVAL_EMAIL) !== ''
     ? trim(OFFICIAL_FESTIVAL_EMAIL)
-    : 'purplefestivalvadodara@gmail.com';
+    : 'purplefestivalgujarat@gmail.com';
 
 $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400..800;1,8..60,400..700&display=swap" />' . "\n"
