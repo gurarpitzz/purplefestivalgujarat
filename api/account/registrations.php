@@ -6,7 +6,7 @@ http_response_code(410);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 echo json_encode([
-    'error'           => 'Participant account registration management has been discontinued. Submit new registrations directly at /apply or email purplefestivalvadodara@gmail.com for corrections.',
+    'error'           => 'Participant account registration management has been discontinued. Submit new registrations directly at /apply or email purplefestivalgujarat@gmail.com for corrections.',
     'deprecated'      => true,
     'accountRequired' => false,
     'redirectTo'      => '/apply',

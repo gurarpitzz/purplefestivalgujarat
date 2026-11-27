@@ -136,7 +136,7 @@ try {
         // 1. Centralized registration activation gate (CAD-17 / §3)
         if (!pfgIsPublicRegistrationOpen($pdo)) {
             jsonResponse([
-                'error'              => 'Public registration is currently closed. Please check back once registration opens or contact purplefestivalvadodara@gmail.com.',
+                'error'              => 'Public registration is currently closed. Please check back once registration opens or contact purplefestivalgujarat@gmail.com.',
                 'code'               => 'REGISTRATION_CLOSED',
                 'registrationOpen'   => false,
                 'registrationClosed' => true,
@@ -277,7 +277,7 @@ try {
             $candNormName = preg_replace('/\s+/', ' ', strtolower(trim((string)($cand['full_name'] ?? '')))) ?? '';
             if ($candNormName === $normFullName) {
                 jsonResponse([
-                    'error' => 'A registration with these details already exists for this category. If you need to update your details or need assistance, please contact purplefestivalvadodara@gmail.com.',
+                    'error' => 'A registration with these details already exists for this category. If you need to update your details or need assistance, please contact purplefestivalgujarat@gmail.com.',
                     'code'  => 'DUPLICATE_REGISTRATION',
                 ], 409);
             }
@@ -301,7 +301,7 @@ try {
                 $candNormName = preg_replace('/\s+/', ' ', strtolower(trim((string)($cand['full_name'] ?? '')))) ?? '';
                 if ($candNormName === $normFullName) {
                     jsonResponse([
-                        'error' => 'A registration with these details already exists for this festival edition. Please contact purplefestivalvadodara@gmail.com if you need assistance.',
+                        'error' => 'A registration with these details already exists for this festival edition. Please contact purplefestivalgujarat@gmail.com if you need assistance.',
                         'code'  => 'DUPLICATE_REGISTRATION',
                     ], 409);
                 }

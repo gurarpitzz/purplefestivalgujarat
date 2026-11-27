@@ -30,7 +30,7 @@ require_once dirname(__DIR__) . '/includes/header.php';
       </p>
       <p class="mt-3 text-sm leading-relaxed text-[#46537C]">
         All official confirmations, application decisions, accessibility updates, and duty assignments are delivered directly to your email address. If you already registered and need a correction or assistance, email
-        <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalvadodara@gmail.com</a>
+        <a href="mailto:purplefestivalgujarat@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalgujarat@gmail.com</a>
         with your official Registration ID (<code>PFG-2027-NNNNNN</code>).
       </p>
       <div class="mt-6 flex flex-wrap gap-3">

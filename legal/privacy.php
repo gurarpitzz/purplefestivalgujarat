@@ -128,7 +128,7 @@ require_once dirname(__DIR__) . '/includes/header.php';
               <strong>Right to Access &amp; Correction:</strong> Request a summary of your
               submitted registration details, consent records, or corrections to your contact or
               accessibility needs at any time by emailing
-              <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#59436D] underline">purplefestivalvadodara@gmail.com</a>
+              <a href="mailto:purplefestivalgujarat@gmail.com" class="font-semibold text-[#59436D] underline">purplefestivalgujarat@gmail.com</a>
               with your official Registration ID (<code>PFG-2027-NNNNNN</code>).
             </li>
             <li>
@@ -155,10 +155,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
             festival close under organizer governance). We never sell or rent participant data to
             third parties. To exercise your privacy rights or request erasure, email
             <a
-              href="mailto:purplefestivalvadodara@gmail.com"
+              href="mailto:purplefestivalgujarat@gmail.com"
               class="font-semibold text-[#59436D] underline"
             >
-              purplefestivalvadodara@gmail.com
+              purplefestivalgujarat@gmail.com
             </a>.
           </p>
         </section>

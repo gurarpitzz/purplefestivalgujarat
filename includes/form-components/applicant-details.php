@@ -178,7 +178,7 @@ if (!function_exists('pfgRenderRegistrationClosedCard')) {
           </h2>
           <p class="mt-2 text-sm leading-relaxed text-[#46537C]">
             Public registration for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) is currently closed while final preparations are underway. Please check back soon or contact the Festival Secretariat at
-            <a href="mailto:purplefestivalvadodara@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalvadodara@gmail.com</a>
+            <a href="mailto:purplefestivalgujarat@gmail.com" class="font-semibold text-[#5B2A86] underline">purplefestivalgujarat@gmail.com</a>
             for announcements and accessibility inquiries.
           </p>
           <div class="mt-6 flex flex-wrap gap-3">

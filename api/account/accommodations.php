@@ -6,7 +6,7 @@ http_response_code(410);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 echo json_encode([
-    'error'           => 'Participant account accommodation editing has been discontinued. Contact purplefestivalvadodara@gmail.com with your Registration ID for accessibility updates.',
+    'error'           => 'Participant account accommodation editing has been discontinued. Contact purplefestivalgujarat@gmail.com with your Registration ID for accessibility updates.',
     'deprecated'      => true,
     'accountRequired' => false,
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

@@ -105,10 +105,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
             <p>
               <strong>Email:</strong>
               <a
-                href="mailto:purplefestivalvadodara@gmail.com"
+                href="mailto:purplefestivalgujarat@gmail.com"
                 class="font-semibold text-[#59436D] underline"
               >
-                purplefestivalvadodara@gmail.com
+                purplefestivalgujarat@gmail.com
               </a>
             </p>
             <p class="mt-1">

@@ -759,7 +759,7 @@ require_once __DIR__ . '/../includes/header.php';
       <div role="status" aria-live="polite" class="pfg-apply-banner">
         <h2 class="pfg-apply-banner-title">Public Registration Is Currently Closed</h2>
         <p class="pfg-apply-banner-body">
-          Registration for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) is not yet open. Please check back once registration opens or contact <a href="mailto:purplefestivalvadodara@gmail.com" style="font-weight:700;text-decoration:underline;">purplefestivalvadodara@gmail.com</a>.
+          Registration for Purple Festival Gujarat 2027 (21–23 January 2027, Vadodara) is not yet open. Please check back once registration opens or contact <a href="mailto:purplefestivalgujarat@gmail.com" style="font-weight:700;text-decoration:underline;">purplefestivalgujarat@gmail.com</a>.
         </p>
       </div>
     <?php endif; ?>
@@ -814,7 +814,7 @@ require_once __DIR__ . '/../includes/header.php';
         <strong>Accessibility included in every category:</strong> All three forms contain our confidential Accessibility &amp; Reasonable Accommodations section (ISL, tactile interpretation, Braille, large print, wheelchair seating/charging, sighted guide, quiet space, live captions, escort support, and more) — no medical diagnosis required.
       </p>
       <p>
-        Registration is free and issues an official <strong>Registration ID</strong> for manual check-in at the Vadodara Registration Desk (21–23 January 2027). For performers, exhibition stalls, sponsorships, or speaker nominations, email <a href="mailto:purplefestivalvadodara@gmail.com">purplefestivalvadodara@gmail.com</a>.
+        Registration is free and issues an official <strong>Registration ID</strong> for manual check-in at the Vadodara Registration Desk (21–23 January 2027). For performers, exhibition stalls, sponsorships, or speaker nominations, email <a href="mailto:purplefestivalgujarat@gmail.com">purplefestivalgujarat@gmail.com</a>.
       </p>
     </aside>
   </div>

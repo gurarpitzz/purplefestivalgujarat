@@ -222,7 +222,7 @@ if (!defined('MAIL_FROM_ADDRESS')) {
     define('MAIL_FROM_ADDRESS', pfgEnv('MAIL_FROM_ADDRESS', 'noreply@purplefestivalgujarat.com'));
 }
 if (!defined('MAIL_REPLY_TO')) {
-    define('MAIL_REPLY_TO', pfgEnv('MAIL_REPLY_TO', 'purplefestivalvadodara@gmail.com'));
+    define('MAIL_REPLY_TO', pfgEnv('MAIL_REPLY_TO', 'purplefestivalgujarat@gmail.com'));
 }
 if (!defined('EMAIL_FROM')) {
     $configuredFrom = trim(pfgEnv('EMAIL_FROM', ''));

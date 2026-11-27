@@ -113,10 +113,10 @@ require_once dirname(__DIR__) . '/includes/header.php';
           <p class="text-[#4B4257]">
             For questions regarding these terms or to report a safeguarding concern, contact
             <a
-              href="mailto:purplefestivalvadodara@gmail.com"
+              href="mailto:purplefestivalgujarat@gmail.com"
               class="font-semibold text-[#59436D] underline"
             >
-              purplefestivalvadodara@gmail.com
+              purplefestivalgujarat@gmail.com
             </a>
             or call Radha Tandon (+91 99743 83920) / Satish Kapoor (+91 92117 60202).
           </p>

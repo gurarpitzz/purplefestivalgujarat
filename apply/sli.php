@@ -436,6 +436,6 @@ $bootJson = pfgSafeJsonForScript($bootData);
 $extraFooterHtml = <<<HTML
 <script>window.__PFG_FORM_BOOT__ = {$bootJson};</script>
 <script src="/assets/js/shared-accessibility.js"></script>
-<script src="/assets/js/category-forms.js?v=3"></script>
+<script src="/assets/js/category-forms.js?v=4"></script>
 HTML;
 require_once __DIR__ . '/../includes/footer.php';

@@ -253,7 +253,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'Visit Festival Website',
                 'bodyParagraphs' => [
                     'Your registration details for {{registrationCode}} ({{categoryName}}) have been updated by the Festival Secretariat.',
-                    '{{updateSummary}} If you have any questions, reply to this email or contact purplefestivalvadodara@gmail.com quoting your Registration ID.',
+                    '{{updateSummary}} If you have any questions, reply to this email or contact purplefestivalgujarat@gmail.com quoting your Registration ID.',
                 ],
                 'restrictions'   => 'No disability diagnoses or sensitive emergency phone numbers',
             ],
@@ -369,7 +369,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'Visit Festival Website',
                 'bodyParagraphs' => [
                     'Our volunteer review team is evaluating your application ({{registrationCode}}) and needs additional information before making a decision.',
-                    '{{requestedDetails}} Please reply directly to this email or write to purplefestivalvadodara@gmail.com quoting Registration ID {{registrationCode}}.',
+                    '{{requestedDetails}} Please reply directly to this email or write to purplefestivalgujarat@gmail.com quoting Registration ID {{registrationCode}}.',
                 ],
                 'restrictions'   => 'Only coordinator-approved participant-facing message; never expose internal notes',
             ],
@@ -388,7 +388,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'View Festival Programme',
                 'bodyParagraphs' => [
                     'Your volunteer duty assignment for Purple Festival Gujarat 2027 ({{registrationCode}}) has been scheduled. Please review your assigned venue, shift, and reporting details below.',
-                    'Quote your Registration ID at the Registration Desk when reporting for duty. If you have any questions, contact purplefestivalvadodara@gmail.com.',
+                    'Quote your Registration ID at the Registration Desk when reporting for duty. If you have any questions, contact purplefestivalgujarat@gmail.com.',
                 ],
                 'restrictions'   => 'No internal coordinator comments or personal data of other volunteers',
             ],
@@ -504,7 +504,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'Visit Festival Website',
                 'bodyParagraphs' => [
                     'Our Sign Language Interpreter review coordinators need a clarification to complete verification of your application ({{registrationCode}}).',
-                    '{{requestedDetails}} Please reply directly to this email or contact purplefestivalvadodara@gmail.com quoting Registration ID {{registrationCode}}.',
+                    '{{requestedDetails}} Please reply directly to this email or contact purplefestivalgujarat@gmail.com quoting Registration ID {{registrationCode}}.',
                 ],
                 'restrictions'   => 'Participant-facing message only; no internal verification notes',
             ],
@@ -523,7 +523,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'View Festival Programme',
                 'bodyParagraphs' => [
                     'Your Indian Sign Language interpretation assignment ({{registrationCode}}) for Purple Festival Gujarat 2027 has been scheduled. Please review your assigned sessions, venue, and duty times below.',
-                    'Quote your Registration ID at the Registration Desk upon arrival. Contact purplefestivalvadodara@gmail.com if you need any assistance.',
+                    'Quote your Registration ID at the Registration Desk upon arrival. Contact purplefestivalgujarat@gmail.com if you need any assistance.',
                 ],
                 'restrictions'   => 'No personal details of other interpreters or internal notes',
             ],
@@ -563,7 +563,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'Accessibility Guide',
                 'bodyParagraphs' => [
                     'We have received your accessibility accommodation request associated with Registration ID {{registrationCode}}. To protect your privacy, specific personal disclosures are not repeated in this email.',
-                    'Our authorized accessibility coordinators will review your request and send updates to this email address once arrangements are confirmed. For urgent accessibility assistance, email purplefestivalvadodara@gmail.com quoting {{registrationCode}}.',
+                    'Our authorized accessibility coordinators will review your request and send updates to this email address once arrangements are confirmed. For urgent accessibility assistance, email purplefestivalgujarat@gmail.com quoting {{registrationCode}}.',
                 ],
                 'restrictions'   => 'STRICT PRIVACY: Never repeat disability diagnoses, medical details, or raw free-text disclosures in email body',
             ],
@@ -582,7 +582,7 @@ if (!function_exists('pfgGetEmailTemplateCatalog')) {
                 'ctaLabel'       => 'Accessibility Guide',
                 'bodyParagraphs' => [
                     'Your accessibility support request for Registration ID {{registrationCode}} has been updated to status: {{arrangementStatus}}.',
-                    'For your privacy, sensitive personal details are not included in plain email. Please reply to this email or contact our accessibility desk at purplefestivalvadodara@gmail.com quoting Registration ID {{registrationCode}} if you have any questions.',
+                    'For your privacy, sensitive personal details are not included in plain email. Please reply to this email or contact our accessibility desk at purplefestivalgujarat@gmail.com quoting Registration ID {{registrationCode}} if you have any questions.',
                 ],
                 'restrictions'   => 'STRICT PRIVACY: Never repeat disability details or raw coordinator medical notes in email',
             ],
@@ -717,7 +717,7 @@ if (!function_exists('pfgRenderEmailTemplate')) {
             'updateSummary'    => 'Your latest registration details have been updated.',
             'reasonSummary'    => '',
             'publicGuidance'   => '',
-            'requestedDetails' => 'Please reply to this email or write to purplefestivalvadodara@gmail.com quoting your Registration ID.',
+            'requestedDetails' => 'Please reply to this email or write to purplefestivalgujarat@gmail.com quoting your Registration ID.',
             'reminderDetails'  => 'Visit our website for the latest accessibility guide, venue directions, and 3-day schedule.',
         ];
         $vars = array_merge($defaults, array_filter($safeVars, static fn($v): bool => $v !== null && $v !== ''));
@@ -762,7 +762,7 @@ if (!function_exists('pfgRenderEmailTemplate')) {
         $regCode = isset($vars['registrationCode']) ? trim((string)$vars['registrationCode']) : '';
         $categoryName = isset($vars['categoryName']) ? trim((string)$vars['categoryName']) : '';
         $statusDisplay = isset($vars['status']) ? trim((string)$vars['status']) : '';
-        $supportEmail = defined('NOTIFICATION_SUPPORT_EMAIL') ? (string)NOTIFICATION_SUPPORT_EMAIL : 'purplefestivalvadodara@gmail.com';
+        $supportEmail = defined('NOTIFICATION_SUPPORT_EMAIL') ? (string)NOTIFICATION_SUPPORT_EMAIL : 'purplefestivalgujarat@gmail.com';
         $festivalName = defined('FESTIVAL_NAME') ? (string)FESTIVAL_NAME : 'Purple Festival Gujarat 2027';
         $festivalDates = defined('FESTIVAL_DATES_DISPLAY') ? (string)FESTIVAL_DATES_DISPLAY : '21–23 January 2027';
         $festivalLoc = defined('FESTIVAL_LOCATION_DISPLAY') ? (string)FESTIVAL_LOCATION_DISPLAY : 'Vadodara, Gujarat';
