@@ -35,12 +35,12 @@ require_once dirname(__DIR__) . '/includes/header.php';
     <article class="surface-card rounded-3xl border border-[#59436D]/20 bg-white p-8 shadow-xs sm:p-12">
       <div class="mb-8 border-b border-[#59436D]/15 pb-6">
         <p class="inline-flex items-center gap-2 text-xs font-bold tracking-[0.2em] uppercase text-[#59436D]">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
-            <circle cx="16" cy="4" r="1" />
-            <path d="m18 19 1-7-6 1" />
-            <path d="m5 8 3-3 5.5 3-2.36 3.5" />
-            <path d="M4.24 14.5a5 5 0 0 0 6.88 6" />
-            <path d="M13.76 17.5a5 5 0 0 0-6.88-6" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" aria-hidden="true">
+            <circle cx="12" cy="12" r="9.5" />
+            <circle cx="12" cy="7.5" r="1.55" fill="currentColor" stroke="none" />
+            <path d="M7.6 10.6c1.45.55 2.95.82 4.4.82s2.95-.27 4.4-.82" />
+            <path d="M12 11.45v3.35" />
+            <path d="m9.95 18.4 2.05-3.6 2.05 3.6" />
           </svg>
           WCAG 2.2 Level AA Commitment
         </p>

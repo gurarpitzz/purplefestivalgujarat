@@ -4,6 +4,26 @@
    Speaking Highlight, Indic Font Stacks, and WCAG 2.2 AA+ Contrast & Motion
    ========================================================================== */
 
+/* Header Circular Universal Accessibility Trigger Button */
+.pfg-a11y-trigger-btn {
+  background-color: #43107A;
+  color: #FFFFFF;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 8px rgba(43, 10, 61, 0.25), 0 0 0 1px rgba(67, 16, 122, 0.28);
+  transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.pfg-a11y-trigger-btn:hover {
+  background-color: #2B0A3D;
+  box-shadow: 0 4px 12px rgba(43, 10, 61, 0.34), 0 0 0 1px rgba(43, 10, 61, 0.4);
+}
+
+.pfg-a11y-trigger-icon {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
 /* --------------------------------------------------------------------------
    1. Floating Compact Website Language Toggle Pill (.pfg-lang-fab — Bottom-Right)
    -------------------------------------------------------------------------- */

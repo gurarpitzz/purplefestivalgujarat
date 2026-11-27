@@ -445,12 +445,12 @@ require_once __DIR__ . '/includes/header.php';
           href="/accessibility"
           class="touch-target inline-flex items-center gap-2 rounded-full border border-[#B6A1C8]/50 bg-[#25212B] px-5 py-3 text-sm font-semibold text-[#F9F7FC] hover:border-[#D5B77B] hover:text-[#D5B77B]"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#D5B77B]" aria-hidden="true">
-            <circle cx="16" cy="4" r="1" />
-            <path d="m18 19 1-7-6 1" />
-            <path d="m5 8 3-3 5.5 3-2.36 3.5" />
-            <path d="M4.24 14.5a5 5 0 0 0 6.88 6" />
-            <path d="M13.76 17.5a5 5 0 0 0-6.88-6" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 text-[#D5B77B]" aria-hidden="true">
+            <circle cx="12" cy="12" r="9.5" />
+            <circle cx="12" cy="7.5" r="1.55" fill="currentColor" stroke="none" />
+            <path d="M7.6 10.6c1.45.55 2.95.82 4.4.82s2.95-.27 4.4-.82" />
+            <path d="M12 11.45v3.35" />
+            <path d="m9.95 18.4 2.05-3.6 2.05 3.6" />
           </svg>
           <span>Venue Accessibility Services</span>
         </a>
@@ -645,12 +645,12 @@ require_once __DIR__ . '/includes/header.php';
                 <?php if (!empty($item['accessibilityServices'])): ?>
                   <div class="flex flex-wrap items-center gap-2 pt-1">
                     <span class="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#19734B]">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true">
-                        <circle cx="16" cy="4" r="1" />
-                        <path d="m18 19 1-7-6 1" />
-                        <path d="m5 8 3-3 5.5 3-2.36 3.5" />
-                        <path d="M4.24 14.5a5 5 0 0 0 6.88 6" />
-                        <path d="M13.76 17.5a5 5 0 0 0-6.88-6" />
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9.5" />
+                        <circle cx="12" cy="7.5" r="1.55" fill="currentColor" stroke="none" />
+                        <path d="M7.6 10.6c1.45.55 2.95.82 4.4.82s2.95-.27 4.4-.82" />
+                        <path d="M12 11.45v3.35" />
+                        <path d="m9.95 18.4 2.05-3.6 2.05 3.6" />
                       </svg>
                       Access:
                     </span>

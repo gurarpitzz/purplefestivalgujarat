@@ -314,7 +314,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
 
   <!-- Compiled Tailwind & Design System CSS -->
   <link rel="stylesheet" href="/assets/css/app.css?v=2" />
-  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=3" />
+  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=4" />
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json"><?= $schemaJsonOutput ?></script>
@@ -429,14 +429,14 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
           aria-controls="a11y-preferences-modal"
           aria-label="Open Accessibility Preferences"
           title="Accessibility Preferences"
-          class="touch-target inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#1C0D30] text-white shadow-sm transition-transform hover:scale-105 hover:bg-[#202D59]"
+          class="pfg-a11y-trigger-btn touch-target inline-flex h-11 w-11 items-center justify-center rounded-full text-white shadow-sm transition-transform hover:scale-105"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5" aria-hidden="true">
-            <circle cx="16" cy="4" r="1" />
-            <path d="m18 19 1-7-6 1" />
-            <path d="m5 8 3-3 5.5 3-2.36 3.5" />
-            <path d="M4.24 14.5a5 5 0 0 0 6.88 6" />
-            <path d="M13.76 17.5a5 5 0 0 0-6.88-6" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="pfg-a11y-trigger-icon" aria-hidden="true">
+            <circle cx="12" cy="12" r="9.5" />
+            <circle cx="12" cy="7.5" r="1.55" fill="currentColor" stroke="none" />
+            <path d="M7.6 10.6c1.45.55 2.95.82 4.4.82s2.95-.27 4.4-.82" />
+            <path d="M12 11.45v3.35" />
+            <path d="m9.95 18.4 2.05-3.6 2.05 3.6" />
           </svg>
         </button>
 
