@@ -116,7 +116,8 @@ $pfgRightTopPhoto = $pfgResolvedGrounds[1];
 $pfgRightBottomPhoto = $pfgResolvedGrounds[2];
 ?>
 <section id="gallery" aria-labelledby="gallery-heading" class="pfg-ed-grounds">
-  <div class="pfg-ed-grounds__ornament" aria-hidden="true"></div>
+  <div class="pfg-ed-grounds__ornament pfg-ed-grounds__ornament--left" aria-hidden="true"></div>
+  <div class="pfg-ed-grounds__ornament pfg-ed-grounds__ornament--right" aria-hidden="true"></div>
 
   <div class="pfg-ed-grounds__inner">
     <h2 id="gallery-heading" class="pfg-ed-grounds__heading">Festival Grounds &amp; Facilities</h2>

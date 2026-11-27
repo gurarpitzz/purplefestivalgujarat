@@ -1,215 +1,117 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 160" width="64" height="160" fill="none">
-  <!-- Right-edge bold double vertical textile rail & seamless pearl-dot column -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 240" width="68" height="240" fill="none">
+  <!-- Clean, airy Gujarati folk-art border with generous negative space (viewBox 68x240 seamless repeat-y) -->
+
+  <!-- Outer vertical rail: slim hairline + airy pearl column + crisp outer edge -->
   <g id="pfg-rail">
-    <line x1="52.5" y1="0" x2="52.5" y2="160" stroke="#3E0E59" stroke-width="2" stroke-linecap="butt" />
-    <line x1="61" y1="0" x2="61" y2="160" stroke="#3E0E59" stroke-width="3" stroke-linecap="butt" />
-    <g fill="#641C8B">
-      <circle cx="56.8" cy="4" r="1.55" />
-      <circle cx="56.8" cy="12" r="1.55" />
-      <circle cx="56.8" cy="20" r="1.55" />
-      <circle cx="56.8" cy="28" r="1.55" />
-      <circle cx="56.8" cy="36" r="1.55" />
-      <circle cx="56.8" cy="44" r="1.55" />
-      <circle cx="56.8" cy="52" r="1.55" />
-      <circle cx="56.8" cy="60" r="1.55" />
-      <circle cx="56.8" cy="68" r="1.55" />
-      <circle cx="56.8" cy="76" r="1.55" />
-      <circle cx="56.8" cy="84" r="1.55" />
-      <circle cx="56.8" cy="92" r="1.55" />
-      <circle cx="56.8" cy="100" r="1.55" />
-      <circle cx="56.8" cy="108" r="1.55" />
-      <circle cx="56.8" cy="116" r="1.55" />
-      <circle cx="56.8" cy="124" r="1.55" />
-      <circle cx="56.8" cy="132" r="1.55" />
-      <circle cx="56.8" cy="140" r="1.55" />
-      <circle cx="56.8" cy="148" r="1.55" />
-      <circle cx="56.8" cy="156" r="1.55" />
+    <line x1="55" y1="0" x2="55" y2="240" stroke="#5A1F7A" stroke-width="1.25" />
+    <line x1="64" y1="0" x2="64" y2="240" stroke="#5A1F7A" stroke-width="2.2" />
+    <g fill="#7B35A2">
+      <circle cx="59.5" cy="10" r="1.35" />
+      <circle cx="59.5" cy="30" r="1.35" />
+      <circle cx="59.5" cy="50" r="1.35" />
+      <circle cx="59.5" cy="70" r="1.35" />
+      <circle cx="59.5" cy="90" r="1.35" />
+      <circle cx="59.5" cy="110" r="1.35" />
+      <circle cx="59.5" cy="130" r="1.35" />
+      <circle cx="59.5" cy="150" r="1.35" />
+      <circle cx="59.5" cy="170" r="1.35" />
+      <circle cx="59.5" cy="190" r="1.35" />
+      <circle cx="59.5" cy="210" r="1.35" />
+      <circle cx="59.5" cy="230" r="1.35" />
     </g>
   </g>
 
-  <!-- Seamless Top-Seam Connector (centered at y = -5; exact twin of y = 155) -->
-  <g transform="translate(29.5 -5)">
-    <path d="M -17.5 -5.8 C -21.8 -4.6 -23.5 -2.2 -23.5 0 C -23.5 2.2 -21.8 4.6 -17.5 5.8" stroke="#3E0E59" stroke-width="1.65" stroke-linecap="round" />
-    <circle cx="-25.8" cy="0" r="1.55" fill="#641C8B" />
-    <circle cx="-21.4" cy="-5.4" r="1.3" fill="#3E0E59" />
-    <circle cx="-21.4" cy="5.4" r="1.3" fill="#3E0E59" />
-    <path d="M -5 0 C -9.6 -4.6 -14.8 -4.6 -18.5 0 C -14.8 4.6 -9.6 4.6 -5 0 Z" stroke="#3E0E59" stroke-width="1.6" />
-    <path d="M 5 0 C 9.6 -4.6 14.8 -4.6 18.5 0 C 14.8 4.6 9.6 4.6 5 0 Z" stroke="#3E0E59" stroke-width="1.6" />
-    <path d="M -8 0 C -10.8 -2.2 -13.6 -2.2 -15.6 0 C -13.6 2.2 -10.8 2.2 -8 0 Z" fill="#641C8B" />
-    <path d="M 8 0 C 10.8 -2.2 13.6 -2.2 15.6 0 C 13.6 2.2 10.8 2.2 8 0 Z" fill="#641C8B" />
-    <path d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" stroke="#3E0E59" stroke-width="1.75" />
-    <circle cx="0" cy="0" r="2.5" fill="#3E0E59" />
-    <circle cx="0" cy="-8.5" r="1.5" fill="#641C8B" />
-    <circle cx="0" cy="8.5" r="1.5" fill="#641C8B" />
-    <circle cx="19.6" cy="0" r="1.4" fill="#3E0E59" />
-    <circle cx="-11.5" cy="-5.6" r="1.25" fill="#641C8B" />
-    <circle cx="11.5" cy="-5.6" r="1.25" fill="#641C8B" />
-    <circle cx="-11.5" cy="5.6" r="1.25" fill="#641C8B" />
-    <circle cx="11.5" cy="5.6" r="1.25" fill="#641C8B" />
+  <!-- Minimalist Seam Diamond Accent (y = 0 and y = 240 connect seamlessly) -->
+  <g transform="translate(28 0)">
+    <path d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" stroke="#5A1F7A" stroke-width="1.35" />
+    <circle cx="0" cy="0" r="1.8" fill="#7B35A2" />
+    <circle cx="-13" cy="0" r="1.25" fill="#7B35A2" />
+    <circle cx="13" cy="0" r="1.25" fill="#7B35A2" />
+  </g>
+  <g transform="translate(28 240)">
+    <path d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" stroke="#5A1F7A" stroke-width="1.35" />
+    <circle cx="0" cy="0" r="1.8" fill="#7B35A2" />
+    <circle cx="-13" cy="0" r="1.25" fill="#7B35A2" />
+    <circle cx="13" cy="0" r="1.25" fill="#7B35A2" />
   </g>
 
-  <!-- Motif 1: Bold Ornate 8-Petal Gujarati Lotus-Star Medallion centered at (29.5, 36) -->
-  <g transform="translate(29.5 36)">
-    <path d="M -17 -16.5 C -22.2 -12 -24.5 -6 -24.5 0 C -24.5 6 -22.2 12 -17 16.5" stroke="#641C8B" stroke-width="1.55" stroke-dasharray="2.2 2.4" stroke-linecap="round" />
-    <circle cx="-26.4" cy="0" r="1.7" fill="#3E0E59" />
-    <circle cx="-23.2" cy="-10.8" r="1.45" fill="#641C8B" />
-    <circle cx="-23.2" cy="10.8" r="1.45" fill="#641C8B" />
-    <circle cx="-18" cy="-19.2" r="1.3" fill="#3E0E59" />
-    <circle cx="-18" cy="19.2" r="1.3" fill="#3E0E59" />
-    <circle cx="19.5" cy="-12" r="1.35" fill="#641C8B" />
-    <circle cx="19.5" cy="12" r="1.35" fill="#641C8B" />
+  <!-- Motif 1: Open, Breathable 8-Petal Gujarati Lotus Blossom (centered at 28, 60) -->
+  <g transform="translate(28 60)">
+    <!-- Subtle vertical stem pearls giving graceful rhythm with ample white space -->
+    <circle cx="0" cy="-27" r="1.45" fill="#7B35A2" />
+    <circle cx="0" cy="27" r="1.45" fill="#7B35A2" />
 
-    <!-- Diagonal 4 pointed lotus petals -->
-    <g stroke="#3E0E59" stroke-width="1.65" stroke-linejoin="round">
-      <g transform="rotate(45)">
-        <path d="M 0 -20 C 3.8 -15 5.8 -10.8 4.4 -7 C 2.8 -5.2 1.2 -4.8 0 -4.8 C -1.2 -4.8 -2.8 -5.2 -4.4 -7 C -5.8 -10.8 -3.8 -15 0 -20 Z" />
-        <path d="M 0 -16 C 2.1 -12.6 2.8 -9.8 1.8 -7.6 C 0.9 -6.6 0 -6.4 0 -6.4 C 0 -6.4 -0.9 -6.6 -1.8 -7.6 C -2.8 -9.8 -2.1 -12.6 0 -16 Z" fill="#3E0E59" stroke="none" />
-      </g>
-      <g transform="rotate(135)">
-        <path d="M 0 -20 C 3.8 -15 5.8 -10.8 4.4 -7 C 2.8 -5.2 1.2 -4.8 0 -4.8 C -1.2 -4.8 -2.8 -5.2 -4.4 -7 C -5.8 -10.8 -3.8 -15 0 -20 Z" />
-        <path d="M 0 -16 C 2.1 -12.6 2.8 -9.8 1.8 -7.6 C 0.9 -6.6 0 -6.4 0 -6.4 C 0 -6.4 -0.9 -6.6 -1.8 -7.6 C -2.8 -9.8 -2.1 -12.6 0 -16 Z" fill="#3E0E59" stroke="none" />
-      </g>
-      <g transform="rotate(225)">
-        <path d="M 0 -20 C 3.8 -15 5.8 -10.8 4.4 -7 C 2.8 -5.2 1.2 -4.8 0 -4.8 C -1.2 -4.8 -2.8 -5.2 -4.4 -7 C -5.8 -10.8 -3.8 -15 0 -20 Z" />
-        <path d="M 0 -16 C 2.1 -12.6 2.8 -9.8 1.8 -7.6 C 0.9 -6.6 0 -6.4 0 -6.4 C 0 -6.4 -0.9 -6.6 -1.8 -7.6 C -2.8 -9.8 -2.1 -12.6 0 -16 Z" fill="#3E0E59" stroke="none" />
-      </g>
-      <g transform="rotate(315)">
-        <path d="M 0 -20 C 3.8 -15 5.8 -10.8 4.4 -7 C 2.8 -5.2 1.2 -4.8 0 -4.8 C -1.2 -4.8 -2.8 -5.2 -4.4 -7 C -5.8 -10.8 -3.8 -15 0 -20 Z" />
-        <path d="M 0 -16 C 2.1 -12.6 2.8 -9.8 1.8 -7.6 C 0.9 -6.6 0 -6.4 0 -6.4 C 0 -6.4 -0.9 -6.6 -1.8 -7.6 C -2.8 -9.8 -2.1 -12.6 0 -16 Z" fill="#3E0E59" stroke="none" />
-      </g>
+    <!-- 4 diagonal airy outline petals -->
+    <g stroke="#7B35A2" stroke-width="1.25" stroke-linejoin="round">
+      <path transform="rotate(45)" d="M 0 -18 C 3.4 -13.5 4.4 -9.2 2.4 -6.4 C 1.2 -5.2 0 -5 0 -5 C 0 -5 -1.2 -5.2 -2.4 -6.4 C -4.4 -9.2 -3.4 -13.5 0 -18 Z" />
+      <path transform="rotate(135)" d="M 0 -18 C 3.4 -13.5 4.4 -9.2 2.4 -6.4 C 1.2 -5.2 0 -5 0 -5 C 0 -5 -1.2 -5.2 -2.4 -6.4 C -4.4 -9.2 -3.4 -13.5 0 -18 Z" />
+      <path transform="rotate(225)" d="M 0 -18 C 3.4 -13.5 4.4 -9.2 2.4 -6.4 C 1.2 -5.2 0 -5 0 -5 C 0 -5 -1.2 -5.2 -2.4 -6.4 C -4.4 -9.2 -3.4 -13.5 0 -18 Z" />
+      <path transform="rotate(315)" d="M 0 -18 C 3.4 -13.5 4.4 -9.2 2.4 -6.4 C 1.2 -5.2 0 -5 0 -5 C 0 -5 -1.2 -5.2 -2.4 -6.4 C -4.4 -9.2 -3.4 -13.5 0 -18 Z" />
     </g>
 
-    <!-- Cardinal 4 ornate ogee lotus petals -->
-    <g stroke="#3E0E59" stroke-width="1.85" stroke-linejoin="round">
+    <!-- 4 cardinal sculptural lotus petals (open outline + delicate solid inner bud) -->
+    <g stroke="#5A1F7A" stroke-width="1.5" stroke-linejoin="round">
       <g>
-        <path d="M 0 -22.6 C 4.2 -17.5 7.2 -12.8 5.6 -7.4 C 3.8 -5.2 1.8 -4.8 0 -4.8 C -1.8 -4.8 -3.8 -5.2 -5.6 -7.4 C -7.2 -12.8 -4.2 -17.5 0 -22.6 Z" />
-        <path d="M 0 -18 C 2.5 -14.4 3.8 -11.2 2.4 -8.2 C 1.2 -6.9 0 -6.6 0 -6.6 C 0 -6.6 -1.2 -6.9 -2.4 -8.2 C -3.8 -11.2 -2.5 -14.4 0 -18 Z" fill="#641C8B" stroke="none" />
+        <path d="M 0 -21 C 4.2 -15.8 5.8 -10.8 3.6 -6.8 C 2.1 -5.2 0 -5 0 -5 C 0 -5 -2.1 -5.2 -3.6 -6.8 C -5.8 -10.8 -4.2 -15.8 0 -21 Z" />
+        <path d="M 0 -15.2 C 1.5 -12.4 1.9 -10 0 -8.2 C -1.9 -10 -1.5 -12.4 0 -15.2 Z" fill="#5A1F7A" stroke="none" />
       </g>
       <g transform="rotate(90)">
-        <path d="M 0 -20.6 C 3.9 -16 6.8 -11.8 5.4 -7.2 C 3.6 -5.2 1.8 -4.8 0 -4.8 C -1.8 -4.8 -3.6 -5.2 -5.4 -7.2 C -6.8 -11.8 -3.9 -16 0 -20.6 Z" />
-        <path d="M 0 -16.4 C 2.3 -13.2 3.5 -10.5 2.2 -8 C 1.1 -6.8 0 -6.6 0 -6.6 C 0 -6.6 -1.1 -6.8 -2.2 -8 C -3.5 -10.5 -2.3 -13.2 0 -16.4 Z" fill="#641C8B" stroke="none" />
+        <path d="M 0 -19.5 C 4 -14.8 5.4 -10.2 3.4 -6.6 C 2 -5.2 0 -5 0 -5 C 0 -5 -2 -5.2 -3.4 -6.6 C -5.4 -10.2 -4 -14.8 0 -19.5 Z" />
+        <path d="M 0 -14.2 C 1.4 -11.6 1.8 -9.6 0 -8 C -1.8 -9.6 -1.4 -11.6 0 -14.2 Z" fill="#5A1F7A" stroke="none" />
       </g>
       <g transform="rotate(180)">
-        <path d="M 0 -22.6 C 4.2 -17.5 7.2 -12.8 5.6 -7.4 C 3.8 -5.2 1.8 -4.8 0 -4.8 C -1.8 -4.8 -3.8 -5.2 -5.6 -7.4 C -7.2 -12.8 -4.2 -17.5 0 -22.6 Z" />
-        <path d="M 0 -18 C 2.5 -14.4 3.8 -11.2 2.4 -8.2 C 1.2 -6.9 0 -6.6 0 -6.6 C 0 -6.6 -1.2 -6.9 -2.4 -8.2 C -3.8 -11.2 -2.5 -14.4 0 -18 Z" fill="#641C8B" stroke="none" />
+        <path d="M 0 -21 C 4.2 -15.8 5.8 -10.8 3.6 -6.8 C 2.1 -5.2 0 -5 0 -5 C 0 -5 -2.1 -5.2 -3.6 -6.8 C -5.8 -10.8 -4.2 -15.8 0 -21 Z" />
+        <path d="M 0 -15.2 C 1.5 -12.4 1.9 -10 0 -8.2 C -1.9 -10 -1.5 -12.4 0 -15.2 Z" fill="#5A1F7A" stroke="none" />
       </g>
       <g transform="rotate(270)">
-        <path d="M 0 -21.4 C 3.9 -16.6 6.8 -12.2 5.4 -7.2 C 3.6 -5.2 1.8 -4.8 0 -4.8 C -1.8 -4.8 -3.6 -5.2 -5.4 -7.2 C -6.8 -12.2 -3.9 -16.6 0 -21.4 Z" />
-        <path d="M 0 -17.2 C 2.4 -13.8 3.6 -10.8 2.2 -8 C 1.1 -6.8 0 -6.6 0 -6.6 C 0 -6.6 -1.1 -6.8 -2.2 -8 C -3.6 -10.8 -2.4 -13.8 0 -17.2 Z" fill="#641C8B" stroke="none" />
+        <path d="M 0 -19.5 C 4 -14.8 5.4 -10.2 3.4 -6.6 C 2 -5.2 0 -5 0 -5 C 0 -5 -2 -5.2 -3.4 -6.6 C -5.4 -10.2 -4 -14.8 0 -19.5 Z" />
+        <path d="M 0 -14.2 C 1.4 -11.6 1.8 -9.6 0 -8 C -1.8 -9.6 -1.4 -11.6 0 -14.2 Z" fill="#5A1F7A" stroke="none" />
       </g>
     </g>
 
-    <g fill="#3E0E59">
-      <circle cx="7.6" cy="-16.8" r="1.45" />
-      <circle cx="-7.6" cy="-16.8" r="1.45" />
-      <circle cx="7.6" cy="16.8" r="1.45" />
-      <circle cx="-7.6" cy="16.8" r="1.45" />
-      <circle cx="16.5" cy="-7.2" r="1.4" />
-      <circle cx="16.5" cy="7.2" r="1.4" />
-      <circle cx="-17" cy="-7.2" r="1.4" />
-      <circle cx="-17" cy="7.2" r="1.4" />
-    </g>
-    <circle cx="0" cy="-25.2" r="1.65" fill="#641C8B" />
-    <circle cx="0" cy="25.2" r="1.65" fill="#641C8B" />
-
-    <circle cx="0" cy="0" r="7.2" stroke="#3E0E59" stroke-width="1.75" />
-    <path d="M 0 -5.6 L 1.8 -1.8 L 5.6 0 L 1.8 1.8 L 0 5.6 L -1.8 1.8 L -5.6 0 L -1.8 -1.8 Z" fill="#3E0E59" />
-    <circle cx="0" cy="0" r="1.5" fill="#641C8B" />
+    <!-- Open circular lotus core -->
+    <circle cx="0" cy="0" r="5.2" stroke="#5A1F7A" stroke-width="1.4" />
+    <circle cx="0" cy="0" r="2" fill="#7B35A2" />
   </g>
 
-  <!-- Mid-Tile Connector Floret centered at (29.5, 75) -->
-  <g transform="translate(29.5 75)">
-    <path d="M -17.5 -5.8 C -21.8 -4.6 -23.5 -2.2 -23.5 0 C -23.5 2.2 -21.8 4.6 -17.5 5.8" stroke="#3E0E59" stroke-width="1.65" stroke-linecap="round" />
-    <circle cx="-25.8" cy="0" r="1.55" fill="#641C8B" />
-    <circle cx="-21.4" cy="-5.4" r="1.3" fill="#3E0E59" />
-    <circle cx="-21.4" cy="5.4" r="1.3" fill="#3E0E59" />
-    <path d="M -5 0 C -9.6 -4.6 -14.8 -4.6 -18.5 0 C -14.8 4.6 -9.6 4.6 -5 0 Z" stroke="#3E0E59" stroke-width="1.6" />
-    <path d="M 5 0 C 9.6 -4.6 14.8 -4.6 18.5 0 C 14.8 4.6 9.6 4.6 5 0 Z" stroke="#3E0E59" stroke-width="1.6" />
-    <path d="M -8 0 C -10.8 -2.2 -13.6 -2.2 -15.6 0 C -13.6 2.2 -10.8 2.2 -8 0 Z" fill="#641C8B" />
-    <path d="M 8 0 C 10.8 -2.2 13.6 -2.2 15.6 0 C 13.6 2.2 10.8 2.2 8 0 Z" fill="#641C8B" />
-    <path d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" stroke="#3E0E59" stroke-width="1.75" />
-    <circle cx="0" cy="0" r="2.5" fill="#3E0E59" />
-    <circle cx="0" cy="-8.5" r="1.5" fill="#641C8B" />
-    <circle cx="0" cy="8.5" r="1.5" fill="#641C8B" />
-    <circle cx="19.6" cy="0" r="1.4" fill="#3E0E59" />
-    <circle cx="-11.5" cy="-5.6" r="1.25" fill="#641C8B" />
-    <circle cx="11.5" cy="-5.6" r="1.25" fill="#641C8B" />
-    <circle cx="-11.5" cy="5.6" r="1.25" fill="#641C8B" />
-    <circle cx="11.5" cy="5.6" r="1.25" fill="#641C8B" />
+  <!-- Mid-Tile Airy Diamond Spacer (centered at 28, 120) -->
+  <g transform="translate(28 120)">
+    <path d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" stroke="#5A1F7A" stroke-width="1.35" />
+    <circle cx="0" cy="0" r="1.8" fill="#7B35A2" />
+    <circle cx="-13" cy="0" r="1.25" fill="#7B35A2" />
+    <circle cx="13" cy="0" r="1.25" fill="#7B35A2" />
   </g>
 
-  <!-- Motif 2: Bold Decorative Diamond-Lotus / Paisley-Scroll Motif centered at (29.5, 114) -->
-  <g transform="translate(29.5 114)">
-    <path d="M -16.5 -16.8 C -20.8 -11.2 -24.4 -5.6 -24.8 0 C -24.4 5.6 -20.8 11.2 -16.5 16.8" stroke="#3E0E59" stroke-width="1.6" stroke-linecap="round" />
-    <circle cx="-26.5" cy="0" r="1.65" fill="#641C8B" />
-    <circle cx="-22.4" cy="-11.6" r="1.35" fill="#3E0E59" />
-    <circle cx="-22.4" cy="11.6" r="1.35" fill="#3E0E59" />
+  <!-- Motif 2: Clean Open Ogee Diamond Medallion (centered at 28, 180) -->
+  <g transform="translate(28 180)">
+    <circle cx="0" cy="-27" r="1.45" fill="#7B35A2" />
+    <circle cx="0" cy="27" r="1.45" fill="#7B35A2" />
 
-    <path d="M 0 -22.8 C 5.4 -15.6 12.2 -9 19 0 C 12.2 9 5.4 15.6 0 22.8 C -5.4 15.6 -12.2 9 -19 0 C -12.2 -9 -5.4 -15.6 0 -22.8 Z" stroke="#3E0E59" stroke-width="1.95" stroke-linejoin="round" />
-    <path d="M 0 -17.2 C 3.8 -11.6 8.8 -6.8 14 0 C 8.8 6.8 3.8 11.6 0 17.2 C -3.8 11.6 -8.8 6.8 -14 0 C -8.8 -6.8 -3.8 -11.6 0 -17.2 Z" stroke="#641C8B" stroke-width="1.5" stroke-linejoin="round" />
+    <!-- Single crisp outer ogee diamond frame -->
+    <path
+      d="M 0 -21.5 C 5.2 -14.5 11.2 -8.2 17.2 0 C 11.2 8.2 5.2 14.5 0 21.5 C -5.2 14.5 -11.2 8.2 -17.2 0 C -11.2 -8.2 -5.2 -14.5 0 -21.5 Z"
+      stroke="#5A1F7A"
+      stroke-width="1.55"
+      stroke-linejoin="round"
+    />
 
-    <!-- Four paisley corner curls -->
-    <path d="M -7 -16.2 C -12 -18.8 -17.6 -16 -17.4 -11.2 C -17.2 -8.4 -14.8 -7.2 -13.2 -8.6 C -11.8 -9.8 -12.6 -11.8 -14.2 -11.6" stroke="#3E0E59" stroke-width="1.6" stroke-linecap="round" />
-    <path d="M -14.4 -15.8 C -16.4 -14.2 -16.4 -12 -14.8 -11.6 C -13.2 -11.2 -12.2 -13.2 -14.4 -15.8 Z" fill="#641C8B" />
-    <path d="M 7 -16.2 C 12 -18.8 17.4 -16 17.2 -11.2 C 17 -8.4 14.6 -7.2 13 -8.6 C 11.6 -9.8 12.4 -11.8 14 -11.6" stroke="#3E0E59" stroke-width="1.6" stroke-linecap="round" />
-    <path d="M 14.2 -15.8 C 16.2 -14.2 16.2 -12 14.6 -11.6 C 13 -11.2 12 -13.2 14.2 -15.8 Z" fill="#641C8B" />
-    <path d="M -7 16.2 C -12 18.8 -17.6 16 -17.4 11.2 C -17.2 8.4 -14.8 7.2 -13.2 8.6 C -11.8 9.8 -12.6 11.8 -14.2 11.6" stroke="#3E0E59" stroke-width="1.6" stroke-linecap="round" />
-    <path d="M -14.4 15.8 C -16.4 14.2 -16.4 12 -14.8 11.6 C -13.2 11.2 -12.2 13.2 -14.4 15.8 Z" fill="#641C8B" />
-    <path d="M 7 16.2 C 12 18.8 17.4 16 17.2 11.2 C 17 8.4 14.6 7.2 13 8.6 C 11.6 9.8 12.4 11.8 14 11.6" stroke="#3E0E59" stroke-width="1.6" stroke-linecap="round" />
-    <path d="M 14.2 15.8 C 16.2 14.2 16.2 12 14.6 11.6 C 13 11.2 12 13.2 14.2 15.8 Z" fill="#641C8B" />
+    <!-- Airy inner diamond hairline -->
+    <path
+      d="M 0 -14.5 L 11.5 0 L 0 14.5 L -11.5 0 Z"
+      stroke="#7B35A2"
+      stroke-width="1.15"
+      stroke-linejoin="round"
+    />
 
-    <!-- Inner 4-petal lotus cross inside diamond -->
-    <g fill="#3E0E59">
-      <path d="M 0 -14 C 2.6 -10 3.5 -6.8 1.8 -4.6 C 0.9 -3.6 0 -3.4 0 -3.4 C 0 -3.4 -0.9 -3.6 -1.8 -4.6 C -3.5 -6.8 -2.6 -10 0 -14 Z" />
-      <path d="M 0 14 C 2.6 10 3.5 6.8 1.8 4.6 C 0.9 3.6 0 3.4 0 3.4 C 0 3.4 -0.9 3.6 -1.8 4.6 C -3.5 6.8 -2.6 10 0 14 Z" />
-      <path d="M -11.5 0 C -8.2 -2.3 -5.6 -2.9 -3.8 -1.5 C -3.1 -0.8 -3 0 -3 0 C -3 0 -3.1 0.8 -3.8 1.5 C -5.6 2.9 -8.2 2.3 -11.5 0 Z" />
-      <path d="M 11.5 0 C 8.2 -2.3 5.6 -2.9 3.8 -1.5 C 3.1 -0.8 3 0 3 0 C 3 0 3.1 0.8 3.8 1.5 C 5.6 2.9 8.2 2.3 11.5 0 Z" />
-    </g>
+    <!-- Delicate 4-point inner star -->
+    <path
+      d="M 0 -8.5 L 2.2 -2.2 L 7.5 0 L 2.2 2.2 L 0 8.5 L -2.2 2.2 L -7.5 0 L -2.2 -2.2 Z"
+      fill="#5A1F7A"
+    />
+    <circle cx="0" cy="0" r="1.6" fill="#FBF8F1" />
 
-    <g stroke="#641C8B" stroke-width="1.35" stroke-linecap="round">
-      <line x1="3.4" y1="-3.4" x2="6.8" y2="-6.8" />
-      <line x1="-3.4" y1="-3.4" x2="-6.8" y2="-6.8" />
-      <line x1="3.4" y1="3.4" x2="6.8" y2="6.8" />
-      <line x1="-3.4" y1="3.4" x2="-6.8" y2="6.8" />
-    </g>
-    <g fill="#641C8B">
-      <circle cx="7.4" cy="-7.4" r="1.5" />
-      <circle cx="-7.4" cy="-7.4" r="1.5" />
-      <circle cx="7.4" cy="7.4" r="1.5" />
-      <circle cx="-7.4" cy="7.4" r="1.5" />
-    </g>
-    <circle cx="0" cy="0" r="3.8" stroke="#3E0E59" stroke-width="1.65" />
-    <circle cx="0" cy="0" r="1.8" fill="#3E0E59" />
-
-    <path d="M 0 -27.4 C 1.8 -25.6 1.9 -24 0 -23.2 C -1.9 -24 -1.8 -25.6 0 -27.4 Z" fill="#641C8B" />
-    <path d="M 0 27.4 C 1.8 25.6 1.9 24 0 23.2 C -1.9 24 -1.8 25.6 0 27.4 Z" fill="#641C8B" />
-    <circle cx="-4.4" cy="-21.6" r="1.25" fill="#3E0E59" />
-    <circle cx="4.4" cy="-21.6" r="1.25" fill="#3E0E59" />
-    <circle cx="-4.4" cy="21.6" r="1.25" fill="#3E0E59" />
-    <circle cx="4.4" cy="21.6" r="1.25" fill="#3E0E59" />
-    <circle cx="20.2" cy="0" r="1.45" fill="#3E0E59" />
-    <circle cx="18.6" cy="-16.5" r="1.3" fill="#641C8B" />
-    <circle cx="18.6" cy="16.5" r="1.3" fill="#641C8B" />
-  </g>
-
-  <!-- Seamless Bottom-Seam Connector (centered at y = 155; exact twin of y = -5) -->
-  <g transform="translate(29.5 155)">
-    <path d="M -17.5 -5.8 C -21.8 -4.6 -23.5 -2.2 -23.5 0 C -23.5 2.2 -21.8 4.6 -17.5 5.8" stroke="#3E0E59" stroke-width="1.65" stroke-linecap="round" />
-    <circle cx="-25.8" cy="0" r="1.55" fill="#641C8B" />
-    <circle cx="-21.4" cy="-5.4" r="1.3" fill="#3E0E59" />
-    <circle cx="-21.4" cy="5.4" r="1.3" fill="#3E0E59" />
-    <path d="M -5 0 C -9.6 -4.6 -14.8 -4.6 -18.5 0 C -14.8 4.6 -9.6 4.6 -5 0 Z" stroke="#3E0E59" stroke-width="1.6" />
-    <path d="M 5 0 C 9.6 -4.6 14.8 -4.6 18.5 0 C 14.8 4.6 9.6 4.6 5 0 Z" stroke="#3E0E59" stroke-width="1.6" />
-    <path d="M -8 0 C -10.8 -2.2 -13.6 -2.2 -15.6 0 C -13.6 2.2 -10.8 2.2 -8 0 Z" fill="#641C8B" />
-    <path d="M 8 0 C 10.8 -2.2 13.6 -2.2 15.6 0 C 13.6 2.2 10.8 2.2 8 0 Z" fill="#641C8B" />
-    <path d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" stroke="#3E0E59" stroke-width="1.75" />
-    <circle cx="0" cy="0" r="2.5" fill="#3E0E59" />
-    <circle cx="0" cy="-8.5" r="1.5" fill="#641C8B" />
-    <circle cx="0" cy="8.5" r="1.5" fill="#641C8B" />
-    <circle cx="19.6" cy="0" r="1.4" fill="#3E0E59" />
-    <circle cx="-11.5" cy="-5.6" r="1.25" fill="#641C8B" />
-    <circle cx="11.5" cy="-5.6" r="1.25" fill="#641C8B" />
-    <circle cx="-11.5" cy="5.6" r="1.25" fill="#641C8B" />
-    <circle cx="11.5" cy="5.6" r="1.25" fill="#641C8B" />
+    <!-- Subtle outer side pearls (plenty of breathing space) -->
+    <circle cx="-21.5" cy="0" r="1.35" fill="#7B35A2" />
+    <circle cx="21.5" cy="0" r="1.35" fill="#7B35A2" />
   </g>
 </svg>

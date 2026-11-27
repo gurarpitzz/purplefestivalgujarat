@@ -95,52 +95,50 @@ $extraHeadHtml = <<<'HTML'
     min-height: calc(100vh - 76px);
     background-color: #FBF8F1;
     color: #202D59;
-    padding: 52px clamp(20px, 5vw, 112px) 72px clamp(20px, 4vw, 48px);
+    padding: 52px clamp(20px, 8vw, 108px) 72px;
     overflow-x: clip;
   }
 
-  /* Right-edge seamless Gujarati folk-art ornamental border matching Festival Grounds */
+  /* Symmetric left & right airy Gujarati folk-art ornamental borders */
   .pfg-apply-ornament {
     position: absolute;
     top: 0;
-    right: 0;
     bottom: 0;
-    width: clamp(68px, 6.8vw, 98px);
+    width: clamp(54px, 5.4vw, 78px);
     pointer-events: none;
     z-index: 1;
-    background-image: url('/assets/editorial/gujarati-border-right.svg?v=2');
+    background-image: url('/assets/editorial/gujarati-border-right.svg?v=3');
     background-repeat: repeat-y;
     background-position: right top;
     background-size: 100% auto;
   }
 
+  .pfg-apply-ornament--right {
+    right: 0;
+  }
+
+  .pfg-apply-ornament--left {
+    left: 0;
+    transform: scaleX(-1);
+  }
+
   @media (max-width: 1024px) {
     .pfg-apply-ornament {
-      width: clamp(46px, 6.2vw, 68px);
+      width: clamp(38px, 5vw, 54px);
     }
 
     .pfg-apply-main {
-      padding-right: clamp(60px, 9vw, 88px);
+      padding-inline: clamp(52px, 8vw, 80px);
     }
   }
 
-  @media (max-width: 540px) {
-    .pfg-apply-ornament {
-      width: 18px;
-    }
-
-    .pfg-apply-main {
-      padding: 40px 28px 56px 16px;
-    }
-  }
-
-  @media (max-width: 420px) {
+  @media (max-width: 600px) {
     .pfg-apply-ornament {
       display: none;
     }
 
     .pfg-apply-main {
-      padding: 36px 16px 52px 16px;
+      padding: 36px 16px 52px;
     }
   }
 
@@ -743,7 +741,8 @@ HTML;
 require_once __DIR__ . '/../includes/header.php';
 ?>
 <main id="main-content" tabindex="-1" class="pfg-apply-main focus:outline-none">
-  <div class="pfg-apply-ornament" aria-hidden="true"></div>
+  <div class="pfg-apply-ornament pfg-apply-ornament--left" aria-hidden="true"></div>
+  <div class="pfg-apply-ornament pfg-apply-ornament--right" aria-hidden="true"></div>
   <div class="pfg-apply-wrap">
     <h1 class="pfg-apply-heading">
       What type of registration are you interested in for Purple Fest Gujarat?
