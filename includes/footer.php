@@ -649,6 +649,20 @@ if ($footerNavState === 'ADMIN') {
     </div>
   </div>
 
+  <!-- Floating Compact Website Language Toggle (Bottom-Right) -->
+  <div
+    id="pfg-lang-fab"
+    class="pfg-lang-fab"
+    role="group"
+    aria-label="Change website language"
+    data-surface="dark"
+    data-no-translate="true"
+  >
+    <button type="button" data-lang-switch="en" aria-pressed="true" lang="en" class="pfg-lang-fab__btn is-active">English</button>
+    <button type="button" data-lang-switch="hi" aria-pressed="false" lang="hi" class="pfg-lang-fab__btn">हिन्दी</button>
+    <button type="button" data-lang-switch="gu" aria-pressed="false" lang="gu" class="pfg-lang-fab__btn">ગુજરાતી</button>
+  </div>
+
   <!-- Floating TalkBack Screen Reader Control Bar (visible when TalkBack is active) -->
   <div
     id="pfg-sr-bar"

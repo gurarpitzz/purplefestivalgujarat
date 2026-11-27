@@ -314,7 +314,7 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
 
   <!-- Compiled Tailwind & Design System CSS -->
   <link rel="stylesheet" href="/assets/css/app.css?v=2" />
-  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=2" />
+  <link rel="stylesheet" href="/assets/css/a11y-tools.css?v=3" />
 
   <!-- Schema.org JSON-LD -->
   <script type="application/ld+json"><?= $schemaJsonOutput ?></script>
@@ -329,34 +329,6 @@ $schemaJsonOutput = function_exists('pfgSafeJsonForScript')
 
   <?php if (empty($hideSiteHeader)): ?>
   <header class="sticky top-0 z-50 bg-[#F2E9FE]/95 text-[#202D59] backdrop-blur-md">
-    <!-- Top Utility Bar: Quick TalkBack Screen Reader & Language Switcher (EN / हिन्दी / ગુજરાતી) -->
-    <div class="pfg-util-bar" data-surface="dark">
-      <div class="pfg-util-bar__inner">
-        <button
-          id="pfg-topbar-sr-toggle"
-          type="button"
-          data-sr-quick-toggle="true"
-          aria-pressed="false"
-          aria-label="Toggle TalkBack Screen Reader"
-          class="pfg-util-bar__sr-btn"
-        >
-          <span class="pfg-util-bar__sr-dot" data-sr-status-dot="true" aria-hidden="true"></span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-          </svg>
-          <span data-sr-quick-label="true">TalkBack: Off</span>
-        </button>
-
-        <div class="pfg-lang-bar" role="group" aria-label="Change website language" data-no-translate="true">
-          <button type="button" data-lang-switch="en" aria-pressed="true" lang="en" class="pfg-lang-bar__btn is-active">English</button>
-          <button type="button" data-lang-switch="hi" aria-pressed="false" lang="hi" class="pfg-lang-bar__btn">हिन्दी</button>
-          <button type="button" data-lang-switch="gu" aria-pressed="false" lang="gu" class="pfg-lang-bar__btn">ગુજરાતી</button>
-        </div>
-      </div>
-    </div>
-
     <div class="pfg-header-main-row mx-auto flex w-full max-w-[1440px] items-center justify-between gap-6 px-6 py-4 sm:px-10">
       <!-- Flat Crisp PurpleFest Logo (#header-logo docking target for Preloader) -->
       <a

@@ -5,144 +5,78 @@
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   1. Top Utility Bar (.pfg-util-bar)
+   1. Floating Compact Website Language Toggle Pill (.pfg-lang-fab — Bottom-Right)
    -------------------------------------------------------------------------- */
-.pfg-util-bar {
-  width: 100%;
-  background-color: #2B0A3D;
-  color: #FFFFFF;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 0.78rem;
-  line-height: 1.25;
-}
-
-.pfg-util-bar__inner {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 0.34rem 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-
-@media (min-width: 640px) {
-  .pfg-util-bar__inner {
-    padding-inline: 2.5rem;
-  }
-}
-
-.pfg-util-bar__left,
-.pfg-util-bar__right {
+.pfg-lang-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1050;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 9999px;
+  background-color: rgba(43, 10, 61, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 8px 24px rgba(43, 10, 61, 0.24), 0 2px 6px rgba(43, 10, 61, 0.12);
 }
 
-/* TalkBack Quick Toggle Pill */
-.pfg-util-bar__sr-btn {
-  height: 30px;
-  min-height: 30px;
-  min-width: 0;
-  padding: 0.2rem 0.72rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background-color: rgba(255, 255, 255, 0.08);
-  color: #F9F7FC;
-  font-size: 0.76rem;
-  font-weight: 600;
-  line-height: 1.2;
+.pfg-lang-fab__btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-
-.pfg-util-bar__sr-btn:hover {
-  background-color: rgba(255, 255, 255, 0.16);
-  border-color: rgba(255, 255, 255, 0.48);
-  color: #FFFFFF;
-}
-
-.pfg-util-bar__sr-btn:focus-visible {
-  outline: 2.5px solid #F5B731;
-  outline-offset: 2px;
-}
-
-.pfg-util-bar__sr-btn.is-active,
-.pfg-util-bar__sr-btn[aria-pressed="true"] {
-  background-color: #F5B731;
-  color: #1C0A29;
-  border-color: #F5B731;
-  font-weight: 700;
-  box-shadow: 0 1px 6px rgba(245, 183, 49, 0.35);
-}
-
-.pfg-util-bar__sr-btn.is-active:hover,
-.pfg-util-bar__sr-btn[aria-pressed="true"]:hover {
-  background-color: #F8C54F;
-  border-color: #F8C54F;
-  color: #1C0A29;
-}
-
-.pfg-util-bar__sr-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 9999px;
-  flex-shrink: 0;
-  background-color: rgba(255, 255, 255, 0.45);
-  transition: background-color 150ms ease, box-shadow 150ms ease;
-}
-
-.pfg-util-bar__sr-btn.is-active .pfg-util-bar__sr-dot,
-.pfg-util-bar__sr-btn[aria-pressed="true"] .pfg-util-bar__sr-dot {
-  background-color: #10B981;
-  box-shadow: 0 0 0 2px rgba(28, 10, 41, 0.3), 0 0 8px rgba(16, 185, 129, 0.85);
-}
-
-.pfg-util-bar__sr-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-/* Segmented Language Switcher Pill (.pfg-lang-bar) */
-.pfg-lang-bar {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px;
-  border-radius: 9999px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.pfg-lang-bar__btn {
-  height: 28px;
-  min-height: 28px;
-  min-width: 0;
-  padding: 0.16rem 0.66rem;
+  justify-content: center;
+  height: 32px !important;
+  min-height: 32px !important;
+  min-width: 0 !important;
+  padding: 0 0.78rem !important;
   border-radius: 9999px;
   border: 0;
   background-color: transparent;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.8rem;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
 
-/* Mobile Header Guard for Longer Hindi/Gujarati CTA Labels */
+.pfg-lang-fab__btn:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+}
+
+.pfg-lang-fab__btn:focus-visible {
+  outline: 2.5px solid #F5B731;
+  outline-offset: 2px;
+}
+
+.pfg-lang-fab__btn.is-active,
+.pfg-lang-fab__btn[aria-pressed="true"] {
+  background-color: #FFFFFF;
+  color: #2B0A3D;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
 @media (max-width: 639.98px) {
+  .pfg-lang-fab {
+    right: 12px;
+    bottom: 12px;
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .pfg-lang-fab__btn {
+    height: 30px !important;
+    min-height: 30px !important;
+    padding: 0 0.62rem !important;
+    font-size: 0.75rem;
+  }
+
   .pfg-header-main-row {
     padding: 0.65rem 0.85rem !important;
     gap: 0.5rem !important;
@@ -162,63 +96,6 @@
 
   .pfg-header-right-controls {
     gap: 0.45rem !important;
-  }
-}
-
-.pfg-lang-bar__btn:hover {
-  background-color: rgba(255, 255, 255, 0.16);
-  color: #FFFFFF;
-}
-
-.pfg-lang-bar__btn:focus-visible {
-  outline: 2.5px solid #F5B731;
-  outline-offset: 2px;
-}
-
-.pfg-lang-bar__btn.is-active,
-.pfg-lang-bar__btn[aria-pressed="true"] {
-  background-color: #FFFFFF;
-  color: #2B0A3D;
-  font-weight: 700;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-/* Mobile Responsive Polish (< 480px & 320px–390px zero horizontal overflow) */
-@media (max-width: 479px) {
-  .pfg-util-bar__inner {
-    padding: 0.3rem 0.85rem;
-    gap: 0.4rem;
-  }
-
-  .pfg-util-bar__sr-btn {
-    min-height: 28px;
-    padding: 0.16rem 0.52rem;
-    font-size: 0.74rem;
-    gap: 0.32rem;
-  }
-
-  .pfg-lang-bar__btn {
-    min-height: 26px;
-    padding: 0.16rem 0.52rem;
-    font-size: 0.74rem;
-  }
-}
-
-@media (max-width: 360px) {
-  .pfg-util-bar__inner {
-    padding: 0.28rem 0.5rem;
-    gap: 0.3rem;
-  }
-
-  .pfg-util-bar__sr-btn {
-    padding: 0.14rem 0.44rem;
-    font-size: 0.7rem;
-    gap: 0.26rem;
-  }
-
-  .pfg-lang-bar__btn {
-    padding: 0.14rem 0.42rem;
-    font-size: 0.7rem;
   }
 }
 
@@ -523,9 +400,9 @@
   }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 767.98px) {
   .pfg-sr-bar {
-    bottom: 10px;
+    bottom: 58px;
     width: calc(100vw - 20px);
     padding: 0.55rem 0.7rem;
   }
@@ -574,20 +451,16 @@ html[lang^="gu"] .font-display {
 /* --------------------------------------------------------------------------
    6. WCAG High Contrast Mode Overrides (Pure Black #000, White #FFF, Yellow #FFEA00)
    -------------------------------------------------------------------------- */
-:is(html[data-contrast="high"], html.high-contrast) .pfg-util-bar {
-  background-color: #000000 !important;
-  color: #FFFFFF !important;
-  border-bottom: 2px solid #FFFFFF !important;
-}
-
-:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-bar,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-fab,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang {
   background-color: #000000 !important;
   border: 2px solid #FFFFFF !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 
-:is(html[data-contrast="high"], html.high-contrast) .pfg-util-bar__sr-btn,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-bar__btn,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-fab__btn,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang__btn,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang button,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-sr-btn,
@@ -602,10 +475,8 @@ html[lang^="gu"] .font-display {
   box-shadow: none !important;
 }
 
-:is(html[data-contrast="high"], html.high-contrast) .pfg-util-bar__sr-btn.is-active,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-util-bar__sr-btn[aria-pressed="true"],
-:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-bar__btn.is-active,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-bar__btn[aria-pressed="true"],
+:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-fab__btn.is-active,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-fab__btn[aria-pressed="true"],
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang__btn.is-active,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang__btn[aria-pressed="true"],
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang button.is-active,
@@ -618,8 +489,7 @@ html[lang^="gu"] .font-display {
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-sr-rates button[aria-pressed="true"],
 :is(html[data-contrast="high"], html.high-contrast) .pfg-sr-bar__btn--primary,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-sr-bar [data-sr-action="toggle-play"],
-:is(html[data-contrast="high"], html.high-contrast) .pfg-util-bar__sr-btn:hover,
-:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-bar__btn:hover,
+:is(html[data-contrast="high"], html.high-contrast) .pfg-lang-fab__btn:hover,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-lang button:hover,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-sr-controls button:hover,
 :is(html[data-contrast="high"], html.high-contrast) .pfg-drawer-sr-rates button:hover,
@@ -675,20 +545,16 @@ html[lang^="gu"] .font-display {
 /* --------------------------------------------------------------------------
    7. Yellow-on-Black Mode Overrides (#FFEA00 on #000000/#111111, >= 15:1)
    -------------------------------------------------------------------------- */
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-util-bar {
-  background-color: #000000 !important;
-  color: #FFEA00 !important;
-  border-bottom: 2px solid #FFEA00 !important;
-}
-
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-bar,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-fab,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang {
   background-color: #000000 !important;
   border: 2px solid #FFEA00 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-util-bar__sr-btn,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-bar__btn,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-fab__btn,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang__btn,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang button,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-sr-btn,
@@ -703,10 +569,8 @@ html[lang^="gu"] .font-display {
   box-shadow: none !important;
 }
 
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-util-bar__sr-btn.is-active,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-util-bar__sr-btn[aria-pressed="true"],
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-bar__btn.is-active,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-bar__btn[aria-pressed="true"],
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-fab__btn.is-active,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-fab__btn[aria-pressed="true"],
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang__btn.is-active,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang__btn[aria-pressed="true"],
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang button.is-active,
@@ -719,8 +583,7 @@ html[lang^="gu"] .font-display {
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-sr-rates button[aria-pressed="true"],
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-sr-bar__btn--primary,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-sr-bar [data-sr-action="toggle-play"],
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-util-bar__sr-btn:hover,
-:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-bar__btn:hover,
+:is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-lang-fab__btn:hover,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-lang button:hover,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-sr-controls button:hover,
 :is(html[data-contrast="yellow-black"], html.yellow-black) .pfg-drawer-sr-rates button:hover,
@@ -777,9 +640,7 @@ html[lang^="gu"] .font-display {
    8. Reduced Motion Overrides (OS Media Query + Toolbar Preference)
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .pfg-util-bar__sr-btn,
-  .pfg-util-bar__sr-dot,
-  .pfg-lang-bar__btn,
+  .pfg-lang-fab__btn,
   .pfg-drawer-lang__btn,
   .pfg-drawer-lang button,
   .pfg-drawer-sr-btn,
@@ -795,9 +656,7 @@ html[lang^="gu"] .font-display {
   }
 }
 
-:is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-util-bar__sr-btn,
-:is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-util-bar__sr-dot,
-:is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-lang-bar__btn,
+:is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-lang-fab__btn,
 :is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-drawer-lang__btn,
 :is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-drawer-lang button,
 :is(html[data-reduced-motion="true"], html.reduced-motion) .pfg-drawer-sr-btn,
