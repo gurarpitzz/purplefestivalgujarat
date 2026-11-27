@@ -824,7 +824,7 @@ $extraHeadHtml = (isset($extraHeadHtml) ? $extraHeadHtml . "\n" : '')
     . '  <link rel="stylesheet" href="/assets/css/home-whats-on.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-programme-highlights.css?v=1" />' . "\n"
     . '  <link rel="stylesheet" href="/assets/css/home-festival-grounds.css?v=4" />' . "\n"
-    . '  <link rel="stylesheet" href="/assets/css/home-faq-contact.css?v=1" />';
+    . '  <link rel="stylesheet" href="/assets/css/home-faq-contact.css?v=2" />';
 
 require_once __DIR__ . '/includes/header.php';
 
@@ -1528,9 +1528,11 @@ function renderHighlightIconSvg(string $iconName): string
   <section
     id="contact"
     aria-labelledby="faq-contact-heading"
-    class="pfg-ed-faq-section"
+    class="pfg-ed-faq-section pfg-bordered-section"
   >
-    <div class="pfg-ed-faq-section__inner">
+    <div class="pfg-ed-grounds__ornament pfg-ed-grounds__ornament--left" aria-hidden="true"></div>
+    <div class="pfg-ed-grounds__ornament pfg-ed-grounds__ornament--right" aria-hidden="true"></div>
+    <div class="pfg-ed-faq-section__inner pfg-bordered-section__inner">
       <div class="pfg-ed-faq-section__grid">
         <div class="pfg-ed-faq__col">
           <h2 id="faq-contact-heading" class="pfg-ed-faq__heading">
