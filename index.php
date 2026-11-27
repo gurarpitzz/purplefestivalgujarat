@@ -1338,7 +1338,12 @@ function renderHighlightIconSvg(string $iconName): string
   <?php require __DIR__ . '/includes/home-sections/programme-highlights.php'; ?>
 
   <!-- ============================================================
-       7. PARTNERS & ORGANISERS (Compact Dark Purple #5B2A86 Showcase)
+       7. VENUE & FESTIVAL GALLERY (Festival Grounds Editorial Band)
+       ============================================================ -->
+  <?php require __DIR__ . '/includes/home-sections/festival-grounds.php'; ?>
+
+  <!-- ============================================================
+       8. PARTNERS & ORGANISERS (Compact Dark Purple #5B2A86 Showcase)
        ============================================================ -->
   <?php
   $organisersList = [];
@@ -1477,11 +1482,6 @@ function renderHighlightIconSvg(string $iconName): string
       <?php endif; ?>
     </div>
   </section>
-
-  <!-- ============================================================
-       8. VENUE & FESTIVAL GALLERY (Festival Grounds Editorial Band)
-       ============================================================ -->
-  <?php require __DIR__ . '/includes/home-sections/festival-grounds.php'; ?>
 
   <!-- ============================================================
        9. FAQs & CONTACT
